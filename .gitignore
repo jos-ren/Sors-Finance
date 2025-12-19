@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# custom
+bank-categorizer.md
+
+# user data (financial information)
+/data/categories.json

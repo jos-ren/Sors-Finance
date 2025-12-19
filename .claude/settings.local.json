@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npx shadcn:*)",
+      "WebSearch",
+      "Bash(npx shadcn@latest add:*)"
+    ],
+    "ask": [],
+    "deny": [
+      "Bash(npm run build:*)"
+    ]
+  }
+}
