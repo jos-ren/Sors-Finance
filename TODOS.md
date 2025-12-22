@@ -3,6 +3,7 @@ TODOS
 - expand this web app to also be your personal budget tracker. after the transactions have been processed, we should then analyze it and do the same thign that your excel does.
 - add fun charts and stuff- a dashboard.
 - make the resolving part easier (make it look better)
+- add the concept of sub categories
 
 
 THOUGHTS
