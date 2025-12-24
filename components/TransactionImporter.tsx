@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle, HelpCircle, Copy } from "lucide-react";
 
-type ResolveSubStep = "conflicts" | "unassigned" | "duplicates";
+type ResolveSubStep = "conflicts" | "uncategorized" | "duplicates";
 import { toast } from "sonner";
 import { FileUpload } from "@/components/FileUpload";
 import { CategoryManager } from "@/components/CategoryManager";
 import { ConflictResolver } from "@/components/ConflictResolver";
 import { DuplicateResolver } from "@/components/DuplicateResolver";
-import { UnassignedList } from "@/components/UnassignedList";
+import { UncategorizedList } from "@/components/UncategorizedList";
 import { ResultsView } from "@/components/ResultsView";
 import { Transaction, UploadedFile, WizardStep } from "@/lib/types";
 import { parseCIBC } from "@/lib/parsers/cibc";
@@ -56,8 +56,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     const steps: ResolveSubStep[] = [];
     // Show conflicts step if there are any conflict transactions (resolved or not)
     if (transactions.some(t => t.isConflict)) steps.push("conflicts");
-    // Show unassigned step if there are any unassigned transactions (ignored or not)
-    if (transactions.some(t => !t.categoryId && !t.isConflict)) steps.push("unassigned");
+    // Show uncategorized step if there are any uncategorized transactions (ignored or not)
+    if (transactions.some(t => !t.categoryId && !t.isConflict)) steps.push("uncategorized");
     // Show duplicates step if there are any duplicate transactions
     if (transactions.some(t => t.isDuplicate)) steps.push("duplicates");
     return steps;
@@ -80,7 +80,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   // Auto-advance to next sub-step when current one is complete
   const currentSubStepComplete = useMemo(() => {
     if (resolveSubStep === "conflicts") return summary.conflicts === 0;
-    if (resolveSubStep === "unassigned") return summary.unassigned === 0;
+    if (resolveSubStep === "uncategorized") return summary.uncategorized === 0;
     if (resolveSubStep === "duplicates") return summary.duplicates === 0;
     return false;
   }, [resolveSubStep, summary]);
@@ -226,7 +226,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleIgnoreUnassigned = (transactionId: string) => {
+  const handleIgnoreUncategorized = (transactionId: string) => {
     // Mark transaction as ignored (will be imported without category)
     setTransactions((prev) =>
       prev.map((t) =>
@@ -235,8 +235,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleIgnoreAllUnassigned = () => {
-    // Mark all unassigned transactions as ignored
+  const handleIgnoreAllUncategorized = () => {
+    // Mark all uncategorized transactions as ignored
     setTransactions((prev) =>
       prev.map((t) =>
         !t.categoryId && !t.isConflict && !t.isIgnored ? { ...t, isIgnored: true } : t
@@ -244,7 +244,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleUndoIgnoreUnassigned = (transactionId: string) => {
+  const handleUndoIgnoreUncategorized = (transactionId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
         t.id === transactionId ? { ...t, isIgnored: false } : t
@@ -307,7 +307,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
   const handleFinish = async () => {
     try {
-      // Filter out ignored duplicates and ignored unassigned
+      // Filter out ignored duplicates and ignored uncategorized
       const transactionsToImport = transactions.filter(t => !t.ignoreDuplicate);
 
       // Separate allowed duplicates from normal transactions
@@ -397,13 +397,13 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   // Get categorization summary (already calculated above for auto-navigate)
   const conflictTransactions = transactions.filter((t) => t.isConflict);
   // Include ignored transactions so they stay visible with status
-  const unassignedTransactions = transactions.filter(
+  const uncategorizedTransactions = transactions.filter(
     (t) => !t.categoryId && !t.isConflict
   );
   const duplicateTransactions = transactions.filter((t) => t.isDuplicate);
-  const hasIssues = summary.conflicts > 0 || summary.unassigned > 0 || summary.duplicates > 0;
+  const hasIssues = summary.conflicts > 0 || summary.uncategorized > 0 || summary.duplicates > 0;
   // Blocking issues prevent import: conflicts must be resolved, duplicates must be handled
-  // Unassigned is OK - they'll be imported without a category
+  // Uncategorized is OK - they'll be imported without a category
   const hasBlockingIssues = summary.conflicts > 0 || summary.duplicates > 0;
   // Allow viewing results even with issues - user can always go back to resolve more
   const canViewResults = transactions.length > 0;
@@ -433,7 +433,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             2. Resolve Issues
             {summary.total > 0 && (
               <span className="ml-2 text-xs">
-                ({summary.conflicts + summary.unassigned + summary.duplicates} issues)
+                ({summary.conflicts + summary.uncategorized + summary.duplicates} issues)
               </span>
             )}
           </TabsTrigger>
@@ -478,13 +478,13 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 const isCurrent = step === resolveSubStep;
                 const isComplete =
                   (step === "conflicts" && summary.conflicts === 0) ||
-                  (step === "unassigned" && summary.unassigned === 0) ||
+                  (step === "uncategorized" && summary.uncategorized === 0) ||
                   (step === "duplicates" && summary.duplicates === 0);
 
                 const getStepLabel = () => {
                   switch (step) {
                     case "conflicts": return "Conflicts";
-                    case "unassigned": return "Unassigned";
+                    case "uncategorized": return "Uncategorized";
                     case "duplicates": return "Duplicates";
                   }
                 };
@@ -493,7 +493,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                   if (isComplete) return <CheckCircle2 className="h-4 w-4" />;
                   switch (step) {
                     case "conflicts": return <AlertTriangle className="h-4 w-4" />;
-                    case "unassigned": return <HelpCircle className="h-4 w-4" />;
+                    case "uncategorized": return <HelpCircle className="h-4 w-4" />;
                     case "duplicates": return <Copy className="h-4 w-4" />;
                   }
                 };
@@ -501,7 +501,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 const getStepCount = () => {
                   switch (step) {
                     case "conflicts": return summary.conflicts;
-                    case "unassigned": return summary.unassigned;
+                    case "uncategorized": return summary.uncategorized;
                     case "duplicates": return summary.duplicates;
                   }
                 };
@@ -544,16 +544,16 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               />
             )}
 
-            {resolveSubStep === "unassigned" && unassignedTransactions.length > 0 && (
-              <UnassignedList
-                unassignedTransactions={unassignedTransactions}
+            {resolveSubStep === "uncategorized" && uncategorizedTransactions.length > 0 && (
+              <UncategorizedList
+                uncategorizedTransactions={uncategorizedTransactions}
                 categories={categories}
                 onAddKeyword={handleAddKeyword}
                 onCreateCategory={handleCreateCategory}
                 onReprocess={handleReprocessTransactions}
-                onIgnore={handleIgnoreUnassigned}
-                onUndo={handleUndoIgnoreUnassigned}
-                onIgnoreAll={handleIgnoreAllUnassigned}
+                onIgnore={handleIgnoreUncategorized}
+                onUndo={handleUndoIgnoreUncategorized}
+                onIgnoreAll={handleIgnoreAllUncategorized}
               />
             )}
 
@@ -574,7 +574,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
                 <AlertDescription className="text-green-800 dark:text-green-200">
                   {resolveSubStep === "conflicts" && "All conflicts resolved!"}
-                  {resolveSubStep === "unassigned" && "All unassigned transactions handled!"}
+                  {resolveSubStep === "uncategorized" && "All uncategorized transactions handled!"}
                   {resolveSubStep === "duplicates" && "All duplicates handled!"}
                   {" You can review your choices above or continue."}
                 </AlertDescription>
@@ -632,11 +632,11 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             </Alert>
           )}
 
-          {!hasBlockingIssues && summary.unassigned > 0 && (
+          {!hasBlockingIssues && summary.uncategorized > 0 && (
             <Alert className="flex-shrink-0">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Note:</strong> {summary.unassigned} transactions have no category assigned. They will be imported as uncategorized.
+                <strong>Note:</strong> {summary.uncategorized} transactions have no category assigned. They will be imported as uncategorized.
               </AlertDescription>
             </Alert>
           )}

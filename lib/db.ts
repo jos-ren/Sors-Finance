@@ -134,11 +134,113 @@ export async function addCategory(name: string, keywords: string[] = []): Promis
   });
 }
 
-export async function updateCategory(id: number, updates: Partial<Omit<DbCategory, 'id' | 'uuid' | 'createdAt'>>): Promise<void> {
-  await db.categories.update(id, {
-    ...updates,
-    updatedAt: new Date()
+export interface UpdateCategoryResult {
+  assigned: number;
+  uncategorized: number;
+  conflicts: number;
+}
+
+export async function updateCategory(
+  id: number,
+  updates: Partial<Omit<DbCategory, 'id' | 'uuid' | 'createdAt'>>
+): Promise<UpdateCategoryResult> {
+  const result: UpdateCategoryResult = { assigned: 0, uncategorized: 0, conflicts: 0 };
+
+  // Get the old category data
+  const oldCategory = await db.categories.get(id);
+  if (!oldCategory) return result;
+
+  const oldKeywords = oldCategory.keywords;
+  const newKeywords = updates.keywords ?? oldKeywords;
+  const keywordsChanged = JSON.stringify(oldKeywords.sort()) !== JSON.stringify([...newKeywords].sort());
+
+  await db.transaction('rw', [db.categories, db.transactions], async () => {
+    // Update the category
+    await db.categories.update(id, {
+      ...updates,
+      updatedAt: new Date()
+    });
+
+    // If keywords changed, re-categorize affected transactions
+    if (keywordsChanged) {
+      const allCategories = await db.categories.toArray();
+      const updatedCategory = { ...oldCategory, ...updates, keywords: newKeywords };
+
+      // 1. Check transactions currently in this category - do they still match?
+      const transactionsInCategory = await db.transactions
+        .where('categoryId')
+        .equals(id)
+        .toArray();
+
+      for (const transaction of transactionsInCategory) {
+        const stillMatches = matchesKeywords(transaction.matchField, newKeywords);
+        if (!stillMatches) {
+          // Check if it matches another category
+          const otherMatch = findMatchingCategory(transaction.matchField, allCategories, id);
+          if (otherMatch) {
+            await db.transactions.update(transaction.id!, {
+              categoryId: otherMatch.id!,
+              updatedAt: new Date()
+            });
+            result.assigned++;
+          } else {
+            await db.transactions.update(transaction.id!, {
+              categoryId: null,
+              updatedAt: new Date()
+            });
+          }
+          result.uncategorized++;
+        }
+      }
+
+      // 2. Check uncategorized transactions - do they now match this category?
+      const allTransactions = await db.transactions.toArray();
+      const uncategorizedTransactions = allTransactions.filter(t => t.categoryId === null);
+
+      for (const transaction of uncategorizedTransactions) {
+        const matchesThis = matchesKeywords(transaction.matchField, newKeywords);
+        if (matchesThis) {
+          // Check if it also matches other categories (conflict)
+          const otherCategories = allCategories.filter(c => c.id !== id);
+          const otherMatches = otherCategories.filter(c =>
+            matchesKeywords(transaction.matchField, c.keywords)
+          );
+
+          if (otherMatches.length === 0) {
+            // Only matches this category - assign it
+            await db.transactions.update(transaction.id!, {
+              categoryId: id,
+              updatedAt: new Date()
+            });
+            result.assigned++;
+          } else {
+            // Matches multiple categories - conflict, leave uncategorized
+            result.conflicts++;
+          }
+        }
+      }
+    }
   });
+
+  return result;
+}
+
+// Helper: check if text matches any of the keywords
+function matchesKeywords(text: string, keywords: string[]): boolean {
+  const lowerText = text.toLowerCase();
+  return keywords.some(keyword => lowerText.includes(keyword.toLowerCase()));
+}
+
+// Helper: find a matching category (excluding a specific category)
+function findMatchingCategory(text: string, categories: DbCategory[], excludeId: number): DbCategory | null {
+  const lowerText = text.toLowerCase();
+  for (const category of categories) {
+    if (category.id === excludeId) continue;
+    if (category.keywords.some(keyword => lowerText.includes(keyword.toLowerCase()))) {
+      return category;
+    }
+  }
+  return null;
 }
 
 export async function deleteCategory(id: number): Promise<void> {

@@ -182,7 +182,7 @@ export {
   SYSTEM_CATEGORIES
 } from '../db';
 
-export type { RecategorizeMode, RecategorizeResult } from '../db';
+export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult } from '../db';
 
 // Hook to get the Ignore category
 export function useIgnoreCategory(): DbCategory | undefined {

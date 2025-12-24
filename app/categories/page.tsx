@@ -61,8 +61,25 @@ export default function CategoriesPage() {
 
   const handleUpdateCategory = async (id: number, name: string, keywords: string[]) => {
     try {
-      await updateCategory(id, { name, keywords });
-      toast.success(`Category "${name}" updated`);
+      const result = await updateCategory(id, { name, keywords });
+
+      // Build feedback message
+      const changes: string[] = [];
+      if (result.assigned > 0) {
+        changes.push(`${result.assigned} assigned`);
+      }
+      if (result.uncategorized > 0) {
+        changes.push(`${result.uncategorized} uncategorized`);
+      }
+      if (result.conflicts > 0) {
+        changes.push(`${result.conflicts} conflicts`);
+      }
+
+      if (changes.length > 0) {
+        toast.success(`Category "${name}" updated (${changes.join(', ')})`);
+      } else {
+        toast.success(`Category "${name}" updated`);
+      }
     } catch (error) {
       toast.error("Failed to update category");
       console.error(error);

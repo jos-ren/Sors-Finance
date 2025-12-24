@@ -39,8 +39,8 @@ import { Plus, Check, Pencil, X, Undo2 } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 
-interface UnassignedListProps {
-  unassignedTransactions: Transaction[];
+interface UncategorizedListProps {
+  uncategorizedTransactions: Transaction[];
   categories: DbCategory[];
   onAddKeyword: (categoryId: string, keyword: string) => void;
   onCreateCategory: (name: string, keyword: string) => void;
@@ -56,8 +56,8 @@ interface AddedKeyword {
   categoryName: string;
 }
 
-export function UnassignedList({
-  unassignedTransactions,
+export function UncategorizedList({
+  uncategorizedTransactions,
   categories,
   onAddKeyword,
   onCreateCategory,
@@ -65,7 +65,7 @@ export function UnassignedList({
   onIgnore,
   onUndo,
   onIgnoreAll,
-}: UnassignedListProps) {
+}: UncategorizedListProps) {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
@@ -141,7 +141,7 @@ export function UnassignedList({
   };
 
   // Group transactions by matchField
-  const groupedTransactions = unassignedTransactions.reduce((acc, transaction) => {
+  const groupedTransactions = uncategorizedTransactions.reduce((acc, transaction) => {
     const key = transaction.matchField;
     if (!acc[key]) {
       acc[key] = [];
@@ -221,7 +221,7 @@ export function UnassignedList({
       const newMap = new Map(addedKeywords);
 
       // Find all transactions with the same matchField
-      const matchingTransactions = unassignedTransactions.filter(
+      const matchingTransactions = uncategorizedTransactions.filter(
         t => t.matchField === selectedTransaction.matchField
       );
 
@@ -240,7 +240,7 @@ export function UnassignedList({
     handleCloseDialog();
   };
 
-  if (unassignedTransactions.length === 0) {
+  if (uncategorizedTransactions.length === 0) {
     return null;
   }
 
@@ -250,8 +250,8 @@ export function UnassignedList({
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span>Unassigned Transactions</span>
-              <Badge variant="secondary">{unassignedTransactions.length}</Badge>
+              <span>Uncategorized Transactions</span>
+              <Badge variant="secondary">{uncategorizedTransactions.length}</Badge>
             </div>
             {onIgnoreAll && (
               <Button variant="outline" size="sm" onClick={onIgnoreAll}>

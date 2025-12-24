@@ -103,6 +103,14 @@ export default function TransactionsPage() {
           </div>
         </div>
 
+        {/* Transaction Data Table */}
+        {transactions && categories && (
+          <TransactionDataTable
+            transactions={transactions}
+            categories={categories}
+          />
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle>Import History</CardTitle>
@@ -128,14 +136,6 @@ export default function TransactionsPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* Transaction Data Table */}
-        {transactions && categories && (
-          <TransactionDataTable
-            transactions={transactions}
-            categories={categories}
-          />
-        )}
 
         {/* Import Dialog */}
         <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>

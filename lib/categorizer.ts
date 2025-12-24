@@ -25,7 +25,7 @@ export function categorizeTransactions(
     const matches = findMatchingCategories(transaction.matchField, categories);
 
     if (matches.length === 0) {
-      // No matches - unassigned
+      // No matches - uncategorized
       return {
         ...transaction,
         categoryId: null,
@@ -85,7 +85,7 @@ export function getCategorizationSummary(
   const total = transactions.length;
   let categorized = 0;
   let conflicts = 0;
-  let unassigned = 0;
+  let uncategorized = 0;
   let duplicates = 0;
 
   transactions.forEach((transaction) => {
@@ -104,12 +104,12 @@ export function getCategorizationSummary(
     } else if (transaction.categoryId) {
       categorized++;
     } else if (!transaction.isIgnored) {
-      // Only count as unassigned if not explicitly ignored
-      unassigned++;
+      // Only count as uncategorized if not explicitly ignored
+      uncategorized++;
     }
   });
 
-  return { categorized, conflicts, unassigned, duplicates, total };
+  return { categorized, conflicts, uncategorized, duplicates, total };
 }
 
 /**
