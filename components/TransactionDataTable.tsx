@@ -6,6 +6,7 @@ import {
   ColumnFiltersState,
   SortingState,
   VisibilityState,
+  RowSelectionState,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
@@ -13,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,19 +33,42 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EditTransactionDialog } from "@/components/EditTransactionDialog";
+import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
+import { usePrivacy } from "@/lib/privacy-context";
 
 interface TransactionDataTableProps {
   transactions: DbTransaction[];
   categories: DbCategory[];
+  onDeleteTransaction?: (id: number) => void;
+  onBulkDeleteTransactions?: (ids: number[]) => void;
 }
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
@@ -59,6 +83,8 @@ function formatDate(date: Date): string {
 export function TransactionDataTable({
   transactions,
   categories,
+  onDeleteTransaction,
+  onBulkDeleteTransactions,
 }: TransactionDataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: "date", desc: true },
@@ -66,6 +92,8 @@ export function TransactionDataTable({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [globalFilter, setGlobalFilter] = useState("");
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -74,6 +102,9 @@ export function TransactionDataTable({
 
   // Edit state
   const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
+
+  // Privacy mode
+  const { formatAmount, isPrivacyMode } = usePrivacy();
 
   // Get category name by ID
   const getCategoryName = (categoryId: number | null): string => {
@@ -85,6 +116,28 @@ export function TransactionDataTable({
   // Column definitions
   const columns: ColumnDef<DbTransaction>[] = useMemo(
     () => [
+      {
+        id: "select",
+        header: ({ table }) => (
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      },
       {
         accessorKey: "date",
         header: ({ column }) => (
@@ -123,33 +176,6 @@ export function TransactionDataTable({
         ),
       },
       {
-        accessorKey: "categoryId",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-4"
-          >
-            Category
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
-        cell: ({ row }) => {
-          const categoryId = row.getValue("categoryId") as number | null;
-          const categoryName = getCategoryName(categoryId);
-          return (
-            <Badge variant={categoryId === null ? "outline" : "secondary"}>
-              {categoryName}
-            </Badge>
-          );
-        },
-        sortingFn: (rowA, rowB) => {
-          const nameA = getCategoryName(rowA.original.categoryId);
-          const nameB = getCategoryName(rowB.original.categoryId);
-          return nameA.localeCompare(nameB);
-        },
-      },
-      {
         accessorKey: "netAmount",
         header: ({ column }) => (
           <Button
@@ -165,51 +191,74 @@ export function TransactionDataTable({
           const transaction = row.original;
           if (transaction.amountOut > 0) {
             return (
-              <span className="text-destructive font-medium">
-                -{formatCurrency(transaction.amountOut)}
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>
+                {isPrivacyMode ? "" : "-"}{formatAmount(transaction.amountOut, formatCurrency)}
               </span>
             );
           }
           return (
-            <span className="text-green-600 font-medium">
-              +{formatCurrency(transaction.amountIn)}
+            <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>
+              {isPrivacyMode ? "" : "+"}{formatAmount(transaction.amountIn, formatCurrency)}
             </span>
           );
         },
       },
       {
+        accessorKey: "categoryId",
+        header: "Category",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const categoryId = row.getValue("categoryId") as number | null;
+          const categoryName = getCategoryName(categoryId);
+          return (
+            <Badge
+              variant={categoryId === null ? "default" : "secondary"}
+              className={categoryId === null ? "text-black" : ""}
+            >
+              {categoryName}
+            </Badge>
+          );
+        },
+      },
+      {
         accessorKey: "source",
-        header: ({ column }) => (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="-ml-4"
-          >
-            Source
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        ),
+        header: "Source",
+        enableSorting: false,
         cell: ({ row }) => (
-          <Badge variant="outline">{row.getValue("source")}</Badge>
+          <BankSourceBadge source={row.getValue("source")} size="sm" />
         ),
       },
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
         cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditingTransaction(row.original)}
-            className="h-8 w-8 p-0"
-          >
-            <Pencil className="h-4 w-4" />
-            <span className="sr-only">Edit</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm">
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">Open menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setEditingTransaction(row.original)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit
+              </DropdownMenuItem>
+              {onDeleteTransaction && (
+                <DropdownMenuItem
+                  onClick={() => onDeleteTransaction(row.original.id!)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ),
       },
     ],
-    [categories]
+    [categories, formatAmount, isPrivacyMode, onDeleteTransaction]
   );
 
   // Apply filters to transactions
@@ -287,15 +336,18 @@ export function TransactionDataTable({
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => row.id!.toString(),
     state: {
       sorting,
       columnFilters,
       columnVisibility,
+      rowSelection,
     },
     initialState: {
       pagination: {
@@ -303,6 +355,22 @@ export function TransactionDataTable({
       },
     },
   });
+
+  // Get selected transaction IDs
+  const selectedTransactionIds = useMemo(() => {
+    return Object.keys(rowSelection)
+      .filter((key) => rowSelection[key])
+      .map((id) => parseInt(id));
+  }, [rowSelection]);
+
+  // Handle bulk delete
+  const handleBulkDelete = () => {
+    if (onBulkDeleteTransactions && selectedTransactionIds.length > 0) {
+      onBulkDeleteTransactions(selectedTransactionIds);
+      setRowSelection({});
+    }
+    setShowBulkDeleteConfirm(false);
+  };
 
   const hasActiveFilters =
     categoryFilter !== "all" ||
@@ -346,16 +414,16 @@ export function TransactionDataTable({
           <div className="flex items-center gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">Income:</span>{" "}
-              <span className="text-green-600 font-medium">{formatCurrency(totals.income)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>{formatAmount(totals.income, formatCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Expenses:</span>{" "}
-              <span className="text-destructive font-medium">{formatCurrency(totals.expenses)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>{formatAmount(totals.expenses, formatCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Net:</span>{" "}
-              <span className={`font-medium ${totals.net >= 0 ? "text-green-600" : "text-destructive"}`}>
-                {formatCurrency(totals.net)}
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : totals.net >= 0 ? "text-green-600" : "text-destructive"}`}>
+                {formatAmount(totals.net, formatCurrency)}
               </span>
             </div>
           </div>
@@ -411,7 +479,7 @@ export function TransactionDataTable({
 
           {/* Source Filter */}
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-[120px]">
+            <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Source" />
             </SelectTrigger>
             <SelectContent>
@@ -427,6 +495,18 @@ export function TransactionDataTable({
             <Button variant="ghost" size="sm" onClick={clearAllFilters}>
               <X className="h-4 w-4 mr-1" />
               Clear filters
+            </Button>
+          )}
+
+          {/* Delete Selected */}
+          {selectedTransactionIds.length > 0 && onBulkDeleteTransactions && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowBulkDeleteConfirm(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete ({selectedTransactionIds.length})
             </Button>
           )}
         </div>
@@ -541,6 +621,27 @@ export function TransactionDataTable({
         transaction={editingTransaction}
         categories={categories}
       />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transactions</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedTransactionIds.length} transaction{selectedTransactionIds.length !== 1 ? 's' : ''}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleBulkDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

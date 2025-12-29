@@ -4,6 +4,7 @@ import "./globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DatabaseProvider } from "@/components/DatabaseProvider";
+import { PrivacyProvider } from "@/lib/privacy-context";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -39,7 +40,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <DatabaseProvider>
-            <SidebarLayout>{children}</SidebarLayout>
+            <PrivacyProvider>
+              <SidebarLayout>{children}</SidebarLayout>
+            </PrivacyProvider>
           </DatabaseProvider>
         </ThemeProvider>
       </body>

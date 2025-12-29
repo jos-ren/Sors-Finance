@@ -66,10 +66,13 @@ export async function parseAMEX(file: File): Promise<ParseResult> {
           matchField = description;
         } else {
           // Regular expense format: Description in column C, amount in column D, additional info in column J
-          description = row[2]?.toString().trim() || ""; // Column C
+          // For expenses, use Additional Information (Column J) as description since it's more useful for categorization
+          const originalDescription = row[2]?.toString().trim() || ""; // Column C
           amountStr = row[3]?.toString().trim() || "0"; // Column D
           const additionalInfo = row[9]?.toString().trim() || ""; // Column J (index 9)
-          matchField = additionalInfo || description;
+          // Use additionalInfo as description for display/keyword autofill, fall back to original if not available
+          description = additionalInfo || originalDescription;
+          matchField = description;
         }
 
         if (!dateStr || !matchField) {

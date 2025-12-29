@@ -4,7 +4,10 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn:*)",
       "WebFetch(domain:ui.shadcn.com)",
-      "Bash(npx shadcn@latest add radio-group -y)"
+      "Bash(npx shadcn@latest add radio-group -y)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npm run lint)",
+      "WebSearch"
     ],
     "deny": [
       "Bash(npm run build:*)"

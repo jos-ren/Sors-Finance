@@ -14,9 +14,8 @@ export interface Transaction {
   isConflict: boolean; // true if matched multiple categories
   conflictingCategories?: string[]; // Category IDs if conflict
   isDuplicate?: boolean; // true if exists in database already
-  allowDuplicate?: boolean; // user explicitly allowed importing this duplicate
-  ignoreDuplicate?: boolean; // user explicitly chose to ignore this duplicate
-  isIgnored?: boolean; // user chose to leave this uncategorized
+  importDuplicate?: boolean; // user explicitly chose to import this duplicate anyway
+  skipDuplicate?: boolean; // user explicitly chose to skip (not import) this duplicate
 }
 
 /**
@@ -49,6 +48,11 @@ export interface ParseResult {
 export interface UploadedFile {
   file: File;
   bankType: "CIBC" | "AMEX" | "UNKNOWN";
+  detectionConfidence?: "high" | "medium" | "low" | "none";
+  detectionReason?: string;
+  isManuallySet?: boolean;
+  validationErrors?: string[];
+  validationWarnings?: string[];
 }
 
 /**

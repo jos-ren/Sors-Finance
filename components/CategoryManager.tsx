@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -49,7 +59,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
+  rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -59,15 +69,134 @@ interface CategoryManagerProps {
   onCategoryUpdate: (id: number, name: string, keywords: string[]) => Promise<void> | void;
   onCategoryDelete: (id: number) => Promise<void> | void;
   onCategoryReorder: (activeId: number, overId: number) => Promise<void> | void;
+  singleColumn?: boolean;
+  getTransactionCount?: (categoryUuid: string) => number;
+}
+
+// Component to dynamically show as many keyword tags as fit on one line
+function DynamicKeywordList({ keywords }: { keywords: string[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const [visibleCount, setVisibleCount] = useState(1);
+
+  useLayoutEffect(() => {
+    if (!containerRef.current || !measureRef.current || keywords.length === 0) return;
+
+    const calculateVisibleCount = () => {
+      const container = containerRef.current;
+      const measureContainer = measureRef.current;
+      if (!container || !measureContainer) return;
+
+      // Force a reflow to get accurate measurements
+      const containerWidth = container.getBoundingClientRect().width;
+      if (containerWidth === 0) return;
+
+      const children = Array.from(measureContainer.children) as HTMLElement[];
+      if (children.length === 0) return;
+
+      let totalWidth = 0;
+      let count = 0;
+      const gap = 4; // gap-1 = 0.25rem = 4px
+
+      // Measure the "+x more" badge width from the last child in measure container
+      const moreTagEl = measureContainer.querySelector('[data-more-tag]') as HTMLElement;
+      const moreTagWidth = moreTagEl ? moreTagEl.getBoundingClientRect().width : 60;
+
+      // Only measure keyword badges (not the more tag)
+      const keywordBadges = children.filter(c => !c.hasAttribute('data-more-tag'));
+
+      for (let i = 0; i < keywordBadges.length; i++) {
+        const child = keywordBadges[i];
+        const childWidth = child.getBoundingClientRect().width;
+        const widthWithGap = count > 0 ? childWidth + gap : childWidth;
+
+        // Check if we need space for "+x more"
+        const remainingItems = keywords.length - (count + 1);
+        const needsMoreTag = remainingItems > 0;
+        const reservedSpace = needsMoreTag ? moreTagWidth + gap : 0;
+
+        if (totalWidth + widthWithGap + reservedSpace <= containerWidth) {
+          totalWidth += widthWithGap;
+          count++;
+        } else {
+          break;
+        }
+      }
+
+      setVisibleCount(Math.max(1, count));
+    };
+
+    // Use requestAnimationFrame to ensure DOM is ready
+    const rafId = requestAnimationFrame(calculateVisibleCount);
+
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(calculateVisibleCount);
+    });
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      resizeObserver.disconnect();
+    };
+  }, [keywords]);
+
+  if (keywords.length === 0) {
+    return <span className="text-xs text-muted-foreground">No keywords</span>;
+  }
+
+  const displayedKeywords = keywords.slice(-visibleCount).reverse();
+  const hiddenCount = keywords.length - visibleCount;
+
+  return (
+    <div ref={containerRef} className="w-full min-w-0">
+      {/* Hidden measurement container */}
+      <div
+        ref={measureRef}
+        className="flex gap-1 h-0 overflow-hidden"
+        aria-hidden="true"
+      >
+        {keywords.slice().reverse().map((keyword, idx) => (
+          <Badge key={`measure-${idx}`} variant="outline" className="text-xs max-w-[120px]">
+            <span className="truncate">{keyword}</span>
+          </Badge>
+        ))}
+        <Badge data-more-tag variant="secondary" className="text-xs">
+          +{keywords.length} more
+        </Badge>
+      </div>
+      {/* Visible container - clips overflow as safety net */}
+      <div className="flex gap-1 overflow-hidden">
+        <TooltipProvider>
+          {displayedKeywords.map((keyword, idx) => (
+            <Tooltip key={`visible-${idx}`}>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-xs max-w-[120px] flex-shrink-0 inline-flex">
+                  <span className="truncate">{keyword}</span>
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{keyword}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </TooltipProvider>
+        {hiddenCount > 0 && (
+          <Badge variant="secondary" className="text-xs flex-shrink-0">
+            +{hiddenCount} more
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface SortableItemProps {
   category: DbCategory;
   onEdit: (category: DbCategory) => void;
-  onDelete: (id: number) => void;
+  onDeleteConfirm: (category: DbCategory) => void;
 }
 
-function SortableItem({ category, onEdit, onDelete }: SortableItemProps) {
+function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -89,17 +218,17 @@ function SortableItem({ category, onEdit, onDelete }: SortableItemProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-start justify-between p-3 bg-secondary rounded-lg"
+      className="flex items-start justify-between p-3 bg-card border rounded-lg"
     >
-      <div className="flex items-start gap-2 flex-1">
+      <div className="flex items-start gap-2 flex-1 min-w-0">
         <button
-          className="self-center cursor-grab active:cursor-grabbing touch-none"
+          className="self-center cursor-grab active:cursor-grabbing touch-none flex-shrink-0"
           {...attributes}
           {...listeners}
         >
           <GripVertical className="h-5 w-5 text-muted-foreground" />
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <div className="flex items-center gap-2">
             <h4 className="font-medium text-sm">{category.name}</h4>
             {isSystemCategory && (
@@ -118,54 +247,30 @@ function SortableItem({ category, onEdit, onDelete }: SortableItemProps) {
               </TooltipProvider>
             )}
           </div>
-          <div className="flex flex-wrap gap-1 mt-2">
-            {category.keywords.length === 0 ? (
-              <span className="text-xs text-muted-foreground">
-                No keywords
-              </span>
-            ) : (
-              <TooltipProvider>
-                <>
-                  {category.keywords.slice(-3).reverse().map((keyword) => (
-                    <Tooltip key={keyword}>
-                      <TooltipTrigger asChild>
-                        <Badge variant="outline" className="text-xs max-w-[120px] truncate block">
-                          {keyword}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{keyword}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                  {category.keywords.length > 3 && (
-                    <Badge variant="secondary" className="text-xs">
-                      +{category.keywords.length - 3} more
-                    </Badge>
-                  )}
-                </>
-              </TooltipProvider>
-            )}
+          <div className="mt-2">
+            <DynamicKeywordList keywords={category.keywords} />
           </div>
         </div>
       </div>
       <div className="flex space-x-1 self-center">
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           onClick={() => onEdit(category)}
+          disabled={category.name?.toLowerCase() === 'uncategorized'}
+          title={category.name?.toLowerCase() === 'uncategorized' ? "Uncategorized cannot be edited" : "Edit category"}
         >
           <Pencil className="h-4 w-4" />
         </Button>
-        {!isSystemCategory && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(category.id!)}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => onDeleteConfirm(category)}
+          disabled={isSystemCategory}
+          title={isSystemCategory ? "System categories cannot be deleted" : "Delete category"}
+        >
+          <Trash2 className={`h-4 w-4 ${isSystemCategory ? "text-muted-foreground" : "text-destructive"}`} />
+        </Button>
       </div>
     </div>
   );
@@ -177,6 +282,8 @@ export function CategoryManager({
   onCategoryUpdate,
   onCategoryDelete,
   onCategoryReorder,
+  singleColumn = false,
+  getTransactionCount,
 }: CategoryManagerProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<DbCategory | null>(
@@ -192,6 +299,8 @@ export function CategoryManager({
   const [selectedKeywords, setSelectedKeywords] = useState<Set<string>>(new Set());
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAddText, setBulkAddText] = useState("");
+  const [categoryToDelete, setCategoryToDelete] = useState<DbCategory | null>(null);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -397,6 +506,7 @@ export function CategoryManager({
   const handleBulkDelete = () => {
     setKeywords(prev => prev.filter(k => !selectedKeywords.has(k)));
     setSelectedKeywords(new Set());
+    setShowBulkDeleteConfirm(false);
   };
 
   const openEditDialog = (category: DbCategory) => {
@@ -436,7 +546,7 @@ export function CategoryManager({
                 Add Category
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
               <DialogHeader className="flex-shrink-0">
                 <DialogTitle>Add New Category</DialogTitle>
               </DialogHeader>
@@ -521,7 +631,7 @@ export function CategoryManager({
                       </PopoverContent>
                     </Popover>
                     {selectedKeywords.size > 0 && (
-                      <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
+                      <Button size="sm" variant="destructive" onClick={() => setShowBulkDeleteConfirm(true)}>
                         <Trash2 className="h-4 w-4 mr-1" />
                         Delete ({selectedKeywords.size})
                       </Button>
@@ -635,7 +745,7 @@ export function CategoryManager({
                   </div>
                 )}
               </div>
-              <DialogFooter className="flex justify-center gap-2">
+              <DialogFooter>
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
@@ -645,34 +755,36 @@ export function CategoryManager({
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto min-h-0">
+      <CardContent className="flex-1 min-h-0 flex flex-col">
         {categories.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No categories yet. Add one to get started!
           </p>
         ) : (
-          <div className="pr-2">
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={categories.map((cat) => cat.id!)}
-                strategy={verticalListSortingStrategy}
+          <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
+            <div className="h-full overflow-y-auto p-3">
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <div className="space-y-2">
-                  {categories.map((category) => (
-                    <SortableItem
-                      key={category.id}
-                      category={category}
-                      onEdit={openEditDialog}
-                      onDelete={onCategoryDelete}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+                <SortableContext
+                  items={categories.map((cat) => cat.id!)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className={`grid grid-cols-1 ${!singleColumn ? 'xl:grid-cols-2' : ''} gap-2`}>
+                    {categories.map((category) => (
+                      <SortableItem
+                        key={category.id}
+                        category={category}
+                        onEdit={openEditDialog}
+                        onDeleteConfirm={setCategoryToDelete}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
           </div>
         )}
 
@@ -681,7 +793,7 @@ export function CategoryManager({
           open={editingCategory !== null}
           onOpenChange={(open) => !open && closeEditDialog()}
         >
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader className="flex-shrink-0">
               <DialogTitle>Edit Category</DialogTitle>
             </DialogHeader>
@@ -752,39 +864,8 @@ export function CategoryManager({
                       ? `${filteredKeywords.length}/${keywords.length}`
                       : keywords.length}
                   </Badge>
-                  <Popover open={bulkAddOpen} onOpenChange={setBulkAddOpen}>
-                    <PopoverTrigger asChild>
-                      <Button size="sm" variant="outline">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Bulk Add
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80">
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Add Multiple Keywords</h4>
-                        <p className="text-xs text-muted-foreground">
-                          Enter one keyword per line
-                        </p>
-                        <Textarea
-                          value={bulkAddText}
-                          onChange={(e) => setBulkAddText(e.target.value)}
-                          placeholder="LOBLAWS&#10;METRO&#10;SOBEYS"
-                          rows={6}
-                          className="font-mono text-sm"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setBulkAddOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button size="sm" onClick={handleBulkAdd}>
-                            Add All
-                          </Button>
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
                   {selectedKeywords.size > 0 && (
-                    <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
+                    <Button size="sm" variant="destructive" onClick={() => setShowBulkDeleteConfirm(true)}>
                       <Trash2 className="h-4 w-4 mr-1" />
                       Delete ({selectedKeywords.size})
                     </Button>
@@ -898,7 +979,7 @@ export function CategoryManager({
                 </div>
               )}
             </div>
-            <DialogFooter className="flex justify-center gap-2 flex-shrink-0">
+            <DialogFooter className="flex-shrink-0">
               <Button variant="outline" onClick={closeEditDialog}>
                 Cancel
               </Button>
@@ -906,6 +987,58 @@ export function CategoryManager({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={categoryToDelete !== null} onOpenChange={(open) => !open && setCategoryToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Category</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete &quot;{categoryToDelete?.name}&quot;?
+                {getTransactionCount && categoryToDelete && (() => {
+                  const count = getTransactionCount(categoryToDelete.uuid);
+                  return count > 0 ? ` This will affect ${count} transaction${count !== 1 ? 's' : ''}.` : '';
+                })()}
+                {' '}This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  if (categoryToDelete?.id) {
+                    onCategoryDelete(categoryToDelete.id);
+                  }
+                  setCategoryToDelete(null);
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Bulk Delete Keywords Confirmation Dialog */}
+        <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Keywords</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {selectedKeywords.size} keyword{selectedKeywords.size !== 1 ? 's' : ''}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={handleBulkDelete}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
+import { useSetPageHeader } from "@/lib/page-header-context";
 import { CategoryManager } from "@/components/CategoryManager";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import {
 import {
   useCategories,
   useTransactionCount,
+  useTransactions,
   addCategory,
   updateCategory,
   deleteCategory,
@@ -25,7 +27,16 @@ import { toast, Toaster } from "sonner";
 export default function CategoriesPage() {
   const categories = useCategories();
   const transactionCount = useTransactionCount();
+  const transactions = useTransactions();
   const [isRecategorizing, setIsRecategorizing] = useState(false);
+
+  const getTransactionCountByCategory = (categoryUuid: string): number => {
+    if (!transactions) return 0;
+    return transactions.filter(t => {
+      const category = categories?.find(c => c.id === t.categoryId);
+      return category?.uuid === categoryUuid;
+    }).length;
+  };
 
   const handleRecategorize = async (mode: RecategorizeMode) => {
     setIsRecategorizing(true);
@@ -109,6 +120,39 @@ export default function CategoriesPage() {
     }
   };
 
+  // Header actions for sticky header (smaller text buttons)
+  const headerActions = useMemo(
+    () =>
+      (transactionCount ?? 0) > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="xs" disabled={isRecategorizing}>
+              <RefreshCw className={`h-3 w-3 mr-1 ${isRecategorizing ? 'animate-spin' : ''}`} />
+              Re-categorize
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-96">
+            <DropdownMenuItem onClick={() => handleRecategorize('uncategorized')}>
+              Uncategorized only
+              <span className="ml-2 text-xs text-muted-foreground">
+                Safe - won&apos;t change existing
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleRecategorize('all')}>
+              All transactions
+              <span className="ml-2 text-xs text-muted-foreground">
+                Re-applies all keywords
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null,
+    [transactionCount, isRecategorizing]
+  );
+
+  // Set page header and get sentinel ref
+  const sentinelRef = useSetPageHeader("Categories", headerActions);
+
   return (
     <>
       <Toaster position="bottom-right" richColors />
@@ -119,6 +163,7 @@ export default function CategoriesPage() {
             <p className="text-muted-foreground">
               Manage your transaction categories and keywords for auto-categorization
             </p>
+            <div ref={sentinelRef} className="h-0" />
           </div>
           {(transactionCount ?? 0) > 0 && (
             <DropdownMenu>
@@ -128,7 +173,7 @@ export default function CategoriesPage() {
                   Re-categorize
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-96">
                 <DropdownMenuItem onClick={() => handleRecategorize('uncategorized')}>
                   Uncategorized only
                   <span className="ml-2 text-xs text-muted-foreground">
@@ -146,15 +191,14 @@ export default function CategoriesPage() {
           )}
         </div>
 
-        <div className="max-w-4xl">
-          <CategoryManager
-            categories={categories || []}
-            onCategoryAdd={handleAddCategory}
-            onCategoryUpdate={handleUpdateCategory}
-            onCategoryDelete={handleDeleteCategory}
-            onCategoryReorder={handleReorderCategories}
-          />
-        </div>
+        <CategoryManager
+          categories={categories || []}
+          onCategoryAdd={handleAddCategory}
+          onCategoryUpdate={handleUpdateCategory}
+          onCategoryDelete={handleDeleteCategory}
+          onCategoryReorder={handleReorderCategories}
+          getTransactionCount={getTransactionCountByCategory}
+        />
       </div>
     </>
   );

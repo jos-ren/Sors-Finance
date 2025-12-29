@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Plus,
   AlertCircle,
@@ -9,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useBudgetWithSpending } from "@/lib/hooks";
+import { usePrivacy } from "@/lib/privacy-context";
+import { useSetPageHeader } from "@/lib/page-header-context";
 
 interface BudgetItemData {
   id: number;
@@ -25,22 +28,24 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
-function BudgetCard({ item }: { item: BudgetItemData }) {
+function BudgetCard({ item, formatAmount, isPrivacyMode }: { item: BudgetItemData; formatAmount: (amount: number, formatter?: (n: number) => string) => string; isPrivacyMode: boolean }) {
   const percentage = Math.round(item.percentUsed);
 
   return (
-    <Card className={item.isOverBudget ? "border-red-500/50" : ""}>
+    <Card className={!isPrivacyMode && item.isOverBudget ? "border-red-500/50" : ""}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                item.isOverBudget
+                isPrivacyMode
+                  ? "bg-muted text-muted-foreground"
+                  : item.isOverBudget
                   ? "bg-red-500/10 text-red-500"
                   : item.isNearLimit
                   ? "bg-yellow-500/10 text-yellow-500"
@@ -52,18 +57,18 @@ function BudgetCard({ item }: { item: BudgetItemData }) {
             <div>
               <p className="font-medium">{item.categoryName}</p>
               <p className="text-sm text-muted-foreground">
-                {formatCurrency(item.spent)} of {formatCurrency(item.amount)}
+                {formatAmount(item.spent, formatCurrency)} of {formatAmount(item.amount, formatCurrency)}
               </p>
             </div>
           </div>
           <div className="text-right">
             <p
               className={`text-lg font-semibold ${
-                item.isOverBudget ? "text-red-500" : ""
+                isPrivacyMode ? "text-muted-foreground" : item.isOverBudget ? "text-red-500" : ""
               }`}
             >
-              {item.isOverBudget ? "-" : ""}
-              {formatCurrency(Math.abs(item.remaining))}
+              {!isPrivacyMode && item.isOverBudget ? "-" : ""}
+              {formatAmount(Math.abs(item.remaining), formatCurrency)}
             </p>
             <p className="text-xs text-muted-foreground">
               {item.isOverBudget ? "over budget" : "remaining"}
@@ -100,6 +105,7 @@ export default function BudgetPage() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
+  const { formatAmount, isPrivacyMode } = usePrivacy();
 
   // Fetch real budget data from Dexie
   const budgetWithSpending = useBudgetWithSpending(currentYear, currentMonth);
@@ -115,6 +121,20 @@ export default function BudgetPage() {
 
   const monthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
+  // Header actions for sticky header (smaller text buttons)
+  const headerActions = useMemo(
+    () => (
+      <Button size="xs">
+        <Plus className="h-3 w-3 mr-1" />
+        Add Budget
+      </Button>
+    ),
+    []
+  );
+
+  // Set page header and get sentinel ref
+  const sentinelRef = useSetPageHeader("Budget", headerActions);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -123,6 +143,7 @@ export default function BudgetPage() {
           <p className="text-muted-foreground">
             Track your spending for {monthName}
           </p>
+          <div ref={sentinelRef} className="h-0" />
         </div>
         <Button>
           <Plus className="h-4 w-4 mr-2" />
@@ -135,7 +156,7 @@ export default function BudgetPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Budget</CardDescription>
-            <CardTitle className="text-2xl">{formatCurrency(totalBudgeted)}</CardTitle>
+            <CardTitle className="text-2xl">{formatAmount(totalBudgeted, formatCurrency)}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">Monthly allocation</p>
@@ -144,7 +165,7 @@ export default function BudgetPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Spent</CardDescription>
-            <CardTitle className="text-2xl">{formatCurrency(totalSpent)}</CardTitle>
+            <CardTitle className="text-2xl">{formatAmount(totalSpent, formatCurrency)}</CardTitle>
           </CardHeader>
           <CardContent>
             <Progress value={overallPercentage} className="h-2" />
@@ -157,9 +178,9 @@ export default function BudgetPage() {
           <CardHeader className="pb-2">
             <CardDescription>Remaining</CardDescription>
             <CardTitle
-              className={`text-2xl ${totalRemaining < 0 ? "text-red-500" : "text-green-500"}`}
+              className={`text-2xl ${isPrivacyMode ? "text-muted-foreground" : totalRemaining < 0 ? "text-red-500" : "text-green-500"}`}
             >
-              {formatCurrency(totalRemaining)}
+              {formatAmount(totalRemaining, formatCurrency)}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -199,7 +220,7 @@ export default function BudgetPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {budgetItems.map((item) => (
-                <BudgetCard key={item.id} item={item as BudgetItemData} />
+                <BudgetCard key={item.id} item={item as BudgetItemData} formatAmount={formatAmount} isPrivacyMode={isPrivacyMode} />
               ))}
             </div>
           )}

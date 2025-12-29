@@ -89,8 +89,8 @@ export function getCategorizationSummary(
   let duplicates = 0;
 
   transactions.forEach((transaction) => {
-    // Count duplicates that haven't been handled (neither allowed nor ignored)
-    if (transaction.isDuplicate && !transaction.allowDuplicate && !transaction.ignoreDuplicate) {
+    // Count duplicates that haven't been handled (neither import nor skip)
+    if (transaction.isDuplicate && !transaction.importDuplicate && !transaction.skipDuplicate) {
       duplicates++;
     }
 
@@ -103,8 +103,7 @@ export function getCategorizationSummary(
       }
     } else if (transaction.categoryId) {
       categorized++;
-    } else if (!transaction.isIgnored) {
-      // Only count as uncategorized if not explicitly ignored
+    } else {
       uncategorized++;
     }
   });

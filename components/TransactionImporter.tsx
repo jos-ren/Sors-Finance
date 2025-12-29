@@ -4,16 +4,17 @@ import { useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle, HelpCircle, Copy } from "lucide-react";
+import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
-type ResolveSubStep = "conflicts" | "uncategorized" | "duplicates";
 import { toast } from "sonner";
 import { FileUpload } from "@/components/FileUpload";
 import { CategoryManager } from "@/components/CategoryManager";
 import { ConflictResolver } from "@/components/ConflictResolver";
-import { DuplicateResolver } from "@/components/DuplicateResolver";
-import { UncategorizedList } from "@/components/UncategorizedList";
+import { DuplicateResolver, DuplicateBulkActions } from "@/components/DuplicateResolver";
+import { UncategorizedList, UncategorizedBulkActions } from "@/components/UncategorizedList";
 import { ResultsView } from "@/components/ResultsView";
+import { ResolveSection } from "@/components/resolve-step";
 import { Transaction, UploadedFile, WizardStep } from "@/lib/types";
 import { parseCIBC } from "@/lib/parsers/cibc";
 import { parseAMEX } from "@/lib/parsers/amex";
@@ -24,12 +25,13 @@ import {
 } from "@/lib/categorizer";
 import {
   useCategories,
+  useTransactions,
   addCategory,
   updateCategory,
   deleteCategory,
   reorderCategories,
 } from "@/lib/hooks";
-import { DbCategory, addTransactionsBulk, addImport, findDuplicateSignatures } from "@/lib/db";
+import { addTransactionsBulk, addImport, findDuplicateSignatures, SYSTEM_CATEGORIES } from "@/lib/db";
 
 interface TransactionImporterProps {
   onComplete?: () => void;
@@ -38,67 +40,70 @@ interface TransactionImporterProps {
 
 export function TransactionImporter({ onComplete, onCancel }: TransactionImporterProps) {
   const [currentStep, setCurrentStep] = useState<WizardStep>("upload");
-  const [resolveSubStep, setResolveSubStep] = useState<ResolveSubStep>("conflicts");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
 
-  // Load categories from Dexie (live query)
+  // Section open states - expand sections with issues by default
+  const [sectionsOpen, setSectionsOpen] = useState({
+    conflicts: true,
+    uncategorized: true,
+    duplicates: true,
+    categorized: false,
+  });
+
+  // Load categories and transactions from Dexie (live query)
   const dbCategories = useCategories();
+  const dbTransactions = useTransactions();
   const categories = dbCategories || [];
+
+  // Get the Excluded category for assigning excluded transactions
+  const excludedCategory = categories.find(c => c.name === SYSTEM_CATEGORIES.EXCLUDED);
 
   // Calculate summary
   const summary = getCategorizationSummary(transactions);
 
-  // Determine which resolve sub-steps are needed (show step if there are ANY transactions of that type)
-  const resolveSteps = useMemo(() => {
-    const steps: ResolveSubStep[] = [];
-    // Show conflicts step if there are any conflict transactions (resolved or not)
-    if (transactions.some(t => t.isConflict)) steps.push("conflicts");
-    // Show uncategorized step if there are any uncategorized transactions (ignored or not)
-    if (transactions.some(t => !t.categoryId && !t.isConflict)) steps.push("uncategorized");
-    // Show duplicates step if there are any duplicate transactions
-    if (transactions.some(t => t.isDuplicate)) steps.push("duplicates");
-    return steps;
+  // Calculate categorized transactions (ready for import)
+  const categorizedTransactions = useMemo(() => {
+    return transactions.filter(t =>
+      t.categoryId &&
+      !t.isConflict &&
+      !t.isDuplicate
+    );
   }, [transactions]);
 
-  // Get current step index and navigation info
-  const currentStepIndex = resolveSteps.indexOf(resolveSubStep);
-  const isFirstStep = currentStepIndex === 0;
-  const isLastStep = currentStepIndex === resolveSteps.length - 1;
-  const hasNextStep = currentStepIndex < resolveSteps.length - 1;
+  // Get filtered transaction lists
+  const conflictTransactions = transactions.filter((t) => t.isConflict);
+  const uncategorizedTransactions = transactions.filter(
+    (t) => !t.categoryId && !t.isConflict
+  );
+  const duplicateTransactions = transactions.filter((t) => t.isDuplicate);
 
-  // Auto-navigate to first valid sub-step if current one is no longer valid
-  if (currentStep === "resolve" && transactions.length > 0 && resolveSteps.length > 0) {
-    if (!resolveSteps.includes(resolveSubStep)) {
-      // Current sub-step is no longer valid, move to first available step
-      setTimeout(() => setResolveSubStep(resolveSteps[0]), 0);
-    }
-  }
+  // Check for unresolved conflicts
+  const unresolvedConflicts = conflictTransactions.filter(t => !t.categoryId).length;
 
-  // Auto-advance to next sub-step when current one is complete
-  const currentSubStepComplete = useMemo(() => {
-    if (resolveSubStep === "conflicts") return summary.conflicts === 0;
-    if (resolveSubStep === "uncategorized") return summary.uncategorized === 0;
-    if (resolveSubStep === "duplicates") return summary.duplicates === 0;
-    return false;
-  }, [resolveSubStep, summary]);
+  // Check for unresolved duplicates (neither import nor skip)
+  const unresolvedDuplicates = duplicateTransactions.filter(
+    t => !t.importDuplicate && !t.skipDuplicate
+  ).length;
 
-  // Navigate to next sub-step
-  const goToNextSubStep = () => {
-    if (hasNextStep) {
-      setResolveSubStep(resolveSteps[currentStepIndex + 1]);
-    } else {
-      setCurrentStep("results");
-    }
-  };
+  // Blocking issues prevent import
+  const hasBlockingIssues = unresolvedConflicts > 0 || unresolvedDuplicates > 0;
 
-  // Navigate to previous sub-step
-  const goToPrevSubStep = () => {
-    if (!isFirstStep) {
-      setResolveSubStep(resolveSteps[currentStepIndex - 1]);
-    }
+  // Update section open states based on counts
+  const updateSectionStates = (newTransactions: Transaction[]) => {
+    const newSummary = getCategorizationSummary(newTransactions);
+    const newCategorized = newTransactions.filter(t =>
+      t.categoryId && !t.isConflict && !t.isDuplicate
+    );
+
+    setSectionsOpen({
+      conflicts: newSummary.conflicts > 0,
+      uncategorized: newSummary.uncategorized > 0,
+      duplicates: newSummary.duplicates > 0,
+      categorized: newCategorized.length > 0 && newSummary.conflicts === 0 && newSummary.duplicates === 0,
+    });
   };
 
   const handleProcessFiles = async () => {
@@ -134,22 +139,22 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       // Check for duplicates
       const duplicateSignatures = await findDuplicateSignatures(allTransactions);
 
-      // Mark duplicates and categorize transactions
+      // Mark duplicates and categorize transactions (duplicates are skipped by default)
       const withDuplicates = allTransactions.map(t => {
         const signature = `${t.date.toISOString()}|${t.description}|${t.amountOut}|${t.amountIn}`;
+        const isDuplicate = duplicateSignatures.has(signature);
         return {
           ...t,
-          isDuplicate: duplicateSignatures.has(signature),
-          allowDuplicate: false,
+          isDuplicate,
+          importDuplicate: false,
+          skipDuplicate: isDuplicate, // Skip duplicates by default
         };
       });
 
       // Categorize transactions
       const categorized = categorizeTransactions(withDuplicates, categories);
       setTransactions(categorized);
-
-      // Reset sub-step and move to resolve step
-      setResolveSubStep("conflicts");
+      updateSectionStates(categorized);
       setCurrentStep("resolve");
     } catch (error) {
       setErrors([
@@ -164,14 +169,17 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     if (categories.length === 0) return;
     const categorized = categorizeTransactions(transactions, categories);
     setTransactions(categorized);
+    updateSectionStates(categorized);
+    toast.success("Transactions recategorized");
   };
 
   const handleResolveConflict = (transactionId: string, categoryId: string) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
+    setTransactions((prev) => {
+      const updated = prev.map((t) =>
         t.id === transactionId ? assignCategory(t, categoryId) : t
-      )
-    );
+      );
+      return updated;
+    });
   };
 
   const handleUndoConflict = (transactionId: string) => {
@@ -182,78 +190,69 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleAllowDuplicate = (transactionId: string) => {
+  const handleImportDuplicate = (transactionId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.id === transactionId ? { ...t, allowDuplicate: true } : t
+        t.id === transactionId ? { ...t, importDuplicate: true, skipDuplicate: false } : t
       )
     );
   };
 
-  const handleIgnoreDuplicate = (transactionId: string) => {
+  const handleSkipDuplicate = (transactionId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.id === transactionId ? { ...t, ignoreDuplicate: true, allowDuplicate: false } : t
+        t.id === transactionId ? { ...t, skipDuplicate: true, importDuplicate: false } : t
       )
     );
   };
 
-  const handleUndoDuplicate = (transactionId: string) => {
+  const handleSkipAllDuplicates = () => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.id === transactionId ? { ...t, ignoreDuplicate: false, allowDuplicate: false } : t
-      )
-    );
-  };
-
-  const handleIgnoreAllDuplicates = () => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.isDuplicate && !t.allowDuplicate && !t.ignoreDuplicate
-          ? { ...t, ignoreDuplicate: true }
+        t.isDuplicate
+          ? { ...t, skipDuplicate: true, importDuplicate: false }
           : t
       )
     );
   };
 
-  const handleAllowAllDuplicates = () => {
+  const handleImportAllDuplicates = () => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.isDuplicate && !t.allowDuplicate && !t.ignoreDuplicate
-          ? { ...t, allowDuplicate: true }
+        t.isDuplicate
+          ? { ...t, importDuplicate: true, skipDuplicate: false }
           : t
       )
     );
   };
 
-  const handleIgnoreUncategorized = (transactionId: string) => {
-    // Mark transaction as ignored (will be imported without category)
+  const handleExcludeUncategorized = (transactionId: string) => {
+    if (!excludedCategory) return;
     setTransactions((prev) =>
       prev.map((t) =>
-        t.id === transactionId ? { ...t, isIgnored: true } : t
+        t.id === transactionId ? { ...t, categoryId: excludedCategory.uuid } : t
       )
     );
   };
 
-  const handleIgnoreAllUncategorized = () => {
-    // Mark all uncategorized transactions as ignored
+  const handleExcludeAllUncategorized = () => {
+    if (!excludedCategory) return;
     setTransactions((prev) =>
       prev.map((t) =>
-        !t.categoryId && !t.isConflict && !t.isIgnored ? { ...t, isIgnored: true } : t
+        !t.categoryId && !t.isConflict ? { ...t, categoryId: excludedCategory.uuid } : t
       )
     );
   };
 
-  const handleUndoIgnoreUncategorized = (transactionId: string) => {
+  const handleUndoExcludeUncategorized = (transactionId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.id === transactionId ? { ...t, isIgnored: false } : t
+        t.id === transactionId ? { ...t, categoryId: null } : t
       )
     );
   };
 
   const handleAddKeyword = async (categoryId: string, keyword: string) => {
-    // Find the category by uuid and add keyword
     const category = categories.find((c) => c.uuid === categoryId);
     if (!category || !category.id) return;
 
@@ -280,7 +279,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     keywords: string[]
   ) => {
     await updateCategory(id, { name, keywords });
-    // Dexie live query will auto-update, reprocess after a delay
     setTimeout(handleReprocessTransactions, 100);
   };
 
@@ -290,7 +288,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
     await deleteCategory(id);
     toast.success(`Deleted "${categoryToDelete.name}"`);
-    // Dexie live query will auto-update
     setTimeout(handleReprocessTransactions, 100);
   };
 
@@ -303,15 +300,21 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     setTransactions([]);
     setUploadedFiles([]);
     setErrors([]);
+    setSectionsOpen({
+      conflicts: true,
+      uncategorized: true,
+      duplicates: true,
+      categorized: false,
+    });
   };
 
   const handleFinish = async () => {
     try {
-      // Filter out ignored duplicates and ignored uncategorized
-      const transactionsToImport = transactions.filter(t => !t.ignoreDuplicate);
+      // Filter out skipped duplicates
+      const transactionsToImport = transactions.filter(t => !t.skipDuplicate);
 
-      // Separate allowed duplicates from normal transactions
-      const allowedDuplicates = transactionsToImport.filter(t => t.isDuplicate && t.allowDuplicate);
+      // Separate duplicates marked for import from normal transactions
+      const duplicatesToImport = transactionsToImport.filter(t => t.isDuplicate && t.importDuplicate);
       const normalTransactions = transactionsToImport.filter(t => !t.isDuplicate);
 
       // Group transactions by source (file)
@@ -348,16 +351,16 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       // Process normal transactions (with duplicate checking)
       const normalBySource = groupBySource(normalTransactions);
-      for (const [source, sourceTransactions] of normalBySource) {
-        const dbTransactions = convertToDbFormat(sourceTransactions);
-        const { added, skipped } = await addTransactionsBulk(dbTransactions);
+      for (const [, sourceTransactions] of normalBySource) {
+        const dbTransactionsToAdd = convertToDbFormat(sourceTransactions);
+        const { added, skipped } = await addTransactionsBulk(dbTransactionsToAdd);
         totalAdded += added;
         totalSkipped += skipped;
       }
 
-      // Process allowed duplicates (skip duplicate checking)
-      if (allowedDuplicates.length > 0) {
-        const dbTransactions = convertToDbFormat(allowedDuplicates);
+      // Process duplicates marked for import (skip duplicate checking)
+      if (duplicatesToImport.length > 0) {
+        const dbTransactions = convertToDbFormat(duplicatesToImport);
         const { added } = await addTransactionsBulk(dbTransactions, { skipDuplicateCheck: true });
         totalAdded += added;
       }
@@ -394,19 +397,17 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     }
   };
 
-  // Get categorization summary (already calculated above for auto-navigate)
-  const conflictTransactions = transactions.filter((t) => t.isConflict);
-  // Include ignored transactions so they stay visible with status
-  const uncategorizedTransactions = transactions.filter(
-    (t) => !t.categoryId && !t.isConflict
-  );
-  const duplicateTransactions = transactions.filter((t) => t.isDuplicate);
-  const hasIssues = summary.conflicts > 0 || summary.uncategorized > 0 || summary.duplicates > 0;
-  // Blocking issues prevent import: conflicts must be resolved, duplicates must be handled
-  // Uncategorized is OK - they'll be imported without a category
-  const hasBlockingIssues = summary.conflicts > 0 || summary.duplicates > 0;
-  // Allow viewing results even with issues - user can always go back to resolve more
-  const canViewResults = transactions.length > 0;
+  // Calculate blocking message
+  const getBlockingMessage = () => {
+    const parts = [];
+    if (unresolvedConflicts > 0) {
+      parts.push(`${unresolvedConflicts} conflict${unresolvedConflicts !== 1 ? 's' : ''}`);
+    }
+    if (unresolvedDuplicates > 0) {
+      parts.push(`${unresolvedDuplicates} duplicate${unresolvedDuplicates !== 1 ? 's' : ''}`);
+    }
+    return parts.join(' and ');
+  };
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -431,14 +432,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           </TabsTrigger>
           <TabsTrigger value="resolve" disabled={transactions.length === 0}>
             2. Resolve Issues
-            {summary.total > 0 && (
-              <span className="ml-2 text-xs">
-                ({summary.conflicts + summary.uncategorized + summary.duplicates} issues)
-              </span>
+            {transactions.length > 0 && hasBlockingIssues && (
+              <Badge variant="destructive" className="ml-2">
+                {unresolvedConflicts + unresolvedDuplicates}
+              </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="results" disabled={!canViewResults}>
-            3. View Results
+          <TabsTrigger value="results" disabled={transactions.length === 0 || hasBlockingIssues}>
+            3. Review & Import
           </TabsTrigger>
         </TabsList>
 
@@ -453,6 +454,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               onCategoryUpdate={handleCategoryUpdate}
               onCategoryDelete={handleCategoryDelete}
               onCategoryReorder={handleCategoryReorder}
+              singleColumn
+              getTransactionCount={(categoryUuid) => {
+                if (!dbTransactions) return 0;
+                return dbTransactions.filter(t => {
+                  const category = categories.find(c => c.id === t.categoryId);
+                  return category?.uuid === categoryUuid;
+                }).length;
+              }}
             />
           </div>
           <div className="flex justify-center gap-3 flex-shrink-0">
@@ -463,123 +472,157 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             )}
             <Button
               onClick={handleProcessFiles}
-              disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankType === "UNKNOWN")}
+              disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankType === "UNKNOWN" || (f.validationErrors && f.validationErrors.length > 0))}
             >
               {isProcessing ? "Processing..." : "Process Files"}
             </Button>
           </div>
         </TabsContent>
 
-        <TabsContent value="resolve" className="flex flex-col flex-1 min-h-0 mt-0 gap-4">
-          {/* Sub-step Progress Indicator */}
-          {resolveSteps.length > 0 && (
-            <div className="flex items-center justify-center gap-2 flex-shrink-0 py-2">
-              {resolveSteps.map((step, index) => {
-                const isCurrent = step === resolveSubStep;
-                const isComplete =
-                  (step === "conflicts" && summary.conflicts === 0) ||
-                  (step === "uncategorized" && summary.uncategorized === 0) ||
-                  (step === "duplicates" && summary.duplicates === 0);
-
-                const getStepLabel = () => {
-                  switch (step) {
-                    case "conflicts": return "Conflicts";
-                    case "uncategorized": return "Uncategorized";
-                    case "duplicates": return "Duplicates";
-                  }
-                };
-
-                const getStepIcon = () => {
-                  if (isComplete) return <CheckCircle2 className="h-4 w-4" />;
-                  switch (step) {
-                    case "conflicts": return <AlertTriangle className="h-4 w-4" />;
-                    case "uncategorized": return <HelpCircle className="h-4 w-4" />;
-                    case "duplicates": return <Copy className="h-4 w-4" />;
-                  }
-                };
-
-                const getStepCount = () => {
-                  switch (step) {
-                    case "conflicts": return summary.conflicts;
-                    case "uncategorized": return summary.uncategorized;
-                    case "duplicates": return summary.duplicates;
-                  }
-                };
-
-                return (
-                  <div key={step} className="flex items-center gap-2">
-                    {index > 0 && (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <button
-                      onClick={() => setResolveSubStep(step)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        isCurrent
-                          ? "bg-primary text-primary-foreground"
-                          : isComplete
-                          ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80"
-                      }`}
-                    >
-                      {getStepIcon()}
-                      {getStepLabel()}
-                      {!isComplete && (
-                        <span className="text-xs opacity-80">({getStepCount()})</span>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Current Sub-step Content */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            {resolveSubStep === "conflicts" && conflictTransactions.length > 0 && (
+        <TabsContent value="resolve" className="flex flex-col flex-1 min-h-0 mt-0 gap-3">
+          {/* All sections in a single scrollable container */}
+          <div className="flex-1 min-h-0 overflow-y-auto border rounded-lg">
+            {/* Conflicts Section */}
+            <ResolveSection
+              title="Conflicts"
+              icon={<AlertTriangle className="h-5 w-5" />}
+              count={conflictTransactions.length}
+              status={unresolvedConflicts === 0 ? "complete" : "pending"}
+              isBlocking={true}
+              isOpen={sectionsOpen.conflicts}
+              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, conflicts: open }))}
+              description="These transactions matched multiple categories. Select the correct one for each."
+              emptyMessage="No conflicts found"
+              completeMessage={conflictTransactions.length === 0 ? "No conflicts" : "All resolved"}
+            >
               <ConflictResolver
                 conflictTransactions={conflictTransactions}
                 categories={categories}
                 onResolve={handleResolveConflict}
                 onUndo={handleUndoConflict}
               />
-            )}
+            </ResolveSection>
 
-            {resolveSubStep === "uncategorized" && uncategorizedTransactions.length > 0 && (
+            {/* Uncategorized Section */}
+            <ResolveSection
+              title="Uncategorized"
+              icon={<HelpCircle className="h-5 w-5" />}
+              count={uncategorizedTransactions.length}
+              status={uncategorizedTransactions.length === 0 ? "complete" : "pending"}
+              isBlocking={false}
+              isOpen={sectionsOpen.uncategorized}
+              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, uncategorized: open }))}
+              description="These transactions didn't match any keywords. Add keywords or exclude them from stats."
+              bulkActions={
+                uncategorizedTransactions.length > 0 && (
+                  <UncategorizedBulkActions
+                    onExcludeAll={handleExcludeAllUncategorized}
+                    onReprocess={handleReprocessTransactions}
+                    hasKeywordsToApply={false}
+                  />
+                )
+              }
+              emptyMessage="All transactions categorized"
+              completeMessage="All categorized"
+            >
               <UncategorizedList
                 uncategorizedTransactions={uncategorizedTransactions}
                 categories={categories}
                 onAddKeyword={handleAddKeyword}
                 onCreateCategory={handleCreateCategory}
-                onReprocess={handleReprocessTransactions}
-                onIgnore={handleIgnoreUncategorized}
-                onUndo={handleUndoIgnoreUncategorized}
-                onIgnoreAll={handleIgnoreAllUncategorized}
+                onExclude={handleExcludeUncategorized}
+                onUndoExclude={handleUndoExcludeUncategorized}
+                excludedCategoryId={excludedCategory?.uuid}
               />
-            )}
+            </ResolveSection>
 
-            {resolveSubStep === "duplicates" && duplicateTransactions.length > 0 && (
+            {/* Duplicates Section */}
+            <ResolveSection
+              title="Duplicates"
+              icon={<Copy className="h-5 w-5" />}
+              count={duplicateTransactions.length}
+              status={unresolvedDuplicates === 0 ? "complete" : "pending"}
+              isBlocking={true}
+              isOpen={sectionsOpen.duplicates}
+              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, duplicates: open }))}
+              description="These transactions already exist. Choose to import anyway or skip them."
+              bulkActions={
+                duplicateTransactions.length > 0 && (
+                  <DuplicateBulkActions
+                    onSkipAll={handleSkipAllDuplicates}
+                    onImportAll={handleImportAllDuplicates}
+                  />
+                )
+              }
+              emptyMessage="No duplicates found"
+              completeMessage={duplicateTransactions.length === 0 ? "No duplicates" : "All handled"}
+            >
               <DuplicateResolver
                 duplicateTransactions={duplicateTransactions}
-                onAllow={handleAllowDuplicate}
-                onIgnore={handleIgnoreDuplicate}
-                onUndo={handleUndoDuplicate}
-                onIgnoreAll={handleIgnoreAllDuplicates}
-                onAllowAll={handleAllowAllDuplicates}
+                onImport={handleImportDuplicate}
+                onSkip={handleSkipDuplicate}
               />
-            )}
+            </ResolveSection>
 
-            {/* Step status message */}
-            {currentSubStepComplete && resolveSteps.length > 0 && (
-              <Alert className="mt-4 bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <AlertDescription className="text-green-800 dark:text-green-200">
-                  {resolveSubStep === "conflicts" && "All conflicts resolved!"}
-                  {resolveSubStep === "uncategorized" && "All uncategorized transactions handled!"}
-                  {resolveSubStep === "duplicates" && "All duplicates handled!"}
-                  {" You can review your choices above or continue."}
-                </AlertDescription>
-              </Alert>
-            )}
+            {/* Categorized Section */}
+            <ResolveSection
+              title="Categorized"
+              icon={<CircleCheck className="h-5 w-5" />}
+              count={categorizedTransactions.length}
+              status="info"
+              isBlocking={false}
+              isOpen={sectionsOpen.categorized}
+              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, categorized: open }))}
+              description="These transactions are ready to be imported."
+              emptyMessage="No transactions ready yet"
+              completeMessage={`${categorizedTransactions.length} ready to import`}
+            >
+              {categorizedTransactions.length > 0 && (
+                <div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th className="text-left py-2 font-medium">Date</th>
+                        <th className="text-left py-2 font-medium">Description</th>
+                        <th className="text-left py-2 font-medium">Category</th>
+                        <th className="text-right py-2 font-medium">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categorizedTransactions.map((t) => {
+                        const cat = categories.find(c => c.uuid === t.categoryId);
+                        return (
+                          <tr key={t.id} className="border-b border-border/50">
+                            <td className="py-2 whitespace-nowrap text-muted-foreground">
+                              {new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "short", day: "numeric" }).format(t.date)}
+                            </td>
+                            <td className="py-2 max-w-xs truncate" title={t.description}>
+                              {t.description}
+                            </td>
+                            <td className="py-2">
+                              <Badge variant="outline" className="text-xs">
+                                {cat?.name || "Unknown"}
+                              </Badge>
+                            </td>
+                            <td className="py-2 text-right whitespace-nowrap">
+                              {t.amountOut > 0 ? (
+                                <span className="text-destructive">
+                                  -{new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.amountOut)}
+                                </span>
+                              ) : (
+                                <span className="text-green-600">
+                                  +{new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.amountIn)}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </ResolveSection>
           </div>
 
           {transactions.length === 0 && (
@@ -592,29 +635,20 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             </Alert>
           )}
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-center gap-3 flex-shrink-0">
+          {/* Action Buttons */}
+          <div className="flex justify-center gap-3 flex-shrink-0 pt-2">
             <Button variant="outline" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4 mr-1" />
               Start Over
             </Button>
-            {resolveSteps.length > 0 && !isFirstStep && (
-              <Button variant="outline" onClick={goToPrevSubStep}>
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Back
-              </Button>
-            )}
-            {resolveSteps.length > 0 && hasNextStep && (
-              <Button variant="outline" onClick={goToNextSubStep}>
-                Next
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            )}
             <Button
               onClick={() => setCurrentStep("results")}
-              disabled={!canViewResults}
+              disabled={transactions.length === 0 || hasBlockingIssues}
             >
-              View Results
-              {hasBlockingIssues && <span className="ml-1 text-xs">({summary.conflicts + summary.duplicates} blocking)</span>}
+              Review & Import
+              {hasBlockingIssues && (
+                <span className="ml-1 text-xs">({getBlockingMessage()} remaining)</span>
+              )}
             </Button>
           </div>
         </TabsContent>
@@ -624,10 +658,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             <Alert variant="destructive" className="flex-shrink-0">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Cannot import yet:</strong>
-                {summary.conflicts > 0 && ` ${summary.conflicts} conflicts need resolution.`}
-                {summary.duplicates > 0 && ` ${summary.duplicates} duplicates need to be allowed or ignored.`}
-                {" "}Go back to resolve these issues.
+                <strong>Cannot import yet:</strong> {getBlockingMessage()} still need to be resolved.
+                Go back to resolve these issues.
               </AlertDescription>
             </Alert>
           )}
@@ -650,6 +682,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               Back to Resolve
             </Button>
             <Button variant="outline" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4 mr-1" />
               Start Over
             </Button>
             <Button onClick={handleFinish} disabled={hasBlockingIssues}>

@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown } from "lucide-react";
+import { useSetPageHeader } from "@/lib/page-header-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { BankSourceBadge } from "@/components/BankSourceBadge";
 import {
   Dialog,
   DialogContent,
@@ -12,12 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { TransactionImporter } from "@/components/TransactionImporter";
 import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
 import { useImports, useTransactions, useCategories } from "@/lib/hooks";
-import { DbImport } from "@/lib/db";
+import { usePrivacy } from "@/lib/privacy-context";
+import { DbImport, deleteTransaction, deleteTransactionsBulk } from "@/lib/db";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -31,12 +39,14 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
-function ImportCard({ record }: { record: DbImport }) {
+function ImportCard({ record, formatAmount }: { record: DbImport; formatAmount: (amount: number, formatter?: (n: number) => string) => string }) {
   return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/50 transition-colors border">
+    <div className="flex items-center justify-between py-2 px-3 rounded-md border">
       <div className="flex items-center gap-3">
         <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
         <div className="flex items-center gap-4">
@@ -52,14 +62,12 @@ function ImportCard({ record }: { record: DbImport }) {
             </span>
             <span className="flex items-center gap-1">
               <DollarSign className="h-3 w-3" />
-              {formatCurrency(record.totalAmount)}
+              {formatAmount(record.totalAmount, formatCurrency)}
             </span>
           </div>
         </div>
       </div>
-      <Badge variant={record.source === "CIBC" ? "default" : "secondary"} className="text-xs">
-        {record.source}
-      </Badge>
+      <BankSourceBadge source={record.source} size="sm" />
     </div>
   );
 }
@@ -69,11 +77,32 @@ export default function TransactionsPage() {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const imports = useImports();
   const transactions = useTransactions();
+  const { formatAmount } = usePrivacy();
   const categories = useCategories();
 
   const handleImportComplete = () => {
     setIsImportOpen(false);
   };
+
+  // Header actions for sticky header (smaller text buttons)
+  const headerActions = useMemo(
+    () => (
+      <>
+        <Button variant="outline" size="xs" onClick={() => setIsAddOpen(true)}>
+          <Plus className="h-3 w-3 mr-1" />
+          Add
+        </Button>
+        <Button size="xs" onClick={() => setIsImportOpen(true)}>
+          <Upload className="h-3 w-3 mr-1" />
+          Import
+        </Button>
+      </>
+    ),
+    []
+  );
+
+  // Set page header and get sentinel ref
+  const sentinelRef = useSetPageHeader("Transactions", headerActions);
 
   // Sort imports by date (newest first)
   const sortedImports = imports
@@ -90,6 +119,7 @@ export default function TransactionsPage() {
             <p className="text-muted-foreground">
               Import and manage your bank transactions
             </p>
+            <div ref={sentinelRef} className="h-0" />
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setIsAddOpen(true)}>
@@ -108,34 +138,56 @@ export default function TransactionsPage() {
           <TransactionDataTable
             transactions={transactions}
             categories={categories}
+            onDeleteTransaction={async (id) => {
+              await deleteTransaction(id);
+              toast.success("Transaction deleted");
+            }}
+            onBulkDeleteTransactions={async (ids) => {
+              await deleteTransactionsBulk(ids);
+              toast.success(`${ids.length} transaction${ids.length !== 1 ? 's' : ''} deleted`);
+            }}
           />
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Import History</CardTitle>
-            <CardDescription>
-              View your past transaction imports and their details
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {sortedImports.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <FileX className="h-10 w-10 text-muted-foreground mb-3" />
-                <p className="font-medium">No imports yet</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Click &quot;Import&quot; to upload your first bank statement
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {sortedImports.map((record) => (
-                  <ImportCard key={record.id} record={record} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <Collapsible defaultOpen={false}>
+          <Card>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CardTitle>Import History</CardTitle>
+                    {sortedImports.length > 0 && (
+                      <Badge variant="secondary">{sortedImports.length}</Badge>
+                    )}
+                  </div>
+                  <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
+                </div>
+                <CardDescription>
+                  View your past transaction imports and their details
+                </CardDescription>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent>
+                {sortedImports.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <FileX className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="font-medium">No imports yet</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Click &quot;Import&quot; to upload your first bank statement
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedImports.map((record) => (
+                      <ImportCard key={record.id} record={record} formatAmount={formatAmount} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {/* Import Dialog */}
         <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
