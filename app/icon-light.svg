@@ -1,0 +1,9 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rounded square background with emerald/primary color -->
+  <rect width="32" height="32" rx="8" fill="#10b981"/>
+  <!-- Lucide DollarSign icon (centered and scaled from 24x24 to fit) -->
+  <g transform="translate(5, 4)" stroke="#18181b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="12" y1="2" x2="12" y2="22"/>
+    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+  </g>
+</svg>
