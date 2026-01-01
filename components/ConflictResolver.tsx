@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -8,8 +7,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Check, Undo2 } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 import {
@@ -28,14 +25,12 @@ interface ConflictResolverProps {
   conflictTransactions: Transaction[];
   categories: DbCategory[];
   onResolve: (transactionId: string, categoryId: string) => void;
-  onUndo: (transactionId: string) => void;
 }
 
 export function ConflictResolver({
   conflictTransactions,
   categories,
   onResolve,
-  onUndo,
 }: ConflictResolverProps) {
   const getConflictingCategories = (transaction: Transaction): DbCategory[] => {
     if (!transaction.conflictingCategories) return [];
@@ -57,11 +52,10 @@ export function ConflictResolver({
     <TransactionTable>
       <TableHeader>
         <TableRow>
-          <TableHead>Date</TableHead>
+          <TableHead className="w-[100px] pl-6">Date</TableHead>
           <TableHead>Description</TableHead>
-          <TableHead>Amount</TableHead>
-          <TableHead>Matching Categories</TableHead>
-          <TableHead className="text-right">Action</TableHead>
+          <TableHead className="w-[100px]">Amount</TableHead>
+          <TableHead className="w-[200px] text-right pr-6">Status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -78,48 +72,24 @@ export function ConflictResolver({
                 amountOut={transaction.amountOut}
                 amountIn={transaction.amountIn}
               />
-              <TableCell>
-                <div className="flex flex-wrap gap-1">
-                  {conflicting.map((cat) => (
-                    <Badge key={cat.uuid} variant="outline">
-                      {cat.name}
-                    </Badge>
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                {isResolved ? (
-                  <div className="flex items-center justify-end gap-2">
-                    <Badge variant="default" className="bg-green-600">
-                      <Check className="h-3 w-3 mr-1" />
-                      {resolvedCategory.name}
-                    </Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onUndo(transaction.id)}
-                    >
-                      <Undo2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
+              <TableCell className="text-right pr-6">
+                <div className="flex justify-end">
                   <Select
-                    onValueChange={(value) =>
-                      onResolve(transaction.id, value)
-                    }
+                    value={isResolved ? resolvedCategory.uuid : undefined}
+                    onValueChange={(value) => onResolve(transaction.id, value)}
                   >
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="w-[140px] h-7 text-xs">
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
                       {conflicting.map((cat) => (
-                        <SelectItem key={cat.uuid} value={cat.uuid}>
+                        <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">
                           {cat.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                )}
+                </div>
               </TableCell>
             </TableRow>
           );

@@ -24,16 +24,7 @@ export const metadata: Metadata = {
   title: "Sors Finance",
   description: "Local-first budget tracking and transaction categorization",
   icons: {
-    icon: [
-      {
-        url: "/icon-light.svg",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon.svg",
-        media: "(prefers-color-scheme: dark)",
-      },
-    ],
+    icon: "/icon.svg",
   },
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -8,6 +8,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export type ResolveSectionStatus = "pending" | "complete" | "info";
@@ -37,6 +43,8 @@ interface ResolveSectionProps {
   emptyMessage?: string;
   /** Custom complete message when all items resolved */
   completeMessage?: string;
+  /** Optional custom badges to replace the default count badge */
+  customBadges?: React.ReactNode;
 }
 
 export function ResolveSection({
@@ -52,10 +60,26 @@ export function ResolveSection({
   children,
   emptyMessage = "No items to show",
   completeMessage = "All done!",
+  customBadges,
 }: ResolveSectionProps) {
   const isComplete = status === "complete";
   const isInfo = status === "info";
   const hasContent = count > 0;
+
+  const descriptionRef = useRef<HTMLSpanElement>(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+
+  useEffect(() => {
+    const checkTruncation = () => {
+      if (descriptionRef.current) {
+        setIsTruncated(descriptionRef.current.scrollWidth > descriptionRef.current.clientWidth);
+      }
+    };
+
+    checkTruncation();
+    window.addEventListener("resize", checkTruncation);
+    return () => window.removeEventListener("resize", checkTruncation);
+  }, [description]);
 
   // Badge styling based on status
   const getBadgeVariant = (): "default" | "secondary" | "destructive" | "outline" => {
@@ -78,77 +102,81 @@ export function ResolveSection({
       <CollapsibleTrigger asChild>
         <button
           className={cn(
-            "w-full flex items-center justify-between px-4 py-3 text-left",
-            "bg-muted/50 hover:bg-muted/70 transition-colors",
+            "w-full flex items-center gap-3 px-4 py-3 text-left",
+            "bg-muted hover:bg-muted/80 transition-colors",
             "border-b border-border/50",
-            "sticky top-0 z-10",
-            isComplete && "bg-green-50/50 dark:bg-green-950/20 hover:bg-green-50/70 dark:hover:bg-green-950/30"
+            "sticky top-0 z-10"
           )}
         >
-          <div className="flex items-center gap-3">
-            {/* Expand/Collapse indicator */}
-            <span className="text-muted-foreground">
-              {isOpen ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </span>
+          {/* Expand/Collapse indicator */}
+          <span className="text-muted-foreground shrink-0">
+            {isOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </span>
 
-            {/* Icon - show checkmark when complete */}
-            <span className={cn(
-              isComplete && "text-green-600 dark:text-green-400",
-              isInfo && "text-green-600 dark:text-green-400"
-            )}>
-              {isComplete ? (
-                <CheckCircle2 className="h-5 w-5" />
-              ) : (
-                icon
-              )}
-            </span>
+          {/* Icon */}
+          <span className="shrink-0">
+            {icon}
+          </span>
 
-            {/* Title */}
-            <span className="font-medium">{title}</span>
+          {/* Title */}
+          <span className="font-medium shrink-0">{title}</span>
 
-            {/* Count badge */}
-            <Badge variant={getBadgeVariant()} className={getBadgeClassName()}>
-              {count}
-            </Badge>
-          </div>
+          {/* Count badge(s) */}
+          <span className="shrink-0">
+            {customBadges ?? (
+              <Badge variant={getBadgeVariant()} className={getBadgeClassName()}>
+                {count}
+              </Badge>
+            )}
+          </span>
 
-          {/* Collapsed summary when not open */}
-          {!isOpen && isComplete && (
-            <span className="text-sm text-muted-foreground">
-              {completeMessage}
-            </span>
+          {/* Description - takes remaining space, truncates with tooltip */}
+          {description && (
+            isTruncated ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      ref={descriptionRef}
+                      className="flex-1 text-sm text-muted-foreground truncate text-right"
+                    >
+                      {description}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-md">
+                    <p>{description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <span
+                ref={descriptionRef}
+                className="flex-1 text-sm text-muted-foreground truncate text-right"
+              >
+                {description}
+              </span>
+            )
           )}
         </button>
       </CollapsibleTrigger>
 
       {/* Collapsible content - no border/card wrapper */}
       <CollapsibleContent>
-        <div className="px-4 py-3 bg-card">
-          {/* Description and bulk actions row */}
-          {(description || bulkActions) && (
-            <div className="flex items-start justify-between gap-4 pb-3">
-              {description && (
-                <p className="text-sm text-muted-foreground flex-1">
-                  {description}
-                </p>
-              )}
-              {bulkActions && (
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {bulkActions}
-                </div>
-              )}
+        <div className="bg-card">
+          {/* Bulk actions row */}
+          {bulkActions && (
+            <div className="flex items-center justify-end gap-2 px-4 py-2">
+              {bulkActions}
             </div>
           )}
 
           {/* Main content area */}
           {hasContent ? (
-            <div>
-              {children}
-            </div>
+            <div>{children}</div>
           ) : (
             <div className="py-6 text-center text-muted-foreground">
               <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />

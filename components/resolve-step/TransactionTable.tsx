@@ -44,7 +44,7 @@ interface DateCellProps {
 
 export function DateCell({ date, className }: DateCellProps) {
   return (
-    <TableCell className={cn("whitespace-nowrap", className)}>
+    <TableCell className={cn("whitespace-nowrap pl-6", className)}>
       {formatDate(date)}
     </TableCell>
   );

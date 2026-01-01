@@ -159,7 +159,7 @@ export function EditTransactionDialog({
             <Label htmlFor="edit-description">Description</Label>
             <Input
               id="edit-description"
-              placeholder="e.g., Grocery shopping at Metro"
+              placeholder="e.g. Bestbuy"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />

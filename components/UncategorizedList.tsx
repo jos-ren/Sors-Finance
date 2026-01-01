@@ -14,12 +14,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Check, Pencil, X, Undo2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
@@ -39,8 +46,7 @@ interface UncategorizedListProps {
   categories: DbCategory[];
   onAddKeyword: (categoryId: string, keyword: string) => void;
   onCreateCategory: (name: string, keyword: string) => void;
-  onExclude?: (transactionId: string) => void;
-  onUndoExclude?: (transactionId: string) => void;
+  onChangeCategory?: (transactionIds: string[], categoryId: string) => void;
   excludedCategoryId?: string; // UUID of the Excluded category
 }
 
@@ -55,8 +61,7 @@ export function UncategorizedList({
   categories,
   onAddKeyword,
   onCreateCategory,
-  onExclude,
-  onUndoExclude,
+  onChangeCategory,
   excludedCategoryId,
 }: UncategorizedListProps) {
   const [selectedTransaction, setSelectedTransaction] =
@@ -181,6 +186,13 @@ export function UncategorizedList({
     const addedKeyword = hasKeyword ? addedKeywords.get(transactions[0].id) : null;
     const isExcluded = excludedCategoryId && transactions.some(t => t.categoryId === excludedCategoryId);
 
+    // Check if transaction has been categorized (has categoryId that's not excluded)
+    const firstTransaction = transactions[0];
+    const isCategorized = firstTransaction.categoryId && firstTransaction.categoryId !== excludedCategoryId;
+    const assignedCategory = isCategorized
+      ? categories.find(c => c.uuid === firstTransaction.categoryId)
+      : null;
+
     return {
       matchField,
       transactions,
@@ -190,6 +202,8 @@ export function UncategorizedList({
       hasKeyword,
       addedKeyword,
       isExcluded,
+      isCategorized,
+      assignedCategory,
       // Use the first transaction's date for sorting
       date: transactions[0].date,
     };
@@ -278,11 +292,10 @@ export function UncategorizedList({
       <TransactionTable>
         <TableHeader>
           <TableRow>
-            <TableHead>Date</TableHead>
+            <TableHead className="w-[100px] pl-6">Date</TableHead>
             <TableHead>Description</TableHead>
-            <TableHead>Count</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead className="text-right">Action</TableHead>
+            <TableHead className="w-[100px]">Amount</TableHead>
+            <TableHead className="w-[200px] text-right pr-6">Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -293,7 +306,7 @@ export function UncategorizedList({
             return (
               <React.Fragment key={group.matchField}>
                 <TableRow className={canExpand ? "cursor-pointer" : ""} onClick={canExpand ? () => toggleGroupExpanded(group.matchField) : undefined}>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap pl-6">
                     <div className="flex items-center gap-1">
                       {canExpand && (
                         isExpanded ? (
@@ -306,27 +319,25 @@ export function UncategorizedList({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <p className="text-sm max-w-md truncate cursor-default">
-                            {group.matchField}
-                          </p>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-md">
-                          <p>{group.matchField}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {group.count > 1 ? (
-                      <Badge variant="secondary" className="text-xs">
-                        {group.count}× transactions
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">1</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-sm max-w-md truncate cursor-default">
+                              {group.matchField}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-md">
+                            <p>{group.matchField}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {group.count > 1 && (
+                        <Badge variant="secondary" className="text-xs shrink-0">
+                          ×{group.count}
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {group.totalOut > 0 ? (
@@ -339,103 +350,72 @@ export function UncategorizedList({
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    {group.isExcluded ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <Badge variant="secondary">
-                          <X className="h-3 w-3 mr-1" />
-                          Excluded
-                        </Badge>
-                        {onUndoExclude && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              group.transactions.forEach(t => onUndoExclude(t.id));
-                            }}
-                          >
-                            <Undo2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ) : group.hasKeyword ? (
-                      <TooltipProvider>
-                        <div className="flex items-center justify-end gap-2">
-                          <Check className="h-4 w-4 text-green-500" />
-                          <div className="flex flex-col gap-1">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <code className="text-xs font-mono bg-muted px-2 py-0.5 rounded max-w-[150px] truncate block cursor-default">
-                                  {group.addedKeyword!.keyword}
-                                </code>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{group.addedKeyword!.keyword}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            <span className="text-xs text-muted-foreground truncate max-w-[150px]" title={group.addedKeyword!.categoryName}>
-                              → {group.addedKeyword!.categoryName}
-                            </span>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleGroupClick(group.transactions)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TooltipProvider>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
+                  <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end">
+                      {group.isExcluded || group.isCategorized ? (
+                        <Select
+                          value={group.isExcluded ? excludedCategoryId : group.assignedCategory?.uuid}
+                          onValueChange={(value) => {
+                            if (onChangeCategory) {
+                              onChangeCategory(group.transactions.map(t => t.id), value);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="w-[140px] h-7 text-xs">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectableCategories.map((cat) => (
+                              <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">
+                                {cat.name}
+                              </SelectItem>
+                            ))}
+                            {excludedCategoryId && (
+                              <SelectItem value={excludedCategoryId} className="text-xs">
+                                Excluded
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      ) : (
                         <Button
-                          size="sm"
                           variant="outline"
+                          className="w-[140px] h-7 text-xs"
                           onClick={() => handleGroupClick(group.transactions)}
                         >
-                          <Plus className="h-4 w-4 mr-2" />
+                          <Plus className="h-3 w-3 mr-1" />
                           Add Keyword
                         </Button>
-                        {onExclude && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              group.transactions.forEach(t => onExclude(t.id));
-                            }}
-                            title="Exclude from budget stats"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {/* Expanded sub-rows */}
                 {isExpanded && group.transactions.map((transaction, idx) => (
                   <TableRow key={transaction.id} className="bg-muted/30">
-                    <TableCell className="whitespace-nowrap pl-8 text-muted-foreground text-xs">
+                    <TableCell className="whitespace-nowrap pl-14 text-muted-foreground text-xs">
                       {formatDate(transaction.date)}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-xs">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <p className="max-w-md truncate cursor-default">
-                              {transaction.description}
-                            </p>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-md">
-                            <p>{transaction.description}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <div className="flex items-center gap-2">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className="max-w-md truncate cursor-default">
+                                {transaction.description}
+                              </p>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-md">
+                              <p>{transaction.description}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <span className="text-muted-foreground/60 shrink-0">
+                          ({idx + 1}/{group.count})
+                        </span>
+                      </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
-                      {idx + 1} of {group.count}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="whitespace-nowrap text-xs">
                       {transaction.amountOut > 0 ? (
                         <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
                           {formatAmount(transaction.amountOut, formatCurrency)}
@@ -597,27 +577,19 @@ export function UncategorizedList({
 
 // Bulk action buttons component for use in ResolveSection
 interface UncategorizedBulkActionsProps {
-  onExcludeAll: () => void;
   onReprocess: () => void;
   hasKeywordsToApply: boolean;
 }
 
 export function UncategorizedBulkActions({
-  onExcludeAll,
   onReprocess,
   hasKeywordsToApply
 }: UncategorizedBulkActionsProps) {
+  if (!hasKeywordsToApply) return null;
+
   return (
-    <>
-      {hasKeywordsToApply && (
-        <Button size="sm" onClick={onReprocess}>
-          Apply Keywords
-        </Button>
-      )}
-      <Button variant="outline" size="sm" onClick={onExcludeAll} title="Exclude all from budget stats">
-        <X className="h-4 w-4 mr-1" />
-        Exclude All
-      </Button>
-    </>
+    <Button size="sm" onClick={onReprocess}>
+      Apply Keywords
+    </Button>
   );
 }

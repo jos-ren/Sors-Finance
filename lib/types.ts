@@ -16,6 +16,7 @@ export interface Transaction {
   isDuplicate?: boolean; // true if exists in database already
   importDuplicate?: boolean; // user explicitly chose to import this duplicate anyway
   skipDuplicate?: boolean; // user explicitly chose to skip (not import) this duplicate
+  wasUncategorized?: boolean; // true if originally had no category match (stays true even after keyword added)
 }
 
 /**

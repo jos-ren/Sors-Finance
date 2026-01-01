@@ -1,20 +1,38 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck } from "lucide-react";
+import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
+import Link from "next/link";
 import { toast } from "sonner";
 import { FileUpload } from "@/components/FileUpload";
-import { CategoryManager } from "@/components/CategoryManager";
 import { ConflictResolver } from "@/components/ConflictResolver";
-import { DuplicateResolver, DuplicateBulkActions } from "@/components/DuplicateResolver";
+import { DuplicateResolver } from "@/components/DuplicateResolver";
 import { UncategorizedList, UncategorizedBulkActions } from "@/components/UncategorizedList";
 import { ResultsView } from "@/components/ResultsView";
-import { ResolveSection } from "@/components/resolve-step";
+import {
+  ResolveSection,
+  TransactionTable,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableCell,
+  DateCell,
+  DescriptionCell,
+  AmountCell,
+} from "@/components/resolve-step";
 import { Transaction, UploadedFile, WizardStep } from "@/lib/types";
 import { parseFile } from "@/lib/parsers";
 import {
@@ -27,8 +45,6 @@ import {
   useTransactions,
   addCategory,
   updateCategory,
-  deleteCategory,
-  reorderCategories,
 } from "@/lib/hooks";
 import { addTransactionsBulk, addImport, findDuplicateSignatures, SYSTEM_CATEGORIES } from "@/lib/db";
 
@@ -37,71 +53,119 @@ interface TransactionImporterProps {
   onCancel?: () => void;
 }
 
+const CATEGORY_INFO_DISMISSED_KEY = "sors-category-info-dismissed";
+
+function getCategoryInfoDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(CATEGORY_INFO_DISMISSED_KEY) === "true";
+}
+
 export function TransactionImporter({ onComplete, onCancel }: TransactionImporterProps) {
   const [currentStep, setCurrentStep] = useState<WizardStep>("upload");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [categoryInfoDismissed, setCategoryInfoDismissed] = useState(getCategoryInfoDismissed);
 
-  // Section open states - expand sections with issues by default
+  const handleDismissCategoryInfo = () => {
+    localStorage.setItem(CATEGORY_INFO_DISMISSED_KEY, "true");
+    setCategoryInfoDismissed(true);
+  };
+
+  // Section open states - will be set dynamically after processing
   const [sectionsOpen, setSectionsOpen] = useState({
-    conflicts: true,
-    uncategorized: true,
-    duplicates: true,
+    conflicts: false,
+    uncategorized: false,
+    duplicates: false,
     categorized: false,
   });
 
   // Load categories and transactions from Dexie (live query)
   const dbCategories = useCategories();
   const dbTransactions = useTransactions();
-  const categories = dbCategories || [];
+  const categories = useMemo(() => dbCategories || [], [dbCategories]);
+
+  // Track pending reprocess - when categories change, we need to recategorize
+  const pendingReprocess = useRef(false);
 
   // Get the Excluded category for assigning excluded transactions
   const excludedCategory = categories.find(c => c.name === SYSTEM_CATEGORIES.EXCLUDED);
 
-  // Calculate summary
-  const summary = getCategorizationSummary(transactions);
+  // Effect to reprocess transactions when categories change after a keyword is added
+  useEffect(() => {
+    if (pendingReprocess.current) {
+      setTransactions(prev => {
+        if (prev.length === 0) return prev;
+        pendingReprocess.current = false;
+        return categorizeTransactions(prev, categories);
+      });
+    }
+  }, [categories]);
+
+  // Transactions that will actually be imported (excludes skipped duplicates)
+  const transactionsToImport = useMemo(() => {
+    return transactions.filter(t => !t.skipDuplicate);
+  }, [transactions]);
+
+  // Calculate summary from transactions that will be imported
+  const summary = getCategorizationSummary(transactionsToImport);
 
   // Calculate categorized transactions (ready for import)
+  // Normal transactions with category + duplicates marked for import with category
   const categorizedTransactions = useMemo(() => {
     return transactions.filter(t =>
       t.categoryId &&
       !t.isConflict &&
-      !t.isDuplicate
+      (!t.isDuplicate || t.importDuplicate)
     );
   }, [transactions]);
 
   // Get filtered transaction lists
-  const conflictTransactions = transactions.filter((t) => t.isConflict);
+  // Conflicts: show if conflict AND (not duplicate OR duplicate marked for import)
+  const conflictTransactions = transactions.filter(
+    (t) => t.isConflict && (!t.isDuplicate || t.importDuplicate)
+  );
+  // Uncategorized: show if ORIGINALLY uncategorized (wasUncategorized flag)
+  // These stay in the list even after keywords are added and they get categorized
   const uncategorizedTransactions = transactions.filter(
-    (t) => !t.categoryId && !t.isConflict
+    (t) => t.wasUncategorized && (!t.isDuplicate || t.importDuplicate)
   );
   const duplicateTransactions = transactions.filter((t) => t.isDuplicate);
 
   // Check for unresolved conflicts
   const unresolvedConflicts = conflictTransactions.filter(t => !t.categoryId).length;
 
+  // Check for still uncategorized (originally uncategorized and still no category)
+  const stillUncategorized = uncategorizedTransactions.filter(t => !t.categoryId).length;
+
   // Check for unresolved duplicates (neither import nor skip)
   const unresolvedDuplicates = duplicateTransactions.filter(
     t => !t.importDuplicate && !t.skipDuplicate
   ).length;
 
+  // Count resolved duplicates by action
+  const skippedDuplicates = duplicateTransactions.filter(t => t.skipDuplicate).length;
+  const importedDuplicates = duplicateTransactions.filter(t => t.importDuplicate).length;
+
   // Blocking issues prevent import
   const hasBlockingIssues = unresolvedConflicts > 0 || unresolvedDuplicates > 0;
 
-  // Update section open states based on counts
+  // Update section open states - only open sections that need user action
   const updateSectionStates = (newTransactions: Transaction[]) => {
-    const newSummary = getCategorizationSummary(newTransactions);
-    const newCategorized = newTransactions.filter(t =>
-      t.categoryId && !t.isConflict && !t.isDuplicate
+    // Conflicts need action if any are unresolved (no category selected yet)
+    const hasUnresolvedConflicts = newTransactions.some(t => t.isConflict && !t.categoryId);
+
+    // Uncategorized need action if any transactions still have no category
+    const hasUncategorized = newTransactions.some(t =>
+      !t.categoryId && !t.isConflict && !t.isDuplicate
     );
 
     setSectionsOpen({
-      conflicts: newSummary.conflicts > 0,
-      uncategorized: newSummary.uncategorized > 0,
-      duplicates: newSummary.duplicates > 0,
-      categorized: newCategorized.length > 0 && newSummary.conflicts === 0 && newSummary.duplicates === 0,
+      conflicts: hasUnresolvedConflicts,
+      uncategorized: hasUncategorized,
+      duplicates: false, // Duplicates default to skip, no action needed
+      categorized: false, // Just informational, no action needed
     });
   };
 
@@ -158,8 +222,16 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       // Categorize transactions
       const categorized = categorizeTransactions(withDuplicates, categories);
-      setTransactions(categorized);
-      updateSectionStates(categorized);
+
+      // Mark transactions that are originally uncategorized (no category, not conflict)
+      // This flag stays true even after keywords are added later
+      const withUncategorizedFlag = categorized.map(t => ({
+        ...t,
+        wasUncategorized: !t.categoryId && !t.isConflict,
+      }));
+
+      setTransactions(withUncategorizedFlag);
+      updateSectionStates(withUncategorizedFlag);
       setCurrentStep("resolve");
     } catch (error) {
       setErrors([
@@ -187,14 +259,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     });
   };
 
-  const handleUndoConflict = (transactionId: string) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === transactionId ? { ...t, categoryId: null } : t
-      )
-    );
-  };
-
   const handleImportDuplicate = (transactionId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
@@ -211,48 +275,18 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleSkipAllDuplicates = () => {
+  const handleChangeUncategorizedCategory = (transactionIds: string[], categoryId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.isDuplicate
-          ? { ...t, skipDuplicate: true, importDuplicate: false }
-          : t
+        transactionIds.includes(t.id) ? assignCategory(t, categoryId) : t
       )
     );
   };
 
-  const handleImportAllDuplicates = () => {
+  const handleChangeCategorizedCategory = (transactionId: string, categoryId: string) => {
     setTransactions((prev) =>
       prev.map((t) =>
-        t.isDuplicate
-          ? { ...t, importDuplicate: true, skipDuplicate: false }
-          : t
-      )
-    );
-  };
-
-  const handleExcludeUncategorized = (transactionId: string) => {
-    if (!excludedCategory) return;
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === transactionId ? { ...t, categoryId: excludedCategory.uuid } : t
-      )
-    );
-  };
-
-  const handleExcludeAllUncategorized = () => {
-    if (!excludedCategory) return;
-    setTransactions((prev) =>
-      prev.map((t) =>
-        !t.categoryId && !t.isConflict ? { ...t, categoryId: excludedCategory.uuid } : t
-      )
-    );
-  };
-
-  const handleUndoExcludeUncategorized = (transactionId: string) => {
-    setTransactions((prev) =>
-      prev.map((t) =>
-        t.id === transactionId ? { ...t, categoryId: null } : t
+        t.id === transactionId ? assignCategory(t, categoryId) : t
       )
     );
   };
@@ -264,40 +298,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     await updateCategory(category.id, {
       keywords: [...category.keywords, keyword.trim()],
     });
-    // Dexie live query will auto-update categories, then reprocess
-    setTimeout(handleReprocessTransactions, 100);
+    // Mark for reprocess when categories update via live query
+    pendingReprocess.current = true;
   };
 
   const handleCreateCategory = async (name: string, keyword: string) => {
     await addCategory(name, [keyword]);
-    // Dexie live query will auto-update categories, then reprocess
-    setTimeout(handleReprocessTransactions, 100);
-  };
-
-  const handleCategoryAdd = async (name: string, keywords: string[]) => {
-    await addCategory(name, keywords);
-  };
-
-  const handleCategoryUpdate = async (
-    id: number,
-    name: string,
-    keywords: string[]
-  ) => {
-    await updateCategory(id, { name, keywords });
-    setTimeout(handleReprocessTransactions, 100);
-  };
-
-  const handleCategoryDelete = async (id: number) => {
-    const categoryToDelete = categories.find((cat) => cat.id === id);
-    if (!categoryToDelete) return;
-
-    await deleteCategory(id);
-    toast.success(`Deleted "${categoryToDelete.name}"`);
-    setTimeout(handleReprocessTransactions, 100);
-  };
-
-  const handleCategoryReorder = async (activeId: number, overId: number) => {
-    await reorderCategories(activeId, overId);
+    // Mark for reprocess when categories update via live query
+    pendingReprocess.current = true;
   };
 
   const handleReset = () => {
@@ -306,9 +314,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     setUploadedFiles([]);
     setErrors([]);
     setSectionsOpen({
-      conflicts: true,
-      uncategorized: true,
-      duplicates: true,
+      conflicts: false,
+      uncategorized: false,
+      duplicates: false,
       categorized: false,
     });
   };
@@ -449,26 +457,11 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         </TabsList>
 
         <TabsContent value="upload" className="flex flex-col flex-1 min-h-0 mt-0 space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-            <FileUpload
-              onFilesSelected={setUploadedFiles}
-            />
-            <CategoryManager
-              categories={categories}
-              onCategoryAdd={handleCategoryAdd}
-              onCategoryUpdate={handleCategoryUpdate}
-              onCategoryDelete={handleCategoryDelete}
-              onCategoryReorder={handleCategoryReorder}
-              singleColumn
-              getTransactionCount={(categoryUuid) => {
-                if (!dbTransactions) return 0;
-                return dbTransactions.filter(t => {
-                  const category = categories.find(c => c.id === t.categoryId);
-                  return category?.uuid === categoryUuid;
-                }).length;
-              }}
-            />
-          </div>
+          <FileUpload
+            onFilesSelected={setUploadedFiles}
+          />
+          {/* Spacer to keep action buttons at bottom */}
+          <div className="flex-1" />
           <div className="flex justify-center gap-3 flex-shrink-0">
             {onCancel && (
               <Button variant="outline" onClick={onCancel}>
@@ -485,8 +478,32 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         </TabsContent>
 
         <TabsContent value="resolve" className="flex flex-col flex-1 min-h-0 mt-0 gap-3">
+          {/* Category info banner */}
+          {!categoryInfoDismissed && (
+            <Alert className="flex-shrink-0">
+              <Info className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between">
+                <span>
+                  You can view and manage all your categories on the{" "}
+                  <Link href="/categories" className="font-medium underline underline-offset-4 hover:text-primary">
+                    Categories page
+                  </Link>
+                  .
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleDismissCategoryInfo}
+                  className="shrink-0 ml-2 h-6 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* All sections in a single scrollable container */}
-          <div className="flex-1 min-h-0 overflow-y-auto border rounded-lg">
+          <div className="min-h-0 max-h-full overflow-y-auto border rounded-lg">
             {/* Conflicts Section */}
             <ResolveSection
               title="Conflicts"
@@ -496,15 +513,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               isBlocking={true}
               isOpen={sectionsOpen.conflicts}
               onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, conflicts: open }))}
-              description="These transactions matched multiple categories. Select the correct one for each."
+              description="Transactions matched multiple categories. Select the correct one for each."
               emptyMessage="No conflicts found"
-              completeMessage={conflictTransactions.length === 0 ? "No conflicts" : "All resolved"}
+              completeMessage=""
             >
               <ConflictResolver
                 conflictTransactions={conflictTransactions}
                 categories={categories}
                 onResolve={handleResolveConflict}
-                onUndo={handleUndoConflict}
               />
             </ResolveSection>
 
@@ -513,15 +529,19 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               title="Uncategorized"
               icon={<HelpCircle className="h-5 w-5" />}
               count={uncategorizedTransactions.length}
-              status={uncategorizedTransactions.length === 0 ? "complete" : "pending"}
+              status={stillUncategorized === 0 ? "complete" : "pending"}
               isBlocking={false}
               isOpen={sectionsOpen.uncategorized}
               onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, uncategorized: open }))}
-              description="These transactions didn't match any keywords. Add keywords or exclude them from stats."
+              description="Transactions didn't match any keywords. Add keywords or exclude them from stats."
+              customBadges={
+                <Badge className="bg-orange-200 text-orange-800 dark:bg-orange-900/50 dark:text-orange-400">
+                  {uncategorizedTransactions.length}
+                </Badge>
+              }
               bulkActions={
-                uncategorizedTransactions.length > 0 && (
+                stillUncategorized > 0 && (
                   <UncategorizedBulkActions
-                    onExcludeAll={handleExcludeAllUncategorized}
                     onReprocess={handleReprocessTransactions}
                     hasKeywordsToApply={false}
                   />
@@ -535,8 +555,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 categories={categories}
                 onAddKeyword={handleAddKeyword}
                 onCreateCategory={handleCreateCategory}
-                onExclude={handleExcludeUncategorized}
-                onUndoExclude={handleUndoExcludeUncategorized}
+                onChangeCategory={handleChangeUncategorizedCategory}
                 excludedCategoryId={excludedCategory?.uuid}
               />
             </ResolveSection>
@@ -550,17 +569,25 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               isBlocking={true}
               isOpen={sectionsOpen.duplicates}
               onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, duplicates: open }))}
-              description="These transactions already exist. Choose to import anyway or skip them."
-              bulkActions={
-                duplicateTransactions.length > 0 && (
-                  <DuplicateBulkActions
-                    onSkipAll={handleSkipAllDuplicates}
-                    onImportAll={handleImportAllDuplicates}
-                  />
+              description="Transactions already exist. Choose to import anyway or skip them."
+              emptyMessage="No duplicates found"
+              completeMessage=""
+              customBadges={
+                duplicateTransactions.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
+                      {skippedDuplicates}
+                    </Badge>
+                    {importedDuplicates > 0 && (
+                      <Badge className="bg-green-200 text-green-800 dark:bg-green-900/50 dark:text-green-400">
+                        {importedDuplicates}
+                      </Badge>
+                    )}
+                  </div>
+                ) : (
+                  <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">0</Badge>
                 )
               }
-              emptyMessage="No duplicates found"
-              completeMessage={duplicateTransactions.length === 0 ? "No duplicates" : "All handled"}
             >
               <DuplicateResolver
                 duplicateTransactions={duplicateTransactions}
@@ -578,57 +605,58 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               isBlocking={false}
               isOpen={sectionsOpen.categorized}
               onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, categorized: open }))}
-              description="These transactions are ready to be imported."
+              description="Transactions which are ready to be imported."
               emptyMessage="No transactions ready yet"
               completeMessage={`${categorizedTransactions.length} ready to import`}
             >
               {categorizedTransactions.length > 0 && (
-                <div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr>
-                        <th className="text-left py-2 font-medium">Date</th>
-                        <th className="text-left py-2 font-medium">Description</th>
-                        <th className="text-left py-2 font-medium">Category</th>
-                        <th className="text-right py-2 font-medium">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categorizedTransactions.map((t) => {
-                        const cat = categories.find(c => c.uuid === t.categoryId);
-                        return (
-                          <tr key={t.id} className="border-b border-border/50">
-                            <td className="py-2 whitespace-nowrap text-muted-foreground">
-                              {new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "short", day: "numeric" }).format(t.date)}
-                            </td>
-                            <td className="py-2 max-w-xs truncate" title={t.description}>
-                              {t.description}
-                            </td>
-                            <td className="py-2">
-                              <Badge variant="outline" className="text-xs">
-                                {cat?.name || "Unknown"}
-                              </Badge>
-                            </td>
-                            <td className="py-2 text-right whitespace-nowrap">
-                              {t.amountOut > 0 ? (
-                                <span className="text-destructive">
-                                  -{new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.amountOut)}
-                                </span>
-                              ) : (
-                                <span className="text-green-600">
-                                  +{new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.amountIn)}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <TransactionTable>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px] pl-6">Date</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="w-[100px]">Amount</TableHead>
+                      <TableHead className="w-[200px] text-right pr-6">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {categorizedTransactions.map((t) => {
+                      const selectableCategories = categories.filter(c => c.name.toLowerCase() !== "uncategorized");
+                      return (
+                        <TableRow key={t.id}>
+                          <DateCell date={t.date} />
+                          <DescriptionCell description={t.description} />
+                          <AmountCell amountOut={t.amountOut} amountIn={t.amountIn} />
+                          <TableCell className="text-right pr-6">
+                            <div className="flex justify-end">
+                              <Select
+                                value={t.categoryId || undefined}
+                                onValueChange={(value) => handleChangeCategorizedCategory(t.id, value)}
+                              >
+                                <SelectTrigger className="w-[140px] h-7 text-xs">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {selectableCategories.map((c) => (
+                                    <SelectItem key={c.uuid} value={c.uuid} className="text-xs">
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </TransactionTable>
               )}
             </ResolveSection>
           </div>
+
+          {/* Spacer to keep action buttons at bottom */}
+          <div className="flex-1" />
 
           {transactions.length === 0 && (
             <Alert className="flex-shrink-0">
@@ -679,7 +707,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           )}
 
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <ResultsView transactions={transactions} categories={categories} />
+            <ResultsView transactions={transactionsToImport} categories={categories} />
           </div>
 
           <div className="flex justify-center gap-3 flex-shrink-0">
