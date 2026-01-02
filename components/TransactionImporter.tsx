@@ -367,16 +367,16 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       const normalBySource = groupBySource(normalTransactions);
       for (const [, sourceTransactions] of normalBySource) {
         const dbTransactionsToAdd = convertToDbFormat(sourceTransactions);
-        const { added, skipped } = await addTransactionsBulk(dbTransactionsToAdd);
-        totalAdded += added;
+        const { inserted, skipped } = await addTransactionsBulk(dbTransactionsToAdd);
+        totalAdded += inserted;
         totalSkipped += skipped;
       }
 
       // Process duplicates marked for import (skip duplicate checking)
       if (duplicatesToImport.length > 0) {
         const dbTransactions = convertToDbFormat(duplicatesToImport);
-        const { added } = await addTransactionsBulk(dbTransactions, { skipDuplicateCheck: true });
-        totalAdded += added;
+        const { inserted } = await addTransactionsBulk(dbTransactions, { skipDuplicates: false });
+        totalAdded += inserted;
       }
 
       // Create a single import record if we added any transactions
@@ -388,10 +388,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
         await addImport({
           fileName,
-          source: sources[0] as 'CIBC' | 'AMEX',
+          source: sources[0],
           transactionCount: totalAdded,
           totalAmount,
-          importedAt: new Date(),
         });
       }
 

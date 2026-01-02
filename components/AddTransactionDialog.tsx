@@ -75,7 +75,6 @@ export function AddTransactionDialog({
       transactionDate.setHours(12, 0, 0, 0);
 
       await addTransaction({
-        uuid: crypto.randomUUID(),
         date: transactionDate,
         description: description.trim(),
         matchField: description.trim().toUpperCase(),
