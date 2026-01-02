@@ -14,8 +14,8 @@ import {
   Plus,
   Pencil,
   ChevronsUpDown,
-  Upload,
-  FileSpreadsheet,
+  Clock,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +72,10 @@ import {
   SUPPORTED_CURRENCIES,
   type Currency,
 } from "@/lib/settingsStore";
-import { db, getSetting, setSetting } from "@/lib/db";
+import {
+  getSetting,
+  setSetting,
+} from "@/lib/db/client";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -184,12 +187,13 @@ export default function SettingsPage() {
   const [showDevAlertDialog, setShowDevAlertDialog] = useState(false);
   const [showDevDialog, setShowDevDialog] = useState(false);
 
-  // Snapshot import state
-  const [isImportingSnapshots, setIsImportingSnapshots] = useState(false);
-  const snapshotFileInputRef = useRef<HTMLInputElement>(null);
-
   // Preferences state
   const [autoCopyBudgets, setAutoCopyBudgets] = useState(false);
+
+  // Snapshot scheduler state
+  const [snapshotEnabled, setSnapshotEnabled] = useState(true);
+  const [snapshotTime, setSnapshotTime] = useState("03:00");
+  const [isLoadingSnapshotConfig, setIsLoadingSnapshotConfig] = useState(true);
 
   // Page header
   const sentinelRef = useSetPageHeader("Settings");
@@ -244,6 +248,20 @@ export default function SettingsPage() {
     getSetting("autoCopyBudgets").then(value => {
       setAutoCopyBudgets(value === "true");
     });
+
+    // Load snapshot scheduler config
+    fetch("/api/scheduler/config")
+      .then(res => res.json())
+      .then(({ data }) => {
+        setSnapshotEnabled(data?.enabled ?? true);
+        setSnapshotTime(data?.time || "03:00");
+      })
+      .catch(err => {
+        console.error("Failed to load scheduler config:", err);
+      })
+      .finally(() => {
+        setIsLoadingSnapshotConfig(false);
+      });
 
     // Check if we just reset data and show toast (with delay to ensure Toaster is mounted)
     if (sessionStorage.getItem("data-reset-success")) {
@@ -324,6 +342,44 @@ export default function SettingsPage() {
     setAutoCopyBudgets(checked);
     await setSetting("autoCopyBudgets", checked ? "true" : "false");
     toast.success(checked ? "Auto-copy budgets enabled" : "Auto-copy budgets disabled");
+  };
+
+  // Snapshot scheduler handlers
+  const handleSnapshotEnabledChange = async (checked: boolean) => {
+    try {
+      const res = await fetch("/api/scheduler/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: checked }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setSnapshotEnabled(checked);
+      toast.success(checked ? "Automatic snapshots enabled" : "Automatic snapshots disabled");
+    } catch (err) {
+      console.error("Failed to update snapshot enabled:", err);
+      toast.error("Failed to update setting");
+    }
+  };
+
+  const handleSnapshotTimeChange = async (time: string) => {
+    // Validate HH:MM format
+    if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
+      toast.error("Invalid time format. Use HH:MM (e.g., 03:00)");
+      return;
+    }
+    try {
+      const res = await fetch("/api/scheduler/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ time }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setSnapshotTime(time);
+      toast.success(`Snapshot time set to ${time}`);
+    } catch (err) {
+      console.error("Failed to update snapshot time:", err);
+      toast.error("Failed to update setting");
+    }
   };
 
   // Timezone handler
@@ -437,22 +493,14 @@ export default function SettingsPage() {
     }
 
     try {
-      // Clear all IndexedDB tables
-      await db.transactions.clear();
-      await db.categories.clear();
-      await db.budgets.clear();
-      await db.imports.clear();
-      await db.portfolioItems.clear();
-      await db.portfolioAccounts.clear();
-      await db.portfolioSnapshots.clear();
-      await db.settings.clear();
+      // Clear all data via API
+      const res = await fetch("/api/data", { method: "DELETE" });
+      if (!res.ok) {
+        throw new Error("Failed to clear data");
+      }
 
       // Clear API key from settings (keep currency and timezone)
       setFinnhubApiKey(undefined);
-
-      // Re-initialize default categories
-      const { seedDefaultCategories } = await import("@/lib/db");
-      await seedDefaultCategories();
 
       // Set flag to show toast after reload
       sessionStorage.setItem("data-reset-success", "true");
@@ -469,37 +517,33 @@ export default function SettingsPage() {
   const handleExportData = async () => {
     setIsExporting(true);
     try {
-      // Fetch all data from IndexedDB
-      const [
-        transactions,
-        categories,
-        budgets,
-        imports,
-        portfolioItems,
-        portfolioAccounts,
-        portfolioSnapshots,
-      ] = await Promise.all([
-        db.transactions.toArray(),
-        db.categories.toArray(),
-        db.budgets.toArray(),
-        db.imports.toArray(),
-        db.portfolioItems.toArray(),
-        db.portfolioAccounts.toArray(),
-        db.portfolioSnapshots.toArray(),
-      ]);
+      // Fetch all data from API
+      const res = await fetch("/api/data");
+      if (!res.ok) {
+        throw new Error("Failed to fetch data");
+      }
+      const { data: exportData } = await res.json();
+
+      const transactions = exportData.transactions || [];
+      const categories = exportData.categories || [];
+      const budgets = exportData.budgets || [];
+      const imports = exportData.imports || [];
+      const portfolioItems = exportData.portfolioItems || [];
+      const portfolioAccounts = exportData.portfolioAccounts || [];
+      const portfolioSnapshots = exportData.portfolioSnapshots || [];
 
       // Create workbook
       const wb = XLSX.utils.book_new();
 
       // Add transactions sheet
       if (transactions.length > 0) {
-        const transactionsData = transactions.map((t) => ({
-          Date: t.date?.toISOString().split("T")[0] || "",
+        const transactionsData = transactions.map((t: { date: string; description: string; amountOut: number; amountIn: number; netAmount: number; categoryId: number | null; source: string }) => ({
+          Date: t.date ? String(t.date).split("T")[0] : "",
           Description: t.description,
           "Amount Out": t.amountOut,
           "Amount In": t.amountIn,
           "Net Amount": t.netAmount,
-          Category: categories.find((c) => c.id === t.categoryId)?.name || "Uncategorized",
+          Category: categories.find((c: { id: number; name: string }) => c.id === t.categoryId)?.name || "Uncategorized",
           Source: t.source,
         }));
         const ws = XLSX.utils.json_to_sheet(transactionsData);
@@ -508,7 +552,7 @@ export default function SettingsPage() {
 
       // Add categories sheet
       if (categories.length > 0) {
-        const categoriesData = categories.map((c) => ({
+        const categoriesData = categories.map((c: { name: string; keywords?: string[]; isSystem: boolean; order: number }) => ({
           Name: c.name,
           Keywords: c.keywords?.join(", ") || "",
           "Is System": c.isSystem ? "Yes" : "No",
@@ -520,8 +564,8 @@ export default function SettingsPage() {
 
       // Add budgets sheet
       if (budgets.length > 0) {
-        const budgetsData = budgets.map((b) => ({
-          Category: categories.find((c) => c.id === b.categoryId)?.name || "",
+        const budgetsData = budgets.map((b: { categoryId: number; amount: number; year: number; month: number }) => ({
+          Category: categories.find((c: { id: number; name: string }) => c.id === b.categoryId)?.name || "",
           Amount: b.amount,
           Year: b.year,
           Month: b.month,
@@ -532,8 +576,8 @@ export default function SettingsPage() {
 
       // Add import history sheet
       if (imports.length > 0) {
-        const importData = imports.map((i) => ({
-          Date: i.importedAt?.toISOString() || "",
+        const importData = imports.map((i: { importedAt: string; fileName: string; source: string; transactionCount: number; totalAmount: number }) => ({
+          Date: i.importedAt || "",
           Filename: i.fileName,
           Source: i.source,
           "Transaction Count": i.transactionCount,
@@ -545,7 +589,7 @@ export default function SettingsPage() {
 
       // Add portfolio accounts sheet
       if (portfolioAccounts.length > 0) {
-        const accountsData = portfolioAccounts.map((a) => ({
+        const accountsData = portfolioAccounts.map((a: { id: number; name: string; bucket: string; order: number }) => ({
           Name: a.name,
           Bucket: a.bucket,
           Order: a.order,
@@ -556,8 +600,8 @@ export default function SettingsPage() {
 
       // Add portfolio items sheet
       if (portfolioItems.length > 0) {
-        const itemsData = portfolioItems.map((i) => {
-          const account = portfolioAccounts.find((a) => a.id === i.accountId);
+        const itemsData = portfolioItems.map((i: { accountId: number; name: string; currentValue: number; quantity?: number; ticker?: string; currency?: string; pricePerUnit?: number; lastPriceUpdate?: string }) => {
+          const account = portfolioAccounts.find((a: { id: number; name: string }) => a.id === i.accountId);
           return {
             Name: i.name,
             Account: account?.name || "",
@@ -566,7 +610,7 @@ export default function SettingsPage() {
             Ticker: i.ticker || "",
             Currency: i.currency || "",
             "Price Per Unit": i.pricePerUnit || "",
-            "Last Price Update": i.lastPriceUpdate?.toISOString() || "",
+            "Last Price Update": i.lastPriceUpdate || "",
           };
         });
         const ws = XLSX.utils.json_to_sheet(itemsData);
@@ -575,8 +619,8 @@ export default function SettingsPage() {
 
       // Add portfolio snapshots sheet
       if (portfolioSnapshots.length > 0) {
-        const snapshotsData = portfolioSnapshots.map((s) => ({
-          Date: s.date?.toISOString().split("T")[0] || "",
+        const snapshotsData = portfolioSnapshots.map((s: { date: string; netWorth: number; totalSavings: number; totalInvestments: number; totalAssets: number; totalDebt: number }) => ({
+          Date: s.date ? String(s.date).split("T")[0] : "",
           "Net Worth": s.netWorth,
           "Total Savings": s.totalSavings,
           "Total Investments": s.totalInvestments,
@@ -599,107 +643,6 @@ export default function SettingsPage() {
       toast.error("Failed to export data");
     } finally {
       setIsExporting(false);
-    }
-  };
-
-  // Historical snapshot import handler
-  const handleImportSnapshots = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsImportingSnapshots(true);
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
-
-      if (rows.length === 0) {
-        toast.error("No data found in file");
-        return;
-      }
-
-      // Parse and validate rows
-      const snapshots: Array<{
-        date: Date;
-        netWorth: number;
-        totalSavings: number;
-        totalInvestments: number;
-        totalAssets: number;
-        totalDebt: number;
-      }> = [];
-
-      for (const row of rows) {
-        // Handle different possible column names
-        const dateVal = row["Date"] || row["date"];
-        const netWorthVal = row["Net Worth"] || row["NetWorth"] || row["net_worth"] || row["netWorth"];
-        const savingsVal = row["Savings"] || row["savings"] || row["Total Savings"] || row["totalSavings"];
-        const investmentsVal = row["Investments"] || row["investments"] || row["Total Investments"] || row["totalInvestments"];
-        const assetsVal = row["Assets"] || row["assets"] || row["Total Assets"] || row["totalAssets"];
-        const debtVal = row["Debt"] || row["debt"] || row["Total Debt"] || row["totalDebt"];
-
-        if (!dateVal) {
-          console.warn("Skipping row without date:", row);
-          continue;
-        }
-
-        // Parse date - handle both string dates and Excel serial numbers
-        let date: Date;
-        if (typeof dateVal === "number") {
-          // Excel serial date
-          date = new Date((dateVal - 25569) * 86400 * 1000);
-        } else {
-          date = new Date(String(dateVal));
-        }
-
-        if (isNaN(date.getTime())) {
-          console.warn("Skipping row with invalid date:", row);
-          continue;
-        }
-
-        snapshots.push({
-          date,
-          netWorth: Number(netWorthVal) || 0,
-          totalSavings: Number(savingsVal) || 0,
-          totalInvestments: Number(investmentsVal) || 0,
-          totalAssets: Number(assetsVal) || 0,
-          totalDebt: Number(debtVal) || 0,
-        });
-      }
-
-      if (snapshots.length === 0) {
-        toast.error("No valid snapshots found in file");
-        return;
-      }
-
-      // Import snapshots into database
-      let imported = 0;
-      for (const snapshot of snapshots) {
-        await db.portfolioSnapshots.add({
-          uuid: crypto.randomUUID(),
-          date: snapshot.date,
-          netWorth: snapshot.netWorth,
-          totalSavings: snapshot.totalSavings,
-          totalInvestments: snapshot.totalInvestments,
-          totalAssets: snapshot.totalAssets,
-          totalDebt: snapshot.totalDebt,
-          details: { accounts: [], items: [] },
-          createdAt: new Date(),
-        });
-        imported++;
-      }
-
-      toast.success(`Imported ${imported} historical snapshots`);
-    } catch (error) {
-      console.error("Error importing snapshots:", error);
-      toast.error("Failed to import snapshots");
-    } finally {
-      setIsImportingSnapshots(false);
-      // Reset file input
-      if (snapshotFileInputRef.current) {
-        snapshotFileInputRef.current.value = "";
-      }
     }
   };
 
@@ -955,6 +898,79 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Portfolio Snapshots */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Portfolio Snapshots
+              </CardTitle>
+              <CardDescription>
+                Configure automatic daily snapshots of your net worth
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isLoadingSnapshotConfig ? (
+                <div className="text-sm text-muted-foreground">Loading...</div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="snapshot-enabled">Enable automatic snapshots</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically save a snapshot of your portfolio each day
+                      </p>
+                    </div>
+                    <Switch
+                      id="snapshot-enabled"
+                      checked={snapshotEnabled}
+                      onCheckedChange={handleSnapshotEnabledChange}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="snapshot-time">Snapshot time</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="snapshot-time"
+                        type="text"
+                        placeholder="03:00"
+                        value={snapshotTime}
+                        onChange={(e) => setSnapshotTime(e.target.value)}
+                        onBlur={(e) => handleSnapshotTimeChange(e.target.value)}
+                        className="w-24 font-mono"
+                        disabled={!snapshotEnabled}
+                        maxLength={5}
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        (HH:MM, 24-hour)
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Time of day when the automatic snapshot will be taken
+                    </p>
+                  </div>
+
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Important</AlertTitle>
+                    <AlertDescription>
+                      For automatic snapshots to work, the application must be running:
+                      <ul className="list-disc list-inside mt-2 space-y-1">
+                        <li>
+                          <strong>Development:</strong> Keep <code className="bg-muted px-1 py-0.5 rounded text-xs">npm run dev</code> running in your terminal
+                        </li>
+                        <li>
+                          <strong>Docker:</strong> Ensure the Docker container is running
+                        </li>
+                      </ul>
+                    </AlertDescription>
+                  </Alert>
+                </>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Integrations Tab */}
@@ -1125,68 +1141,6 @@ export default function SettingsPage() {
         {/* Developer Tab */}
         {process.env.NODE_ENV === "development" && (
           <TabsContent value="developer" className="space-y-6">
-            {/* Import Historical Snapshots */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-5 w-5" />
-                  Import Historical Snapshots
-                </CardTitle>
-                <CardDescription>
-                  Upload an Excel file with historical portfolio snapshot data
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border p-4 space-y-3">
-                  <h4 className="font-medium">Expected format:</h4>
-                  <div className="overflow-x-auto">
-                    <table className="text-xs font-mono border-collapse">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="px-2 py-1 text-left">Date</th>
-                          <th className="px-2 py-1 text-left">Net Worth</th>
-                          <th className="px-2 py-1 text-left">Savings</th>
-                          <th className="px-2 py-1 text-left">Investments</th>
-                          <th className="px-2 py-1 text-left">Assets</th>
-                          <th className="px-2 py-1 text-left">Debt</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="text-muted-foreground">
-                          <td className="px-2 py-1">2025-12-31</td>
-                          <td className="px-2 py-1">9999.99</td>
-                          <td className="px-2 py-1">499.99</td>
-                          <td className="px-2 py-1">450.00</td>
-                          <td className="px-2 py-1">6700.00</td>
-                          <td className="px-2 py-1">42.00</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Dates can be in YYYY-MM-DD format or Excel date format.
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    ref={snapshotFileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleImportSnapshots}
-                    className="hidden"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => snapshotFileInputRef.current?.click()}
-                    disabled={isImportingSnapshots}
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    {isImportingSnapshots ? "Importing..." : "Upload Excel File"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
             {/* Primary Colors */}
             <Card>
               <CardHeader>

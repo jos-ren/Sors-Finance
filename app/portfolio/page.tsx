@@ -59,7 +59,6 @@ import {
   BUCKET_TYPES,
   type DbPortfolioSnapshot,
 } from "@/lib/hooks/useDatabase";
-import { db } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { useSnapshot } from "@/lib/snapshot-context";
@@ -191,18 +190,21 @@ export default function PortfolioPage() {
           label: "Undo",
           onClick: async () => {
             try {
-              // Re-create the snapshot
-              await db.portfolioSnapshots.add({
-                uuid: snapshot.uuid,
-                date: snapshot.date,
-                totalSavings: snapshot.totalSavings,
-                totalInvestments: snapshot.totalInvestments,
-                totalAssets: snapshot.totalAssets,
-                totalDebt: snapshot.totalDebt,
-                netWorth: snapshot.netWorth,
-                details: snapshot.details,
-                createdAt: snapshot.createdAt,
+              // Re-create the snapshot via API
+              const res = await fetch("/api/portfolio/snapshots", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  date: snapshot.date.toISOString(),
+                  totalSavings: snapshot.totalSavings,
+                  totalInvestments: snapshot.totalInvestments,
+                  totalAssets: snapshot.totalAssets,
+                  totalDebt: snapshot.totalDebt,
+                  netWorth: snapshot.netWorth,
+                  details: snapshot.details,
+                }),
               });
+              if (!res.ok) throw new Error("Failed to restore");
               toast.success("Snapshot restored");
             } catch {
               toast.error("Failed to restore snapshot");
@@ -402,7 +404,26 @@ export default function PortfolioPage() {
                   tickFormatter={(value) => formatAmount(value, formatCompact)}
                 />
                 <ChartTooltip
-                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
+                  content={
+                    <ChartTooltipContent
+                      formatter={(value, name, item) => (
+                        <div className="flex w-full items-center gap-2">
+                          <div
+                            className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <div className="flex flex-1 justify-between gap-4">
+                            <span className="text-muted-foreground">
+                              {netWorthChartConfig[name as keyof typeof netWorthChartConfig]?.label || name}
+                            </span>
+                            <span className="font-mono font-medium tabular-nums">
+                              {formatAmount(Number(value), formatCurrency)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <ChartLegend content={<ChartLegendContent />} />
                 <Line

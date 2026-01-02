@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
 
 interface PrivacyContextType {
   isPrivacyMode: boolean;
@@ -24,32 +24,38 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const togglePrivacyMode = () => {
+  const togglePrivacyMode = useCallback(() => {
     setIsPrivacyMode((prev) => {
       const newValue = !prev;
       localStorage.setItem(PRIVACY_STORAGE_KEY, String(newValue));
       return newValue;
     });
-  };
+  }, []);
 
-  const defaultFormatter = (n: number) =>
-    new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
+  const formatAmount = useCallback((amount: number, formatter?: (n: number) => string) => {
+    const defaultFormatter = (n: number) =>
+      new Intl.NumberFormat("en-CA", {
+        style: "currency",
+        currency: "CAD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(n);
 
-  const formatAmount = (amount: number, formatter = defaultFormatter) => {
-    if (!mounted) return formatter(amount);
+    const fmt = formatter || defaultFormatter;
+    if (!mounted) return fmt(amount);
     if (isPrivacyMode) {
       return "******";
     }
-    return formatter(amount);
-  };
+    return fmt(amount);
+  }, [mounted, isPrivacyMode]);
+
+  const contextValue = useMemo(
+    () => ({ isPrivacyMode, togglePrivacyMode, formatAmount }),
+    [isPrivacyMode, togglePrivacyMode, formatAmount]
+  );
 
   return (
-    <PrivacyContext.Provider value={{ isPrivacyMode, togglePrivacyMode, formatAmount }}>
+    <PrivacyContext.Provider value={contextValue}>
       {children}
     </PrivacyContext.Provider>
   );

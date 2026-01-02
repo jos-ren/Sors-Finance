@@ -42,3 +42,10 @@ next-env.d.ts
 
 # claude code
 .claude/
+
+# SQLite database
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

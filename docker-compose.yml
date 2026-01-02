@@ -2,5 +2,14 @@ services:
   sors-finance:
     build: .
     ports:
-      - "3000:3000"
+      # Bind to localhost only for security
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Persist SQLite database
+      - sors-data:/app/data
+    environment:
+      - NODE_ENV=production
     restart: unless-stopped
+
+volumes:
+  sors-data:

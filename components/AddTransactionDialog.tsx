@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { DbCategory, addTransaction, SYSTEM_CATEGORIES } from "@/lib/db";
+import { DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
+import { addTransaction } from "@/lib/db/client";
 
 interface AddTransactionDialogProps {
   open: boolean;

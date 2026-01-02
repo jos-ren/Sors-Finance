@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, ReactNode } from 'react';
+import { createContext, useContext, useMemo, ReactNode } from 'react';
 import { useInitDatabase } from '@/lib/hooks/useDatabase';
 
 interface DatabaseContextType {
@@ -24,6 +24,11 @@ interface DatabaseProviderProps {
 
 export function DatabaseProvider({ children, fallback }: DatabaseProviderProps) {
   const { isReady, error } = useInitDatabase();
+
+  const contextValue = useMemo(
+    () => ({ isReady, error }),
+    [isReady, error]
+  );
 
   if (error) {
     return (
@@ -51,7 +56,7 @@ export function DatabaseProvider({ children, fallback }: DatabaseProviderProps) 
   }
 
   return (
-    <DatabaseContext.Provider value={{ isReady, error }}>
+    <DatabaseContext.Provider value={contextValue}>
       {children}
     </DatabaseContext.Provider>
   );

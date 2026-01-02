@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A local-first Next.js web application for budget tracking, transaction categorization, and net worth tracking. **All processing happens client-side** — no transaction data is sent to servers. Data persists in IndexedDB via Dexie.
+A local-first Next.js web application for budget tracking, transaction categorization, and net worth tracking. Data persists in SQLite via Drizzle ORM. Supports scheduled portfolio snapshots when running in Docker.
 
 **Theme**: shadcn/ui Maia style with zinc base color and lime accent.
 
@@ -14,6 +14,9 @@ A local-first Next.js web application for budget tracking, transaction categoriz
 npm run dev      # Start development server (http://localhost:3000)
 npm run build    # Production build
 npm run lint     # Run ESLint
+npm run db:generate  # Generate Drizzle migrations
+npm run db:migrate   # Run Drizzle migrations
+npm run db:studio    # Open Drizzle Studio
 ```
 
 ## Architecture
@@ -35,7 +38,7 @@ Sidebar navigation in `components/AppSidebar.tsx`, wrapped by `SidebarLayout.tsx
 2. **Parsing** → Bank-specific parsers convert to unified `Transaction` format
 3. **Categorization** → Keyword matching against categories (case-insensitive, partial match)
 4. **Resolution** → User resolves conflicts (multi-category matches) and unassigned transactions
-5. **Results** → Transactions saved to IndexedDB
+5. **Results** → Transactions saved via API to SQLite
 
 ### Bank Parser Architecture (Extensible)
 
@@ -52,22 +55,54 @@ The parser system uses a registry pattern for easy extension. To add a new bank:
 - `lib/parsers/index.ts` - Registry with `detectBank()`, `parseFile()`, `getAllBankMeta()`
 - `lib/parsers/banks/*.ts` - Individual bank implementations
 
-### Database Module (lib/db/)
+### Database Architecture
 
-Uses Dexie (IndexedDB wrapper). Split into focused modules:
+Uses SQLite with Drizzle ORM. Data flows: Client → API Routes → SQLite.
 
-- `types.ts` - Type definitions (DbTransaction, DbCategory, etc.)
-- `instance.ts` - Database class and singleton
-- `categories.ts` - Category CRUD operations
-- `transactions.ts` - Transaction CRUD and aggregations
-- `budgets.ts` - Budget operations
-- `portfolio.ts` - Portfolio accounts, items, and snapshots
-- `imports.ts` - Import tracking
-- `settings.ts` - Key-value settings
+**Schema & Connection (`lib/db/`):**
+- `schema.ts` - Drizzle schema definitions (8 tables)
+- `connection.ts` - SQLite connection with WAL mode
+- `migrate.ts` - Migration runner for app startup
 - `seed.ts` - Default category seeding
+- `types.ts` - TypeScript type definitions
 - `index.ts` - Barrel export
 
-Import from `@/lib/db` for all database operations.
+**API Routes (`app/api/`):**
+- `categories/` - Category CRUD, reordering
+- `transactions/` - Transaction CRUD, bulk operations, aggregations
+- `budgets/` - Budget CRUD, copy operations
+- `imports/` - Import history
+- `settings/` - Key-value settings
+- `portfolio/` - Accounts, items, snapshots, summary
+- `scheduler/` - Snapshot schedule configuration
+- `migrate/` - Data migration endpoint
+
+**Client Wrappers (`lib/db/client/`):**
+- Fetch-based API wrappers matching old function signatures
+- Used by hooks for data access
+
+**Hooks (`lib/hooks/useDatabase.ts`):**
+- SWR-based hooks for reactive data fetching
+- Cache invalidation helpers
+- ~30 hooks for all data operations
+
+### Scheduler
+
+Portfolio snapshots can run on a schedule (default: 3 AM daily).
+
+- `lib/scheduler.ts` - node-cron scheduler
+- `instrumentation.ts` - Next.js startup hook
+- Only active in production (`NODE_ENV=production`)
+- Configurable via Settings page
+
+### Docker
+
+```bash
+docker compose up -d    # Start container
+docker compose down     # Stop container
+```
+
+Data persists in `sors-data` volume. Port bound to localhost only (127.0.0.1:3000).
 
 ### Other Key Modules
 
@@ -87,14 +122,16 @@ Located in `components/`:
 - `CategoryManager.tsx` - CRUD for categories with drag-to-reorder (dnd-kit)
 - `ConflictResolver.tsx` - Handle transactions matching multiple categories
 - `UncategorizedList.tsx` - Assign categories to unmatched transactions
+- `DatabaseProvider.tsx` - Database initialization wrapper
 
 Radix UI primitives in `components/ui/` (shadcn/ui Maia style). Charts use Recharts via shadcn/ui chart component.
 
 ### State Management
 
 - React useState/useEffect for UI state
-- IndexedDB via Dexie for persistent data (transactions, categories, budgets, portfolio)
-- Context providers for theme, privacy mode, and snapshots
+- SWR for server state (caching, revalidation)
+- SQLite for persistent data (via API routes)
+- Context providers for theme, privacy mode, page header, and snapshots
 
 ## Path Alias
 
@@ -102,7 +139,10 @@ Radix UI primitives in `components/ui/` (shadcn/ui Maia style). Charts use Recha
 
 ## Dependencies of Note
 
-- `dexie` - IndexedDB wrapper for local-first data persistence
+- `better-sqlite3` - SQLite database driver
+- `drizzle-orm` - TypeScript ORM for SQLite
+- `swr` - React hooks for data fetching
+- `node-cron` - Scheduled task runner
 - `papaparse` - CSV parsing
 - `xlsx` - Excel parsing
 - `@dnd-kit/*` - Drag and drop for category reordering

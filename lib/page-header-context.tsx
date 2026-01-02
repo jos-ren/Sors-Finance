@@ -1,39 +1,49 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
 
 interface PageHeaderContextType {
   title: string;
   description: string;
-  actions: ReactNode | null;
+  actionsRef: React.MutableRefObject<ReactNode | null>;
   isScrolled: boolean;
   setTitle: (title: string) => void;
   setDescription: (description: string) => void;
-  setActions: (actions: ReactNode | null) => void;
   setIsScrolled: (isScrolled: boolean) => void;
+  // Force update trigger for when actions change
+  actionsVersion: number;
+  bumpActionsVersion: () => void;
 }
 
 const PageHeaderContext = createContext<PageHeaderContextType | undefined>(undefined);
 
 export function PageHeaderProvider({ children }: { children: ReactNode }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [actions, setActions] = useState<ReactNode | null>(null);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [title, setTitleState] = useState("");
+  const [description, setDescriptionState] = useState("");
+  const [isScrolled, setIsScrolledState] = useState(false);
+  const [actionsVersion, setActionsVersion] = useState(0);
+  const actionsRef = useRef<ReactNode | null>(null);
+
+  const setTitle = useCallback((t: string) => setTitleState(t), []);
+  const setDescription = useCallback((d: string) => setDescriptionState(d), []);
+  const setIsScrolled = useCallback((s: boolean) => setIsScrolledState(s), []);
+  const bumpActionsVersion = useCallback(() => setActionsVersion(v => v + 1), []);
+
+  // Context value is stable - actionsRef doesn't change, only its .current does
+  const contextValue: PageHeaderContextType = {
+    title,
+    description,
+    actionsRef,
+    isScrolled,
+    setTitle,
+    setDescription,
+    setIsScrolled,
+    actionsVersion,
+    bumpActionsVersion,
+  };
 
   return (
-    <PageHeaderContext.Provider
-      value={{
-        title,
-        description,
-        actions,
-        isScrolled,
-        setTitle: useCallback((t: string) => setTitle(t), []),
-        setDescription: useCallback((d: string) => setDescription(d), []),
-        setActions: useCallback((a: ReactNode | null) => setActions(a), []),
-        setIsScrolled: useCallback((s: boolean) => setIsScrolled(s), []),
-      }}
-    >
+    <PageHeaderContext.Provider value={contextValue}>
       {children}
     </PageHeaderContext.Provider>
   );
@@ -44,12 +54,24 @@ export function usePageHeader() {
   if (context === undefined) {
     throw new Error("usePageHeader must be used within a PageHeaderProvider");
   }
-  return context;
+  // Return actions from ref for convenience
+  return {
+    title: context.title,
+    description: context.description,
+    actions: context.actionsRef.current,
+    isScrolled: context.isScrolled,
+    actionsVersion: context.actionsVersion,
+  };
 }
 
 // Hook for setting page header values (used by pages)
 export function useSetPageHeader(title: string, actions?: ReactNode) {
-  const { setTitle, setActions, setIsScrolled } = usePageHeader();
+  const context = useContext(PageHeaderContext);
+  if (!context) {
+    throw new Error("useSetPageHeader must be used within a PageHeaderProvider");
+  }
+
+  const { setTitle, actionsRef, setIsScrolled, bumpActionsVersion } = context;
   const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
 
   // Callback ref to capture the sentinel element
@@ -57,16 +79,29 @@ export function useSetPageHeader(title: string, actions?: ReactNode) {
     setSentinel(node);
   }, []);
 
-  // Register title and actions with context
+  // Register title with context
   useEffect(() => {
     setTitle(title);
     return () => setTitle("");
   }, [title, setTitle]);
 
+  // Set actions via ref (doesn't trigger re-renders)
   useEffect(() => {
-    setActions(actions || null);
-    return () => setActions(null);
-  }, [actions, setActions]);
+    actionsRef.current = actions || null;
+    bumpActionsVersion();
+    return () => {
+      actionsRef.current = null;
+      bumpActionsVersion();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount/unmount
+
+  // Update actions ref when actions prop changes (without re-render loop)
+  const prevActionsRef = useRef(actions);
+  if (prevActionsRef.current !== actions) {
+    prevActionsRef.current = actions;
+    actionsRef.current = actions || null;
+  }
 
   // Set up intersection observer - triggers when page header scrolls out of view
   useEffect(() => {

@@ -46,7 +46,8 @@ import {
   addCategory,
   updateCategory,
 } from "@/lib/hooks";
-import { addTransactionsBulk, addImport, findDuplicateSignatures, SYSTEM_CATEGORIES } from "@/lib/db";
+import { addTransactionsBulk, addImport, findDuplicateSignatures } from "@/lib/db/client";
+import { SYSTEM_CATEGORIES } from "@/lib/db";
 
 interface TransactionImporterProps {
   onComplete?: () => void;
