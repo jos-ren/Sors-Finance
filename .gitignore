@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Claude Code
+CLAUDE.md
+
 # dependencies
 /node_modules
 /.pnp
@@ -42,3 +45,10 @@ next-env.d.ts
 
 # claude code
 .claude/
+
+# SQLite database
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

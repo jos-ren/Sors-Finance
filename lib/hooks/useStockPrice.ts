@@ -290,50 +290,76 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
     return { success: true, updated: 0, failed: [] };
   }
 
+  // Get unique tickers to avoid duplicate API calls
+  const uniqueTickers = [...new Set(
+    items
+      .map(item => item.ticker?.toUpperCase())
+      .filter((ticker): ticker is string => Boolean(ticker))
+  )];
+
+  // First pass: fetch unique ticker prices
+  const tickerQuotes = new Map<string, { quote: StockQuote | null; exchangeRate: number; error?: string }>();
+  const failedTickers: string[] = [];
+
+  for (const ticker of uniqueTickers) {
+    try {
+      const quote = await lookupTicker(ticker);
+
+      if (!quote) {
+        failedTickers.push(ticker);
+        tickerQuotes.set(ticker, { quote: null, exchangeRate: 1, error: 'Ticker not found' });
+      } else {
+        // Get exchange rate if currency differs
+        let exchangeRate = 1;
+        if (quote.currency !== 'CAD') {
+          exchangeRate = await getExchangeRate(quote.currency, 'CAD');
+        }
+        tickerQuotes.set(ticker, { quote, exchangeRate });
+      }
+    } catch (error) {
+      failedTickers.push(ticker);
+      tickerQuotes.set(ticker, {
+        quote: null,
+        exchangeRate: 1,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Second pass: update all items using cached quotes
   const failed: Array<{ ticker: string; itemName: string; error: string }> = [];
   let updated = 0;
 
   for (const item of items) {
     if (!item.ticker) continue;
 
-    try {
-      const quote = await lookupTicker(item.ticker);
+    const upperTicker = item.ticker.toUpperCase();
+    const cached = tickerQuotes.get(upperTicker);
 
-      if (!quote) {
-        failed.push({
-          ticker: item.ticker,
-          itemName: item.name,
-          error: 'Ticker not found'
-        });
-        continue;
-      }
-
-      // Get exchange rate if currency differs
-      let exchangeRate = 1;
-      if (quote.currency !== 'CAD') {
-        exchangeRate = await getExchangeRate(quote.currency, 'CAD');
-      }
-
-      // Calculate new value
-      const newValue = (item.quantity || 0) * quote.price * exchangeRate;
-
-      // Update the item
-      await updatePortfolioItem(item.id!, {
-        pricePerUnit: quote.price,
-        currency: quote.currency,
-        currentValue: newValue,
-        lastPriceUpdate: new Date(),
-        isInternational: quote.isInternational,
-      });
-
-      updated++;
-    } catch (error) {
+    if (!cached || !cached.quote) {
       failed.push({
         ticker: item.ticker,
         itemName: item.name,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: cached?.error || 'Ticker not found'
       });
+      continue;
     }
+
+    const { quote, exchangeRate } = cached;
+
+    // Calculate new value
+    const newValue = (item.quantity || 0) * quote.price * exchangeRate;
+
+    // Update the item
+    await updatePortfolioItem(item.id!, {
+      pricePerUnit: quote.price,
+      currency: quote.currency,
+      currentValue: newValue,
+      lastPriceUpdate: new Date(),
+      isInternational: quote.isInternational,
+    });
+
+    updated++;
   }
 
   return {

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode, Dispatch, SetStateAction } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode, Dispatch, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertDialog,
@@ -65,16 +65,19 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
     }
   }, [saveHandler, pendingHref, router]);
 
+  const contextValue = useMemo(
+    () => ({
+      hasUnsavedChanges,
+      setHasUnsavedChanges,
+      saveHandler,
+      setSaveHandler,
+      navigateWithCheck,
+    }),
+    [hasUnsavedChanges, saveHandler, navigateWithCheck]
+  );
+
   return (
-    <UnsavedChangesContext.Provider
-      value={{
-        hasUnsavedChanges,
-        setHasUnsavedChanges,
-        saveHandler,
-        setSaveHandler,
-        navigateWithCheck,
-      }}
-    >
+    <UnsavedChangesContext.Provider value={contextValue}>
       {children}
 
       <AlertDialog open={showDialog} onOpenChange={setShowDialog}>

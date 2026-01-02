@@ -52,7 +52,7 @@ import {
   useAvailablePeriods,
   BudgetCategoryRow,
 } from "@/lib/hooks";
-import { setBudget, getBudgetForCategory, deleteBudget, findPreviousMonthWithBudgets, copyBudgetToMonth, getSetting, setSetting } from "@/lib/db";
+import { setBudget, getBudgetForCategory, deleteBudget, findPreviousMonthWithBudgets, copyBudgetToMonth, getSetting, setSetting } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { useUnsavedChanges } from "@/lib/unsaved-changes-context";

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from "react";
 import { toast } from "sonner";
 
 interface SnapshotProgress {
@@ -80,63 +80,63 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Get unique tickers to avoid duplicate API calls
+    const uniqueTickers = [...new Set(
+      tickerItems
+        .map(item => item.ticker?.toUpperCase())
+        .filter((ticker): ticker is string => Boolean(ticker))
+    )];
+
     // Start background processing
     isRunningRef.current = true;
     setProgress({
       isRunning: true,
-      total: tickerItems.length,
+      total: uniqueTickers.length,
       completed: 0,
       failed: 0,
     });
 
     // Show initial toast for many tickers
-    if (tickerItems.length > 50) {
-      toast.info(`Updating ${tickerItems.length} stock prices. This may take a few minutes...`);
+    if (uniqueTickers.length > 50) {
+      toast.info(`Updating ${uniqueTickers.length} stock prices. This may take a few minutes...`);
     }
 
     let completedCount = 0;
     let failedCount = 0;
-    const failedItems: Array<{ ticker: string; name: string }> = [];
+    const failedTickers: string[] = [];
 
-    // Process tickers with rate limiting
-    for (let i = 0; i < tickerItems.length; i++) {
-      const item = tickerItems[i];
-      if (!item.ticker) continue;
+    // Map to store fetched quotes by ticker
+    const tickerQuotes = new Map<string, { quote: Awaited<ReturnType<typeof lookupTicker>>; exchangeRate: number }>();
+
+    // First pass: fetch unique ticker prices with rate limiting
+    for (let i = 0; i < uniqueTickers.length; i++) {
+      const ticker = uniqueTickers[i];
 
       setProgress(prev => ({
         ...prev,
-        currentTicker: item.ticker,
+        currentTicker: ticker,
       }));
 
       try {
-        const quote = await lookupTicker(item.ticker);
+        const quote = await lookupTicker(ticker);
 
         if (!quote) {
           failedCount++;
-          failedItems.push({ ticker: item.ticker, name: item.name });
+          failedTickers.push(ticker);
+          tickerQuotes.set(ticker, { quote: null, exchangeRate: 1 });
         } else {
           // Get exchange rate if currency differs
           let exchangeRate = 1;
           if (quote.currency !== "CAD") {
             exchangeRate = await getExchangeRate(quote.currency, "CAD");
           }
-
-          // Calculate new value
-          const newValue = (item.quantity || 0) * quote.price * exchangeRate;
-
-          // Update the item
-          await updatePortfolioItem(item.id!, {
-            pricePerUnit: quote.price,
-            currency: quote.currency,
-            currentValue: newValue,
-            lastPriceUpdate: new Date(),
-          });
-
+          tickerQuotes.set(ticker, { quote, exchangeRate });
           completedCount++;
         }
       } catch {
         failedCount++;
-        failedItems.push({ ticker: item.ticker!, name: item.name });
+        failedTickers.push(ticker);
+        tickerQuotes.set(ticker, { quote: null, exchangeRate: 1 });
       }
 
       setProgress(prev => ({
@@ -146,10 +146,37 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       }));
 
       // Rate limit delay (skip on last item)
-      if (i < tickerItems.length - 1) {
+      if (i < uniqueTickers.length - 1) {
         await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
       }
     }
+
+    // Second pass: update all items using cached quotes (no API calls, no rate limiting needed)
+    for (const item of tickerItems) {
+      if (!item.ticker) continue;
+
+      const upperTicker = item.ticker.toUpperCase();
+      const cached = tickerQuotes.get(upperTicker);
+      if (!cached || !cached.quote) continue;
+
+      const { quote, exchangeRate } = cached;
+
+      // Calculate new value
+      const newValue = (item.quantity || 0) * quote.price * exchangeRate;
+
+      // Update the item
+      await updatePortfolioItem(item.id!, {
+        pricePerUnit: quote.price,
+        currency: quote.currency,
+        currentValue: newValue,
+        lastPriceUpdate: new Date(),
+      });
+    }
+
+    // Get failed item names for the toast message
+    const failedItems = tickerItems
+      .filter(item => item.ticker && failedTickers.includes(item.ticker.toUpperCase()))
+      .map(item => ({ ticker: item.ticker!, name: item.name }));
 
     // Done with price updates, create snapshot
     if (failedCount === 0) {
@@ -197,14 +224,17 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const contextValue = useMemo(
+    () => ({
+      progress,
+      startBackgroundSnapshot,
+      isSnapshotInProgress: progress.isRunning,
+    }),
+    [progress, startBackgroundSnapshot]
+  );
+
   return (
-    <SnapshotContext.Provider
-      value={{
-        progress,
-        startBackgroundSnapshot,
-        isSnapshotInProgress: progress.isRunning,
-      }}
-    >
+    <SnapshotContext.Provider value={contextValue}>
       {children}
     </SnapshotContext.Provider>
   );

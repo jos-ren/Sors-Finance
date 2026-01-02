@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Enable standalone output for Docker deployments
   output: "standalone",
+  // External packages for server-side only (native modules)
+  serverExternalPackages: ["better-sqlite3"],
   // Security headers
   headers: async () => [
     {

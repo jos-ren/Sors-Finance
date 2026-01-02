@@ -53,7 +53,7 @@ import {
   useMonthlyTotals,
   useYearlyTotals,
   useBudgetWithSpending,
-  useSpendingByCategory,
+  useSpendingByCategoryWithNames,
   useTransactionCount,
   useTransactionCountByPeriod,
   useAvailablePeriods,
@@ -413,7 +413,7 @@ export default function DashboardPage() {
   const yearlyTotals = useYearlyTotals(selectedYear ?? currentYear);
   const monthlyTotals = useMonthlyTotals(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
   const budgetWithSpending = useBudgetWithSpending(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
-  const spendingByCategory = useSpendingByCategory(selectedYear ?? currentYear, selectedMonth);
+  const spendingByCategory = useSpendingByCategoryWithNames(selectedYear ?? currentYear, selectedMonth);
   const allTransactionCount = useTransactionCount();
   const yearTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear);
   const monthTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear, selectedMonth ?? currentMonth);

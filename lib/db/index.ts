@@ -1,14 +1,13 @@
 /**
  * Database Module
  *
- * Central export for all database operations.
- * Import from "@/lib/db" to access all database functionality.
+ * Central export for database types.
+ * NOTE: All database operations now go through API routes.
+ * Use @/lib/hooks for data access in components.
+ * Use @/lib/db/client for direct API calls.
  */
 
-// Database instance
-export { db } from "./instance";
-
-// Types
+// Types only - safe for client components
 export type {
   DbCategory,
   DbTransaction,
@@ -27,102 +26,3 @@ export type {
 } from "./types";
 
 export { SYSTEM_CATEGORIES, BUCKET_TYPES } from "./types";
-
-// Category operations
-export {
-  getCategories,
-  getCategoryById,
-  getCategoryByUuid,
-  getExcludedCategory,
-  getUncategorizedCategory,
-  addCategory,
-  updateCategory,
-  deleteCategory,
-  reorderCategories,
-  addKeywordToCategory,
-  removeKeywordFromCategory,
-} from "./categories";
-
-// Transaction operations
-export {
-  getTransactions,
-  addTransaction,
-  addTransactionsBulk,
-  updateTransaction,
-  deleteTransaction,
-  deleteTransactionsBulk,
-  categorizeTransaction,
-  findDuplicateSignatures,
-  recategorizeTransactions,
-  getSpendingByCategory,
-  getYTDSpendingByCategory,
-  getTotalSpending,
-  getAllTimeTotals,
-  getAllTimeSpendingByCategory,
-  getAllTimeMonthlyTrend,
-} from "./transactions";
-
-// Budget operations
-export {
-  getBudgets,
-  getBudgetForCategory,
-  setBudget,
-  deleteBudget,
-  copyBudgetToMonth,
-  applyBudgetToPreviousMonths,
-  findPreviousMonthWithBudgets,
-  autoCopyBudgetsIfEmpty,
-} from "./budgets";
-
-// Import operations
-export {
-  getImports,
-  addImport,
-  deleteImport,
-} from "./imports";
-
-// Settings operations
-export {
-  getSetting,
-  setSetting,
-} from "./settings";
-
-// Portfolio operations
-export {
-  // Account operations
-  getPortfolioAccounts,
-  getPortfolioAccountById,
-  addPortfolioAccount,
-  updatePortfolioAccount,
-  deletePortfolioAccount,
-  reorderPortfolioAccounts,
-  // Item operations
-  getPortfolioItems,
-  getPortfolioItemById,
-  addPortfolioItem,
-  updatePortfolioItem,
-  deletePortfolioItem,
-  restorePortfolioItem,
-  reorderPortfolioItems,
-  getTickerModeItems,
-  // Aggregations
-  getBucketTotal,
-  getPortfolioAccountTotal,
-  getNetWorthSummary,
-  getBucketBreakdown,
-  // Snapshot operations
-  getPortfolioSnapshots,
-  getLatestPortfolioSnapshot,
-  createPortfolioSnapshot,
-  deletePortfolioSnapshot,
-  updatePortfolioSnapshot,
-  getNetWorthChange,
-  hasSnapshotToday,
-  getTodaySnapshot,
-} from "./portfolio";
-
-// Database initialization
-export {
-  seedDefaultCategories,
-  initializeDatabase,
-} from "./seed";
