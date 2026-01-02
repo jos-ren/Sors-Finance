@@ -2,6 +2,8 @@
 
 A privacy-focused, local-first personal finance app for budget tracking, transaction categorization, and net worth management. All your data stays on your device — nothing is sent to external servers.
 
+<img width="1277" height="950" alt="Screenshot 2026-01-01 214456" src="https://github.com/user-attachments/assets/0d05b80b-afbe-4bf1-89a9-7ead90287808" />
+
 ## Features
 
 - **Transaction Import** — Import bank statements (CSV/Excel) with automatic bank detection
