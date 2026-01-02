@@ -124,6 +124,7 @@ export function AddItemDialog({
           currency,
           lastPriceUpdate: priceMode === "ticker" && selectedTicker ? new Date() : undefined,
           priceMode,
+          isInternational: priceMode === "ticker" && selectedTicker ? selectedTicker.isInternational : undefined,
         });
       } else {
         await addPortfolioItem({
@@ -315,7 +316,7 @@ export function AddItemDialog({
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-[220px]">
                               <p className="text-xs">
-                                This is the stock ticker&apos;s native currency. The total value will be automatically converted to your preferred currency. (can be changed in Settings).
+                                The currency the stock trades in. You can change this if the auto-detected value is incorrect.
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -326,9 +327,17 @@ export function AddItemDialog({
                           id="currency"
                           value={currency}
                           onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                          onBlur={async () => {
+                            // Fetch exchange rate when user is done typing
+                            if (currency && currency !== "CAD") {
+                              const rate = await getExchangeRate(currency, "CAD");
+                              setExchangeRate(rate);
+                            } else {
+                              setExchangeRate(1);
+                            }
+                          }}
                           placeholder="USD"
                           className="flex-1"
-                          disabled={priceMode === "ticker" && !!selectedTicker}
                         />
                         {currency !== "CAD" && (
                           <Button
@@ -376,6 +385,7 @@ export function AddItemDialog({
                     value={value}
                     onChange={setValue}
                     placeholder="0.00"
+                    allowNegative={bucket === "Debt"}
                   />
                 </div>
 

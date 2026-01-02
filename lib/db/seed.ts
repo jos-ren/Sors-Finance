@@ -11,6 +11,7 @@ import { SYSTEM_CATEGORIES } from "./types";
 const SYSTEM_CATEGORY_DEFS = [
   { name: SYSTEM_CATEGORIES.UNCATEGORIZED, keywords: [], isSystem: true },
   { name: SYSTEM_CATEGORIES.EXCLUDED, keywords: [], isSystem: true },
+  { name: SYSTEM_CATEGORIES.INCOME, keywords: ["SALARY", "PAYROLL", "DEPOSIT", "DIRECT DEP", "E-TRANSFER IN"], isSystem: true },
 ];
 
 const DEFAULT_CATEGORIES = [

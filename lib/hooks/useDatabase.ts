@@ -15,6 +15,7 @@ import {
   getTransactions,
   getImports,
   getSpendingByCategory,
+  getYTDSpendingByCategory,
   getTotalSpending,
   getAllTimeTotals,
   getAllTimeSpendingByCategory,
@@ -88,6 +89,26 @@ export function useTransactionCount(): number | undefined {
   return useLiveQuery(() => db.transactions.count());
 }
 
+export function useTransactionCountByPeriod(year: number, month?: number): number | undefined {
+  return useLiveQuery(async () => {
+    let startDate: Date;
+    let endDate: Date;
+
+    if (month !== undefined) {
+      startDate = new Date(year, month, 1);
+      endDate = new Date(year, month + 1, 0, 23, 59, 59);
+    } else {
+      startDate = new Date(year, 0, 1);
+      endDate = new Date(year, 11, 31, 23, 59, 59);
+    }
+
+    return db.transactions
+      .where('date')
+      .between(startDate, endDate, true, true)
+      .count();
+  }, [year, month]);
+}
+
 export function useTransactionsByMonth(year: number, month: number): DbTransaction[] | undefined {
   return useLiveQuery(() => {
     const startDate = new Date(year, month, 1);
@@ -133,6 +154,168 @@ export function useBudgetWithSpending(year: number, month: number) {
       isNearLimit: spent >= budget.amount * 0.9 && spent <= budget.amount
     };
   });
+}
+
+// ============================================
+// Budget Page Data Types
+// ============================================
+
+export interface BudgetCategoryRow {
+  categoryId: number;
+  categoryName: string;
+  isSystemCategory: boolean;
+  // Budget values
+  monthlyBudget: number | null;
+  monthlyBudgetId: number | null;
+  yearlyBudget: number | null;
+  yearlyBudgetId: number | null;
+  // Spending values
+  currentMonthSpending: number;
+  ytdSpending: number;
+  yearlySpending: number;
+  // Rolling balance (for yearly budgets in monthly view)
+  monthlyAllowance: number | null;
+  rollingBalance: number | null;
+  paceStatus: 'under' | 'on' | 'over' | null;
+}
+
+export interface BudgetPageSummary {
+  totalMonthlyBudgeted: number;
+  totalYearlyBudgeted: number;
+  totalMonthlySpent: number;
+  totalYtdSpent: number;
+  monthlyRemaining: number;
+  yearlyRemaining: number;
+}
+
+export interface BudgetPageData {
+  rows: BudgetCategoryRow[];
+  summary: BudgetPageSummary;
+}
+
+/**
+ * Comprehensive hook for the budget page
+ * Returns all categories with their budget data and rolling balance calculations
+ */
+export function useBudgetPageData(year: number, month: number): BudgetPageData | undefined {
+  const categories = useCategories();
+
+  // Fetch monthly budgets for the selected month
+  const monthlyBudgets = useLiveQuery(
+    () => getBudgets(year, month),
+    [year, month]
+  );
+
+  // Fetch yearly budgets (month = null)
+  const yearlyBudgets = useLiveQuery(
+    () => getBudgets(year, null),
+    [year]
+  );
+
+  // Spending data
+  const currentMonthSpending = useLiveQuery(
+    () => getSpendingByCategory(year, month),
+    [year, month]
+  );
+
+  const ytdSpending = useLiveQuery(
+    () => getYTDSpendingByCategory(year),
+    [year]
+  );
+
+  const yearlySpending = useLiveQuery(
+    () => getSpendingByCategory(year),
+    [year]
+  );
+
+  // Compute the data
+  if (!categories || !monthlyBudgets || !yearlyBudgets ||
+      !currentMonthSpending || !ytdSpending || !yearlySpending) {
+    return undefined;
+  }
+
+  // Calculate months elapsed for rolling balance
+  // If viewing a past month, use that month; if current/future, use current month
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  // For rolling balance: how many months have "passed" for budget accrual
+  // If we're viewing the current year, use current month + 1 (1-indexed)
+  // If viewing a past year, use 12 (full year)
+  // If viewing a future year, use 0
+  let monthsElapsed: number;
+  if (year < currentYear) {
+    monthsElapsed = 12;
+  } else if (year > currentYear) {
+    monthsElapsed = 0;
+  } else {
+    monthsElapsed = currentMonth + 1;
+  }
+
+  const rows: BudgetCategoryRow[] = categories
+    .filter(c => !c.isSystem)
+    .map(category => {
+      const monthlyBudget = monthlyBudgets.find(b => b.categoryId === category.id);
+      const yearlyBudget = yearlyBudgets.find(b => b.categoryId === category.id);
+
+      const monthlyAmount = monthlyBudget?.amount ?? null;
+      const yearlyAmount = yearlyBudget?.amount ?? null;
+
+      const monthSpent = currentMonthSpending.get(category.id!) || 0;
+      const ytdSpent = ytdSpending.get(category.id!) || 0;
+      const yearSpent = yearlySpending.get(category.id!) || 0;
+
+      // Calculate rolling balance for yearly budgets
+      let monthlyAllowance: number | null = null;
+      let rollingBalance: number | null = null;
+      let paceStatus: 'under' | 'on' | 'over' | null = null;
+
+      if (yearlyAmount !== null && monthsElapsed > 0) {
+        monthlyAllowance = yearlyAmount / 12;
+        const cumulativeBudget = monthlyAllowance * monthsElapsed;
+        rollingBalance = cumulativeBudget - ytdSpent;
+
+        // Determine pace status (10% threshold for "on pace")
+        if (rollingBalance > monthlyAllowance * 0.1) {
+          paceStatus = 'under';
+        } else if (rollingBalance < -monthlyAllowance * 0.1) {
+          paceStatus = 'over';
+        } else {
+          paceStatus = 'on';
+        }
+      }
+
+      return {
+        categoryId: category.id!,
+        categoryName: category.name,
+        isSystemCategory: category.isSystem ?? false,
+        monthlyBudget: monthlyAmount,
+        monthlyBudgetId: monthlyBudget?.id ?? null,
+        yearlyBudget: yearlyAmount,
+        yearlyBudgetId: yearlyBudget?.id ?? null,
+        currentMonthSpending: monthSpent,
+        ytdSpending: ytdSpent,
+        yearlySpending: yearSpent,
+        monthlyAllowance,
+        rollingBalance,
+        paceStatus,
+      };
+    });
+
+  // Calculate summary
+  const summary: BudgetPageSummary = {
+    totalMonthlyBudgeted: rows.reduce((sum, r) => sum + (r.monthlyBudget || 0), 0),
+    totalYearlyBudgeted: rows.reduce((sum, r) => sum + (r.yearlyBudget || 0), 0),
+    totalMonthlySpent: rows.reduce((sum, r) => sum + r.currentMonthSpending, 0),
+    totalYtdSpent: rows.reduce((sum, r) => sum + r.ytdSpending, 0),
+    monthlyRemaining: 0,
+    yearlyRemaining: 0,
+  };
+  summary.monthlyRemaining = summary.totalMonthlyBudgeted - summary.totalMonthlySpent;
+  summary.yearlyRemaining = summary.totalYearlyBudgeted - summary.totalYtdSpent;
+
+  return { rows, summary };
 }
 
 // ============================================

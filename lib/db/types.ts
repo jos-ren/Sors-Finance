@@ -22,6 +22,7 @@ export interface DbCategory {
 export const SYSTEM_CATEGORIES = {
   EXCLUDED: "Excluded",
   UNCATEGORIZED: "Uncategorized",
+  INCOME: "Income",
 } as const;
 
 // ============================================
@@ -117,6 +118,7 @@ export interface DbPortfolioItem {
   currency?: string;
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
+  isInternational?: boolean;
 }
 
 export interface DbPortfolioSnapshot {
@@ -164,4 +166,5 @@ export interface AddPortfolioItemData {
   currency?: string;
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
+  isInternational?: boolean;
 }

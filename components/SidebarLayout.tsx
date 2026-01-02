@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PrivacyToggle } from "@/components/privacy-toggle";
 import { PageHeaderProvider, usePageHeader } from "@/lib/page-header-context";
+import { UnsavedChangesProvider } from "@/lib/unsaved-changes-context";
 import {
   Tooltip,
   TooltipContent,
@@ -70,14 +71,16 @@ function ScrollableContent({ children }: { children: React.ReactNode }) {
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <PageHeaderProvider>
-          <HeaderContent />
-          <ScrollableContent>{children}</ScrollableContent>
-        </PageHeaderProvider>
-      </SidebarInset>
-    </SidebarProvider>
+    <UnsavedChangesProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <PageHeaderProvider>
+            <HeaderContent />
+            <ScrollableContent>{children}</ScrollableContent>
+          </PageHeaderProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </UnsavedChangesProvider>
   );
 }

@@ -24,6 +24,7 @@ export interface SelectedTicker {
   name: string;
   price: number;
   currency: string;
+  isInternational?: boolean;
 }
 
 type SearchMode = "stocks" | "crypto";
@@ -160,6 +161,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
         name: data.name || result.name,
         price: data.price,
         currency: data.currency,
+        isInternational: data.isInternational,
       });
     } catch (err) {
       console.error("Price fetch error:", err);

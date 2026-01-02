@@ -20,6 +20,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   Pie,
   PieChart,
   XAxis,
@@ -33,6 +35,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ChartContainer,
   ChartTooltip,
@@ -68,6 +78,22 @@ const netWorthChartConfig = {
     label: "Net Worth",
     color: "var(--alt-lime)",
   },
+  savings: {
+    label: "Savings",
+    color: "var(--alt-emerald)",
+  },
+  investments: {
+    label: "Investments",
+    color: "var(--alt-blue)",
+  },
+  assets: {
+    label: "Assets",
+    color: "var(--alt-amber)",
+  },
+  debt: {
+    label: "Debt",
+    color: "var(--alt-red)",
+  },
 } satisfies ChartConfig;
 
 const bucketChartConfig = {
@@ -96,6 +122,8 @@ function formatCompact(amount: number): string {
   }).format(amount);
 }
 
+type TrendPeriod = "all" | "year";
+
 export default function PortfolioPage() {
   const { formatAmount } = usePrivacy();
   const summary = useNetWorthSummary();
@@ -106,6 +134,11 @@ export default function PortfolioPage() {
   // Snapshot state
   const autoSnapshotAttempted = useRef(false);
   const [editingSnapshot, setEditingSnapshot] = useState<DbPortfolioSnapshot | null>(null);
+
+  // Trend chart period state
+  const now = new Date();
+  const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>("all");
+  const [trendYear, setTrendYear] = useState(now.getFullYear());
 
   // Get the latest snapshot to compare with current net worth
   const latestSnapshot = useMemo(() => {
@@ -185,22 +218,45 @@ export default function PortfolioPage() {
 
   const sentinelRef = useSetPageHeader("Portfolio", null);
 
-  // Transform snapshot data for chart (use allSnapshots, limit to last 12 months)
+  // Available years from snapshots
+  const availableYears = useMemo(() => {
+    if (!allSnapshots || allSnapshots.length === 0) return [now.getFullYear()];
+    const years = [...new Set(allSnapshots.map(s => s.date.getFullYear()))].sort((a, b) => b - a);
+    return years.length > 0 ? years : [now.getFullYear()];
+  }, [allSnapshots, now]);
+
+  // Transform snapshot data for chart based on selected period
   const trendData = useMemo(() => {
     if (!allSnapshots || allSnapshots.length === 0) return [];
 
-    // Filter to last 12 months
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+    let filtered = allSnapshots;
 
-    const filtered = allSnapshots.filter(s => s.date >= twelveMonthsAgo);
+    if (trendPeriod === "year") {
+      filtered = allSnapshots.filter(s => s.date.getFullYear() === trendYear);
+    }
+    // "all" = no filtering
+
+    // Determine date format based on data span
+    const reversed = [...filtered].reverse();
+    const spansMultipleYears = reversed.length > 1 &&
+      reversed[0].date.getFullYear() !== reversed[reversed.length - 1].date.getFullYear();
 
     // Reverse to show oldest first (allSnapshots is sorted newest first)
-    return [...filtered].reverse().map(s => ({
-      date: s.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    return reversed.map(s => ({
+      date: trendPeriod === "year"
+        ? reversed.length > 12
+          ? s.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          : s.date.toLocaleDateString("en-US", { month: "short" })
+        : spansMultipleYears
+          ? s.date.toLocaleDateString("en-US", { month: "short", year: "numeric" })
+          : s.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
       netWorth: s.netWorth,
+      savings: s.totalSavings,
+      investments: s.totalInvestments,
+      assets: s.totalAssets,
+      debt: s.totalDebt,
     }));
-  }, [allSnapshots]);
+  }, [allSnapshots, trendPeriod, trendYear]);
 
   // Bucket breakdown for pie chart
   const bucketData = useMemo(() => {
@@ -292,44 +348,99 @@ export default function PortfolioPage() {
 
       {/* Net Worth Trend Chart */}
       <Card>
-        <CardHeader>
-          <CardTitle>Net Worth Trend</CardTitle>
-          <CardDescription>Your net worth over time</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle>Portfolio Trend</CardTitle>
+            <CardDescription>Net worth and breakdown over time</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <Tabs value={trendPeriod} onValueChange={(v) => setTrendPeriod(v as TrendPeriod)}>
+              <TabsList className="h-8">
+                <TabsTrigger value="all" className="text-xs px-3 h-6">All</TabsTrigger>
+                <TabsTrigger value="year" className="text-xs px-3 h-6">Year</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {trendPeriod === "year" && (
+              <Select value={trendYear.toString()} onValueChange={(v) => setTrendYear(parseInt(v))}>
+                <SelectTrigger className="w-24 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {trendData.length === 0 ? (
             <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin" />
+              {allSnapshots && allSnapshots.length > 0
+                ? "No snapshots for this period"
+                : <Loader2 className="h-6 w-6 animate-spin" />
+              }
             </div>
           ) : (
             <ChartContainer config={netWorthChartConfig} className="h-[300px] w-full">
-              <AreaChart data={trendData} margin={{ left: 12, right: 12 }}>
+              <LineChart data={trendData} margin={{ left: 12, right: 12 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="date"
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
+                  minTickGap={40}
                 />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => formatCompact(value)}
+                  tickFormatter={(value) => formatAmount(value, formatCompact)}
                 />
                 <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent indicator="dot" />}
+                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
                 />
-                <Area
+                <ChartLegend content={<ChartLegendContent />} />
+                <Line
                   dataKey="netWorth"
                   type="monotone"
-                  fill="var(--alt-lime)"
-                  fillOpacity={0.4}
                   stroke="var(--alt-lime)"
-                  strokeWidth={2}
+                  strokeWidth={3}
+                  dot={false}
                 />
-              </AreaChart>
+                <Line
+                  dataKey="savings"
+                  type="monotone"
+                  stroke="var(--alt-emerald)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  dataKey="investments"
+                  type="monotone"
+                  stroke="var(--alt-blue)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  dataKey="assets"
+                  type="monotone"
+                  stroke="var(--alt-amber)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  dataKey="debt"
+                  type="monotone"
+                  stroke="var(--alt-red)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
             </ChartContainer>
           )}
         </CardContent>

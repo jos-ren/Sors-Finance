@@ -25,6 +25,7 @@ export type BucketType = (typeof BUCKET_TYPES)[number];
 export const SYSTEM_CATEGORIES = {
   EXCLUDED: "Excluded",
   UNCATEGORIZED: "Uncategorized",
+  INCOME: "Income",
 } as const;
 
 // ============================================

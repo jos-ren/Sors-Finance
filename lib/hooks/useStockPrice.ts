@@ -9,6 +9,7 @@ export interface StockQuote {
   change: number;
   previousClose?: number;
   marketState?: string;
+  isInternational?: boolean;
 }
 
 export interface StockApiError {
@@ -322,6 +323,7 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
         currency: quote.currency,
         currentValue: newValue,
         lastPriceUpdate: new Date(),
+        isInternational: quote.isInternational,
       });
 
       updated++;

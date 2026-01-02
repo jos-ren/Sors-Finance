@@ -48,11 +48,13 @@ import {
 } from "@/components/ui/popover";
 import {
   useMonthlyTrend,
+  useDailyTrend,
   useMonthlyTotals,
   useYearlyTotals,
   useBudgetWithSpending,
   useSpendingByCategory,
   useTransactionCount,
+  useTransactionCountByPeriod,
   useAvailablePeriods,
   useAllTimeTotals,
   useAllTimeSpendingByCategory,
@@ -406,11 +408,14 @@ export default function DashboardPage() {
 
   // Fetch real data from Dexie - use selected date range
   const monthlyTrend = useMonthlyTrend(selectedYear ?? currentYear);
+  const dailyTrend = useDailyTrend(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
   const yearlyTotals = useYearlyTotals(selectedYear ?? currentYear);
   const monthlyTotals = useMonthlyTotals(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
   const budgetWithSpending = useBudgetWithSpending(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
   const spendingByCategory = useSpendingByCategory(selectedYear ?? currentYear, selectedMonth);
-  const transactionCount = useTransactionCount();
+  const allTransactionCount = useTransactionCount();
+  const yearTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear);
+  const monthTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
 
   // All-time data hooks
   const allTimeTotals = useAllTimeTotals();
@@ -424,7 +429,10 @@ export default function DashboardPage() {
   const activeSpendingByCategory = viewMode === "all" ? allTimeSpendingByCategory : spendingByCategory;
 
   // Use appropriate trend data based on view mode
-  const activeTrendData = viewMode === "all" ? allTimeMonthlyTrend : monthlyTrend;
+  const activeTrendData = viewMode === "all" ? allTimeMonthlyTrend : viewMode === "year" ? monthlyTrend : dailyTrend;
+
+  // Use appropriate transaction count based on view mode
+  const activeTransactionCount = viewMode === "all" ? allTransactionCount : viewMode === "year" ? yearTransactionCount : monthTransactionCount;
 
   // Transform spending data for charts (use direct spending, not budget-dependent)
   const categorySpendingData = useMemo(() => {
@@ -538,7 +546,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Transactions"
-          value={(transactionCount ?? 0).toString()}
+          value={(activeTransactionCount ?? 0).toString()}
           description={`Top: ${topCategory}`}
           icon={ArrowUpRight}
         />
@@ -546,12 +554,16 @@ export default function DashboardPage() {
 
       {/* Charts */}
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Monthly Trend Area Chart */}
+        {/* Income vs Expenses Trend Chart */}
         <Card className="col-span-2">
           <CardHeader>
             <CardTitle>Income vs Expenses</CardTitle>
             <CardDescription>
-              {viewMode === "all" ? "Monthly comparison across all time" : `Monthly comparison for ${selectedYear}`}
+              {viewMode === "all"
+                ? "Monthly comparison across all time"
+                : viewMode === "year"
+                  ? `Monthly comparison for ${selectedYear}`
+                  : `Daily comparison for ${periodName}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -562,20 +574,21 @@ export default function DashboardPage() {
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey="monthName"
+                  dataKey={viewMode === "month" ? "dayName" : "monthName"}
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
+                  interval={viewMode === "month" ? "preserveStartEnd" : 0}
                 />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => `$${value}`}
+                  tickFormatter={(value) => formatAmount(value, (v) => `$${v}`)}
                 />
                 <ChartTooltip
                   cursor={false}
-                  content={<ChartTooltipContent indicator="dot" />}
+                  content={<ChartTooltipContent indicator="dot" formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
                 />
                 <ChartLegend content={<ChartLegendContent />} />
                 <Area
@@ -632,11 +645,11 @@ export default function DashboardPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => `$${value}`}
+                  tickFormatter={(value) => formatAmount(value, (v) => `$${v}`)}
                 />
                 <ChartTooltip
                   cursor={false}
-                  content={<ChartTooltipContent />}
+                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
                 />
                 <Bar
                   dataKey="amount"
@@ -750,7 +763,7 @@ export default function DashboardPage() {
                   <PieChart>
                     <ChartTooltip
                       cursor={false}
-                      content={<ChartTooltipContent hideLabel />}
+                      content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
                     />
                     <Pie
                       data={categorySpendingData}

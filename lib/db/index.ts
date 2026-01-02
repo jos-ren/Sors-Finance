@@ -55,6 +55,7 @@ export {
   findDuplicateSignatures,
   recategorizeTransactions,
   getSpendingByCategory,
+  getYTDSpendingByCategory,
   getTotalSpending,
   getAllTimeTotals,
   getAllTimeSpendingByCategory,
@@ -68,6 +69,9 @@ export {
   setBudget,
   deleteBudget,
   copyBudgetToMonth,
+  applyBudgetToPreviousMonths,
+  findPreviousMonthWithBudgets,
+  autoCopyBudgetsIfEmpty,
 } from "./budgets";
 
 // Import operations

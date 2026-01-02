@@ -30,8 +30,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Pencil, Trash2, X, Search, GripVertical, Lock } from "lucide-react";
-import { DbCategory } from "@/lib/db";
+import { Plus, Pencil, Trash2, X, Search, GripVertical, Lock, Info } from "lucide-react";
+import { DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
+
+// Descriptions for system categories
+const SYSTEM_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  [SYSTEM_CATEGORIES.UNCATEGORIZED]: "Transactions that don't match any category keywords. This category cannot be edited.",
+  [SYSTEM_CATEGORIES.EXCLUDED]: "Transactions excluded from all reports and budgets. Can be used for transfers between accounts etc.",
+  [SYSTEM_CATEGORIES.INCOME]: "Income transactions such as salary, deposits, and refunds. Excluded from expense budgets.",
+};
 import {
   DndContext,
   closestCenter,
@@ -528,6 +535,16 @@ export function CategoryManager({
               <DialogTitle>Edit Category</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-5 overflow-hidden flex-1">
+              {/* System Category Description */}
+              {editingCategory?.isSystem && SYSTEM_CATEGORY_DESCRIPTIONS[editingCategory.name] && (
+                <div className="flex-shrink-0 flex items-start gap-2 p-3 rounded-lg bg-muted/50 border">
+                  <Info className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    {SYSTEM_CATEGORY_DESCRIPTIONS[editingCategory.name]}
+                  </p>
+                </div>
+              )}
+
               {/* Category Name */}
               <div className="flex-shrink-0 space-y-2">
                 <div className="flex items-center gap-2">

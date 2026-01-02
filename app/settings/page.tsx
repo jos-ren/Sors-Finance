@@ -14,12 +14,15 @@ import {
   Plus,
   Pencil,
   ChevronsUpDown,
+  Upload,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -69,7 +72,7 @@ import {
   SUPPORTED_CURRENCIES,
   type Currency,
 } from "@/lib/settingsStore";
-import { db } from "@/lib/db";
+import { db, getSetting, setSetting } from "@/lib/db";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { cn } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -181,6 +184,13 @@ export default function SettingsPage() {
   const [showDevAlertDialog, setShowDevAlertDialog] = useState(false);
   const [showDevDialog, setShowDevDialog] = useState(false);
 
+  // Snapshot import state
+  const [isImportingSnapshots, setIsImportingSnapshots] = useState(false);
+  const snapshotFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Preferences state
+  const [autoCopyBudgets, setAutoCopyBudgets] = useState(false);
+
   // Page header
   const sentinelRef = useSetPageHeader("Settings");
 
@@ -229,6 +239,11 @@ export default function SettingsPage() {
 
     setCurrencyState(getCurrency());
     setTimezoneState(getTimezone());
+
+    // Load preferences from IndexedDB
+    getSetting("autoCopyBudgets").then(value => {
+      setAutoCopyBudgets(value === "true");
+    });
 
     // Check if we just reset data and show toast (with delay to ensure Toaster is mounted)
     if (sessionStorage.getItem("data-reset-success")) {
@@ -302,6 +317,13 @@ export default function SettingsPage() {
     setCurrencyOpen(false);
     setCurrencySearch("");
     toast.success(`Currency set to ${value}`);
+  };
+
+  // Auto-copy budgets handler
+  const handleAutoCopyBudgetsChange = async (checked: boolean) => {
+    setAutoCopyBudgets(checked);
+    await setSetting("autoCopyBudgets", checked ? "true" : "false");
+    toast.success(checked ? "Auto-copy budgets enabled" : "Auto-copy budgets disabled");
   };
 
   // Timezone handler
@@ -581,6 +603,107 @@ export default function SettingsPage() {
     }
   };
 
+  // Historical snapshot import handler
+  const handleImportSnapshots = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingSnapshots(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+      if (rows.length === 0) {
+        toast.error("No data found in file");
+        return;
+      }
+
+      // Parse and validate rows
+      const snapshots: Array<{
+        date: Date;
+        netWorth: number;
+        totalSavings: number;
+        totalInvestments: number;
+        totalAssets: number;
+        totalDebt: number;
+      }> = [];
+
+      for (const row of rows) {
+        // Handle different possible column names
+        const dateVal = row["Date"] || row["date"];
+        const netWorthVal = row["Net Worth"] || row["NetWorth"] || row["net_worth"] || row["netWorth"];
+        const savingsVal = row["Savings"] || row["savings"] || row["Total Savings"] || row["totalSavings"];
+        const investmentsVal = row["Investments"] || row["investments"] || row["Total Investments"] || row["totalInvestments"];
+        const assetsVal = row["Assets"] || row["assets"] || row["Total Assets"] || row["totalAssets"];
+        const debtVal = row["Debt"] || row["debt"] || row["Total Debt"] || row["totalDebt"];
+
+        if (!dateVal) {
+          console.warn("Skipping row without date:", row);
+          continue;
+        }
+
+        // Parse date - handle both string dates and Excel serial numbers
+        let date: Date;
+        if (typeof dateVal === "number") {
+          // Excel serial date
+          date = new Date((dateVal - 25569) * 86400 * 1000);
+        } else {
+          date = new Date(String(dateVal));
+        }
+
+        if (isNaN(date.getTime())) {
+          console.warn("Skipping row with invalid date:", row);
+          continue;
+        }
+
+        snapshots.push({
+          date,
+          netWorth: Number(netWorthVal) || 0,
+          totalSavings: Number(savingsVal) || 0,
+          totalInvestments: Number(investmentsVal) || 0,
+          totalAssets: Number(assetsVal) || 0,
+          totalDebt: Number(debtVal) || 0,
+        });
+      }
+
+      if (snapshots.length === 0) {
+        toast.error("No valid snapshots found in file");
+        return;
+      }
+
+      // Import snapshots into database
+      let imported = 0;
+      for (const snapshot of snapshots) {
+        await db.portfolioSnapshots.add({
+          uuid: crypto.randomUUID(),
+          date: snapshot.date,
+          netWorth: snapshot.netWorth,
+          totalSavings: snapshot.totalSavings,
+          totalInvestments: snapshot.totalInvestments,
+          totalAssets: snapshot.totalAssets,
+          totalDebt: snapshot.totalDebt,
+          details: { accounts: [], items: [] },
+          createdAt: new Date(),
+        });
+        imported++;
+      }
+
+      toast.success(`Imported ${imported} historical snapshots`);
+    } catch (error) {
+      console.error("Error importing snapshots:", error);
+      toast.error("Failed to import snapshots");
+    } finally {
+      setIsImportingSnapshots(false);
+      // Reset file input
+      if (snapshotFileInputRef.current) {
+        snapshotFileInputRef.current.value = "";
+      }
+    }
+  };
+
   const hasKey = Boolean(savedKey);
 
   // Developer page content
@@ -638,6 +761,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="general" className="space-y-6">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
           {process.env.NODE_ENV === "development" && (
@@ -798,6 +922,37 @@ export default function SettingsPage() {
                 <p className="text-sm text-muted-foreground">
                   Defaults to your browser&apos;s timezone on first launch.
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Preferences Tab */}
+        <TabsContent value="preferences" className="space-y-6 max-w-2xl">
+          {/* Budget Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Budget
+              </CardTitle>
+              <CardDescription>
+                Configure budget behavior and automation
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="auto-copy-budgets">Auto-copy budgets</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically copy budget amounts from the previous month when entering a new month with no budgets set
+                  </p>
+                </div>
+                <Switch
+                  id="auto-copy-budgets"
+                  checked={autoCopyBudgets}
+                  onCheckedChange={handleAutoCopyBudgetsChange}
+                />
               </div>
             </CardContent>
           </Card>
@@ -971,6 +1126,68 @@ export default function SettingsPage() {
         {/* Developer Tab */}
         {process.env.NODE_ENV === "development" && (
           <TabsContent value="developer" className="space-y-6">
+            {/* Import Historical Snapshots */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-5 w-5" />
+                  Import Historical Snapshots
+                </CardTitle>
+                <CardDescription>
+                  Upload an Excel file with historical portfolio snapshot data
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border p-4 space-y-3">
+                  <h4 className="font-medium">Expected format:</h4>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs font-mono border-collapse">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="px-2 py-1 text-left">Date</th>
+                          <th className="px-2 py-1 text-left">Net Worth</th>
+                          <th className="px-2 py-1 text-left">Savings</th>
+                          <th className="px-2 py-1 text-left">Investments</th>
+                          <th className="px-2 py-1 text-left">Assets</th>
+                          <th className="px-2 py-1 text-left">Debt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="text-muted-foreground">
+                          <td className="px-2 py-1">2025-12-31</td>
+                          <td className="px-2 py-1">9999.99</td>
+                          <td className="px-2 py-1">499.99</td>
+                          <td className="px-2 py-1">450.00</td>
+                          <td className="px-2 py-1">6700.00</td>
+                          <td className="px-2 py-1">42.00</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Dates can be in YYYY-MM-DD format or Excel date format.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    ref={snapshotFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportSnapshots}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => snapshotFileInputRef.current?.click()}
+                    disabled={isImportingSnapshots}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    {isImportingSnapshots ? "Importing..." : "Upload Excel File"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Primary Colors */}
             <Card>
               <CardHeader>

@@ -123,6 +123,7 @@ export async function addPortfolioItem(data: AddPortfolioItemData): Promise<numb
     currency: data.currency,
     lastPriceUpdate: data.lastPriceUpdate,
     priceMode: data.priceMode ?? (data.ticker ? "ticker" : "manual"),
+    isInternational: data.isInternational,
     order: maxOrder + 1,
     isActive: true,
     createdAt: new Date(),
@@ -134,7 +135,7 @@ export async function updatePortfolioItem(
   id: number,
   updates: Partial<Pick<
     DbPortfolioItem,
-    "name" | "currentValue" | "notes" | "accountId" | "ticker" | "quantity" | "pricePerUnit" | "currency" | "lastPriceUpdate" | "priceMode"
+    "name" | "currentValue" | "notes" | "accountId" | "ticker" | "quantity" | "pricePerUnit" | "currency" | "lastPriceUpdate" | "priceMode" | "isInternational"
   >>
 ): Promise<void> {
   await db.portfolioItems.update(id, {

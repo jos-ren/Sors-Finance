@@ -248,6 +248,35 @@ export async function getSpendingByCategory(year: number, month?: number): Promi
   return spending;
 }
 
+/**
+ * Get Year-To-Date spending by category (Jan 1 to current date)
+ * Used for rolling balance calculations on yearly budgets
+ */
+export async function getYTDSpendingByCategory(year: number): Promise<Map<number, number>> {
+  const now = new Date();
+  const startDate = new Date(year, 0, 1); // January 1st
+  const endDate = new Date(year, now.getMonth(), now.getDate(), 23, 59, 59);
+
+  const excludedCategory = await getExcludedCategory();
+  const excludedCategoryId = excludedCategory?.id;
+
+  const transactions = await db.transactions
+    .where("date")
+    .between(startDate, endDate, true, true)
+    .toArray();
+
+  const spending = new Map<number, number>();
+
+  for (const t of transactions) {
+    if (t.categoryId !== null && t.categoryId !== excludedCategoryId && t.amountOut > 0) {
+      const current = spending.get(t.categoryId) || 0;
+      spending.set(t.categoryId, current + t.amountOut);
+    }
+  }
+
+  return spending;
+}
+
 export async function getTotalSpending(year: number, month?: number): Promise<{ income: number; expenses: number }> {
   let startDate: Date;
   let endDate: Date;

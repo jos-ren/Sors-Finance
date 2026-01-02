@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -17,6 +16,7 @@ import {
   Settings,
   Loader2,
 } from "lucide-react";
+import { useUnsavedChanges } from "@/lib/unsaved-changes-context";
 import {
   Sidebar,
   SidebarContent,
@@ -43,14 +43,14 @@ import { useSnapshot } from "@/lib/snapshot-context";
 
 const navItems = [
   {
-    title: "Transactions",
-    url: "/transactions",
-    icon: Receipt,
-  },
-  {
     title: "Budget",
     url: "/budget",
     icon: Wallet,
+  },
+  {
+    title: "Transactions",
+    url: "/transactions",
+    icon: Receipt,
   },
   {
     title: "Categories",
@@ -67,6 +67,24 @@ const portfolioSubItems = [
   { title: "Debt", url: "/portfolio/debt", icon: CreditCard },
 ];
 
+// Custom link component that checks for unsaved changes
+function NavLink({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) {
+  const { navigateWithCheck } = useUnsavedChanges();
+
+  return (
+    <a
+      href={href}
+      className={className}
+      onClick={(e) => {
+        e.preventDefault();
+        navigateWithCheck(href);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const { progress, isSnapshotInProgress } = useSnapshot();
@@ -81,7 +99,7 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/">
+              <NavLink href="/">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <DollarSign className="h-5 w-5" />
                 </div>
@@ -89,7 +107,7 @@ export function AppSidebar() {
                   <span className="text-sm font-semibold">Sors</span>
                   <span className="text-xs text-muted-foreground">Budget Tracking Tool</span>
                 </div>
-              </Link>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -106,12 +124,28 @@ export function AppSidebar() {
                   isActive={pathname === "/"}
                   tooltip="Dashboard"
                 >
-                  <Link href="/">
+                  <NavLink href="/">
                     <LayoutDashboard />
                     <span>Dashboard</span>
-                  </Link>
+                  </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+
+              {/* Budget, Transactions, Categories */}
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)}
+                    tooltip={item.title}
+                  >
+                    <NavLink href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
 
               {/* Portfolio with collapsible sub-items */}
               <Collapsible defaultOpen className="group/collapsible">
@@ -134,10 +168,10 @@ export function AppSidebar() {
                             asChild
                             isActive={pathname === item.url}
                           >
-                            <Link href={item.url}>
+                            <NavLink href={item.url}>
                               <item.icon className="h-4 w-4" />
                               <span>{item.title}</span>
-                            </Link>
+                            </NavLink>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       ))}
@@ -145,22 +179,6 @@ export function AppSidebar() {
                   </CollapsibleContent>
                 </SidebarMenuItem>
               </Collapsible>
-
-              {/* Other nav items */}
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={item.url === "/" ? pathname === "/" : pathname.startsWith(item.url)}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -191,10 +209,10 @@ export function AppSidebar() {
               isActive={pathname.startsWith("/settings")}
               tooltip="Settings"
             >
-              <Link href="/settings">
+              <NavLink href="/settings">
                 <Settings />
                 <span>Settings</span>
-              </Link>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
