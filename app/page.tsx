@@ -15,6 +15,7 @@ import {
   Area,
   AreaChart,
   Bar,
+  BarProps,
   ComposedChart,
   CartesianGrid,
   Cell,
@@ -655,7 +656,7 @@ export default function DashboardPage() {
                   dataKey="amount"
                   radius={4}
                   name="Spent"
-                  shape={(props) => {
+                  shape={(props: BarProps) => {
                     const { x, y, width, height, index } = props as {
                       x?: number;
                       y?: number;
@@ -663,10 +664,10 @@ export default function DashboardPage() {
                       height?: number;
                       index?: number;
                     };
-                    if (x === undefined || y === undefined || width === undefined || height === undefined || index === undefined) return null;
+                    if (x === undefined || y === undefined || width === undefined || height === undefined || index === undefined) return <></>;
 
                     const entry = categorySpendingData[index];
-                    if (!entry) return null;
+                    if (!entry) return <></>;
 
                     const budget = entry.budget || 0;
                     const isOverBudget = budget > 0 && entry.amount > budget;

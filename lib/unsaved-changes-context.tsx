@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, ReactNode, Dispatch, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertDialog,
@@ -14,11 +14,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 
+type SaveHandler = (() => Promise<void>) | null;
+
 interface UnsavedChangesContextType {
   hasUnsavedChanges: boolean;
   setHasUnsavedChanges: (value: boolean) => void;
-  saveHandler: (() => Promise<void>) | null;
-  setSaveHandler: (handler: (() => Promise<void>) | null) => void;
+  saveHandler: SaveHandler;
+  setSaveHandler: Dispatch<SetStateAction<SaveHandler>>;
   navigateWithCheck: (href: string) => void;
 }
 
@@ -27,7 +29,7 @@ const UnsavedChangesContext = createContext<UnsavedChangesContextType | null>(nu
 export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [saveHandler, setSaveHandler] = useState<(() => Promise<void>) | null>(null);
+  const [saveHandler, setSaveHandler] = useState<SaveHandler>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
 

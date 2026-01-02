@@ -562,7 +562,6 @@ export default function SettingsPage() {
             Name: i.name,
             Account: account?.name || "",
             "Current Value": i.currentValue,
-            "Cost Basis": i.costBasis || "",
             Quantity: i.quantity || "",
             Ticker: i.ticker || "",
             Currency: i.currency || "",
