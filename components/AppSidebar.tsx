@@ -48,14 +48,14 @@ const navItems = [
     icon: Wallet,
   },
   {
-    title: "Transactions",
-    url: "/transactions",
-    icon: Receipt,
-  },
-  {
     title: "Categories",
     url: "/categories",
     icon: Tags,
+  },
+  {
+    title: "Transactions",
+    url: "/transactions",
+    icon: Receipt,
   },
 ];
 

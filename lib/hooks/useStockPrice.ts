@@ -350,10 +350,10 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
     // Calculate new value
     const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
-    // Update the item
+    // Update the item - preserve user-set currency if already defined
     await updatePortfolioItem(item.id!, {
       pricePerUnit: quote.price,
-      currency: quote.currency,
+      currency: item.currency || quote.currency, // Keep existing currency if user set it
       currentValue: newValue,
       lastPriceUpdate: new Date(),
       isInternational: quote.isInternational,

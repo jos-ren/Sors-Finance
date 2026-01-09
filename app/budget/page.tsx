@@ -51,6 +51,7 @@ import {
   useBudgetPageData,
   useAvailablePeriods,
   BudgetCategoryRow,
+  invalidateBudgets,
 } from "@/lib/hooks";
 import { setBudget, getBudgetForCategory, deleteBudget, findPreviousMonthWithBudgets, copyBudgetToMonth, getSetting, setSetting } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
@@ -480,6 +481,7 @@ export default function BudgetPage() {
           if (result && autoCopyEnabled) {
             // Auto-copy silently
             await copyBudgetToMonth(result.year, result.month, selectedMonth.year, selectedMonth.month);
+            invalidateBudgets();
             setPreviousMonthWithBudgets(null);
           } else {
             setPreviousMonthWithBudgets(result);
@@ -502,6 +504,7 @@ export default function BudgetPage() {
         selectedMonth.year,
         selectedMonth.month
       );
+      invalidateBudgets();
       toast.success(`Copied budgets from ${MONTH_NAMES[previousMonthWithBudgets.month]} ${previousMonthWithBudgets.year}`);
       setPreviousMonthWithBudgets(null);
     } catch (error) {
@@ -526,6 +529,7 @@ export default function BudgetPage() {
         selectedMonth.year,
         selectedMonth.month
       );
+      invalidateBudgets();
       toast.success("Auto-copy enabled. Budgets will be copied automatically each month. You can change this in Settings > Preferences.", { duration: 6000 });
       setPreviousMonthWithBudgets(null);
     } catch (error) {
@@ -665,6 +669,7 @@ export default function BudgetPage() {
         }
       }
 
+      invalidateBudgets();
       toast.success("Budgets saved");
       setPendingChanges(new Map());
     } catch (error) {
