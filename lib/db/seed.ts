@@ -182,8 +182,6 @@ async function ensureSystemCategories(existingCategories: typeof schema.categori
  * This should be called when a new user registers.
  */
 export async function seedDefaultSettingsForUser(userId: number): Promise<void> {
-  const now = new Date();
-
   // Default settings to seed
   const defaultSettings = [
     { key: "CURRENCY", value: "USD" },
@@ -209,8 +207,6 @@ export async function seedDefaultSettingsForUser(userId: number): Promise<void> 
         key: setting.key,
         value: setting.value,
         userId,
-        createdAt: now,
-        updatedAt: now,
       });
     }
   }
