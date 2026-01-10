@@ -15,13 +15,11 @@ export const SESSION_COOKIE_NAME = "sors_session";
 function getCookieOptions(expiresAt?: Date) {
   const options: {
     httpOnly: boolean;
-    secure: boolean;
     sameSite: "lax";
     path: string;
     expires?: Date;
   } = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
   };
@@ -65,7 +63,6 @@ export function getSessionCookie(request: NextRequest): string | undefined {
 export function clearSessionCookie(response: NextResponse): void {
   response.cookies.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/",
     expires: new Date(0),
