@@ -71,7 +71,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     // Persist to database
     try {
       const dbKey = DB_KEYS[key];
-      const dbValue = typeof value === "boolean" ? String(value) : (value ?? "");
+      const dbValue: string = typeof value === "boolean" ? String(value) : (value ?? "");
       await setSetting(dbKey, dbValue);
     } catch (error) {
       console.error(`Failed to save setting ${key}:`, error);
