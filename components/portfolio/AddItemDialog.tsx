@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useSyncExternalStore, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { RefreshCw, AlertTriangle, Info } from "lucide-react";
 import Link from "next/link";
 import {
@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { addPortfolioItem, BucketType, PriceMode } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
-import { hasFinnhubApiKey } from "@/lib/settingsStore";
+import { useSettings } from "@/lib/settings-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,15 +29,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TickerSearch, SelectedTicker } from "./TickerSearch";
-
-// Hook to check API key status
-function useHasApiKey() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => hasFinnhubApiKey(),
-    () => true
-  );
-}
 
 interface AddItemDialogProps {
   open: boolean;
@@ -55,7 +46,9 @@ export function AddItemDialog({
   bucket,
 }: AddItemDialogProps) {
   const isInvestment = bucket === "Investments";
-  const hasApiKey = useHasApiKey();
+  const { hasFinnhubApiKey, isLoading: settingsLoading } = useSettings();
+  // Only show warning after settings have loaded and there's no key
+  const showApiKeyWarning = !settingsLoading && !hasFinnhubApiKey;
 
   // Basic fields
   const [name, setName] = useState("");
@@ -228,7 +221,7 @@ export function AddItemDialog({
                     ? "Price updates automatically via Finnhub (requires API key)"
                     : "You enter and update the price manually"}
                 </p>
-                {priceMode === "ticker" && !hasApiKey && (
+                {priceMode === "ticker" && showApiKeyWarning && (
                   <Alert className="mt-2 border-yellow-500/50 bg-yellow-500/10">
                     <AlertTriangle className="h-4 w-4 text-yellow-500" />
                     <AlertDescription className="text-xs">
@@ -250,7 +243,7 @@ export function AddItemDialog({
                 <TickerSearch
                   value={selectedTicker}
                   onSelect={handleTickerSelect}
-                  hasApiKey={hasApiKey}
+                  hasApiKey={hasFinnhubApiKey}
                 />
               </div>
             )}

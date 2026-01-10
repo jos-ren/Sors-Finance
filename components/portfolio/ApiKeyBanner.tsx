@@ -1,22 +1,13 @@
 "use client";
 
-import { useState, useSyncExternalStore, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { AlertTriangle, Settings, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { hasFinnhubApiKey } from "@/lib/settingsStore";
+import { useSettings } from "@/lib/settings-context";
 
 const DISMISSED_KEY = "sors-api-key-banner-dismissed";
-
-// Use useSyncExternalStore for client-side localStorage check
-function useHasApiKey() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => hasFinnhubApiKey(),
-    () => true
-  );
-}
 
 // Check if banner was previously dismissed (read from localStorage on mount)
 function getIsDismissed(): boolean {
@@ -25,7 +16,7 @@ function getIsDismissed(): boolean {
 }
 
 export function ApiKeyBanner() {
-  const hasKey = useHasApiKey();
+  const { hasFinnhubApiKey, isLoading } = useSettings();
   const [dismissed, setDismissed] = useState(getIsDismissed);
 
   const handleDismiss = useCallback(() => {
@@ -33,8 +24,8 @@ export function ApiKeyBanner() {
     setDismissed(true);
   }, []);
 
-  // Don't show if key is configured or user dismissed permanently
-  if (hasKey || dismissed) {
+  // Don't show while loading, if key is configured, or if user dismissed
+  if (isLoading || hasFinnhubApiKey || dismissed) {
     return null;
   }
 
@@ -53,7 +44,7 @@ export function ApiKeyBanner() {
         </p>
         <div className="flex items-center gap-2">
           <Button size="sm" asChild>
-            <Link href="/settings">
+            <Link href="/settings?tab=integrations">
               <Settings className="h-4 w-4 mr-2" />
               Configure API Key
             </Link>

@@ -10,7 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getFinnhubApiKey } from "@/lib/settingsStore";
+import { useFinnhubApiKey } from "@/lib/settings-context";
 
 export interface TickerResult {
   symbol: string;
@@ -37,6 +37,7 @@ interface TickerSearchProps {
 }
 
 export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSearchProps) {
+  const apiKey = useFinnhubApiKey();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<TickerResult[]>([]);
@@ -52,7 +53,6 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
 
   // Search for symbols with debounce
   const searchSymbols = useCallback(async (query: string, mode: SearchMode) => {
-    const apiKey = getFinnhubApiKey();
     if (!apiKey) {
       setError("API key required");
       return;
@@ -88,7 +88,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [apiKey]);
 
   // Debounced search effect
   useEffect(() => {
@@ -104,7 +104,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     } else if (search.trim()) {
       debounceRef.current = setTimeout(() => {
         searchSymbols(search, searchMode);
-      }, 300);
+      }, 1000);
     } else {
       setResults([]);
     }
@@ -131,7 +131,6 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
 
   // Fetch price when selecting a ticker
   const handleSelect = async (result: TickerResult) => {
-    const apiKey = getFinnhubApiKey();
     if (!apiKey) return;
 
     setIsLoadingPrice(true);

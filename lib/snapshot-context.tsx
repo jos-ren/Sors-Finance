@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from "react";
 import { toast } from "sonner";
+import { useFinnhubApiKey, useHasFinnhubApiKey } from "@/lib/settings-context";
 
 interface SnapshotProgress {
   isRunning: boolean;
@@ -31,6 +32,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   });
 
   const isRunningRef = useRef(false);
+  const apiKey = useFinnhubApiKey();
+  const hasApiKey = useHasFinnhubApiKey();
 
   const startBackgroundSnapshot = useCallback(async (options?: { forceUpdate?: boolean }) => {
     // Prevent multiple concurrent snapshots
@@ -51,7 +54,6 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       updatePortfolioItem
     } = await import("./hooks/useDatabase");
     const { lookupTicker, getExchangeRate } = await import("./hooks/useStockPrice");
-    const { hasFinnhubApiKey } = await import("./settingsStore");
 
     // Check if we already have a snapshot today
     const existsToday = await hasSnapshotToday();
@@ -63,7 +65,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
     const tickerItems = await getTickerModeItems();
 
     // If no ticker items or no API key, just create snapshot directly
-    if (tickerItems.length === 0 || !hasFinnhubApiKey()) {
+    if (tickerItems.length === 0 || !hasApiKey) {
       if (forceUpdate && existsToday) {
         const todaySnapshot = await getTodaySnapshot();
         if (todaySnapshot?.id) {
@@ -118,7 +120,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       }));
 
       try {
-        const quote = await lookupTicker(ticker);
+        const quote = await lookupTicker(ticker, apiKey);
 
         if (!quote) {
           failedCount++;
@@ -222,7 +224,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       completed: 0,
       failed: 0,
     });
-  }, []);
+  }, [apiKey, hasApiKey]);
 
   const contextValue = useMemo(
     () => ({

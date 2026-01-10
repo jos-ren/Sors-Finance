@@ -5,7 +5,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
 import { DatabaseProvider } from "@/components/DatabaseProvider";
 import { PrivacyProvider } from "@/lib/privacy-context";
-import { SnapshotProvider } from "@/lib/snapshot-context";
 import { Toaster } from "sonner";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
@@ -47,10 +46,8 @@ export default function RootLayout({
           <AuthProvider>
             <DatabaseProvider>
               <PrivacyProvider>
-                <SnapshotProvider>
-                  {children}
-                  <Toaster richColors />
-                </SnapshotProvider>
+                {children}
+                <Toaster richColors />
               </PrivacyProvider>
             </DatabaseProvider>
           </AuthProvider>

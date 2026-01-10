@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getFinnhubApiKey } from '@/lib/settingsStore';
 
 export interface StockQuote {
   ticker: string;
@@ -31,7 +30,7 @@ const STOCK_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const rateCache = new Map<string, { data: ExchangeRate; timestamp: number }>();
 const RATE_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
-export function useStockPrice(ticker: string | undefined) {
+export function useStockPrice(ticker: string | undefined, apiKey: string | null | undefined) {
   const [data, setData] = useState<StockQuote | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +58,6 @@ export function useStockPrice(ticker: string | undefined) {
     setError(null);
 
     try {
-      const apiKey = getFinnhubApiKey();
-
       const response = await fetch(`/api/stock/${encodeURIComponent(upperTicker)}`, {
         headers: apiKey ? { 'x-finnhub-key': apiKey } : {},
       });
@@ -87,7 +84,7 @@ export function useStockPrice(ticker: string | undefined) {
     } finally {
       setIsLoading(false);
     }
-  }, [ticker]);
+  }, [ticker, apiKey]);
 
   // Fetch on mount and when ticker changes
   useEffect(() => {
@@ -179,7 +176,7 @@ export function useExchangeRate(from: string | undefined, to: string = 'CAD') {
 }
 
 // Utility function to lookup a ticker (for one-time lookups in forms)
-export async function lookupTicker(ticker: string): Promise<StockQuote | null> {
+export async function lookupTicker(ticker: string, apiKey?: string | null): Promise<StockQuote | null> {
   if (!ticker) return null;
 
   const upperTicker = ticker.toUpperCase();
@@ -191,8 +188,6 @@ export async function lookupTicker(ticker: string): Promise<StockQuote | null> {
   }
 
   try {
-    const apiKey = getFinnhubApiKey();
-
     const response = await fetch(`/api/stock/${encodeURIComponent(upperTicker)}`, {
       headers: apiKey ? { 'x-finnhub-key': apiKey } : {},
     });
@@ -210,12 +205,6 @@ export async function lookupTicker(ticker: string): Promise<StockQuote | null> {
   } catch {
     return null;
   }
-}
-
-// Check if API key is configured
-export function hasApiKey(): boolean {
-  const key = getFinnhubApiKey();
-  return Boolean(key && key.trim().length > 0);
 }
 
 // Utility function to get exchange rate (for one-time lookups in forms)
@@ -280,7 +269,7 @@ export interface SnapshotResult {
 
 // Refresh all ticker-mode items and update their prices
 // Returns success only if ALL tickers are fetched successfully
-export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
+export async function refreshAllTickerPrices(apiKey?: string | null): Promise<RefreshAllResult> {
   // Import dynamically to avoid circular dependencies
   const { getTickerModeItems, updatePortfolioItem } = await import('./useDatabase');
 
@@ -303,7 +292,7 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
 
   for (const ticker of uniqueTickers) {
     try {
-      const quote = await lookupTicker(ticker);
+      const quote = await lookupTicker(ticker, apiKey);
 
       if (!quote) {
         failedTickers.push(ticker);
@@ -378,8 +367,9 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
 //
 // Options:
 // - forceUpdate: If true, will replace existing snapshot for today instead of skipping
-export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: boolean }): Promise<SnapshotResult> {
-  const { forceUpdate = false } = options || {};
+// - apiKey: Finnhub API key for fetching stock prices
+export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: boolean; apiKey?: string | null }): Promise<SnapshotResult> {
+  const { forceUpdate = false, apiKey } = options || {};
 
   // Import dynamically to avoid circular dependencies
   const { hasSnapshotToday, getTodaySnapshot, deletePortfolioSnapshot, createPortfolioSnapshot, getTickerModeItems } = await import('./useDatabase');
@@ -398,7 +388,7 @@ export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: b
 
   // If there are ticker items, refresh their prices first
   if (tickerItems.length > 0) {
-    const priceRefreshResult = await refreshAllTickerPrices();
+    const priceRefreshResult = await refreshAllTickerPrices(apiKey);
 
     // If any ticker failed, don't create snapshot
     if (!priceRefreshResult.success) {

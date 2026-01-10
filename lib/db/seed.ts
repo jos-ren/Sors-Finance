@@ -5,7 +5,7 @@
  */
 
 import { db, schema } from "./connection";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { SYSTEM_CATEGORIES } from "./types";
 
@@ -175,6 +175,47 @@ async function ensureSystemCategories(existingCategories: typeof schema.categori
         .where(eq(schema.categories.id, exists.id));
     }
   }
+}
+
+/**
+ * Seed default settings for a specific user.
+ * This should be called when a new user registers.
+ */
+export async function seedDefaultSettingsForUser(userId: number): Promise<void> {
+  const now = new Date();
+
+  // Default settings to seed
+  const defaultSettings = [
+    { key: "CURRENCY", value: "USD" },
+    { key: "autoCopyBudgets", value: "false" },
+    // Note: TIMEZONE and FINNHUB_API_KEY are not seeded
+    // TIMEZONE will be set from the client's browser on first load
+    // FINNHUB_API_KEY starts as null (user must configure it)
+  ];
+
+  for (const setting of defaultSettings) {
+    // Check if setting already exists for this user
+    const existing = await db
+      .select()
+      .from(schema.settings)
+      .where(and(
+        eq(schema.settings.key, setting.key),
+        eq(schema.settings.userId, userId)
+      ))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(schema.settings).values({
+        key: setting.key,
+        value: setting.value,
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  console.log(`[Seed] Seeded default settings for user ${userId}`);
 }
 
 export async function initializeDatabase(): Promise<void> {

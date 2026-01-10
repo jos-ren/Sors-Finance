@@ -150,6 +150,7 @@ export default function PortfolioPage() {
   useEffect(() => {
     if (autoSnapshotAttempted.current) return;
     if (summary === undefined) return; // Wait for summary to load
+    if (allSnapshots === undefined) return; // Wait for snapshots to load
 
     autoSnapshotAttempted.current = true;
 
@@ -175,7 +176,7 @@ export default function PortfolioPage() {
       startBackgroundSnapshot();
     }
     // If today's snapshot exists and net worth matches, do nothing
-  }, [summary, latestSnapshot, startBackgroundSnapshot]);
+  }, [summary, allSnapshots, latestSnapshot, startBackgroundSnapshot]);
 
   const handleDeleteSnapshot = useCallback(async (id: number) => {
     try {

@@ -17,7 +17,7 @@ const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
 
 /**
- * Get the configured snapshot time from the database
+ * Get the configured snapshot time from the database (uses first found or default)
  */
 async function getSnapshotTime(): Promise<string> {
   const result = await db
@@ -30,15 +30,21 @@ async function getSnapshotTime(): Promise<string> {
 }
 
 /**
- * Check if snapshots are enabled
+ * Check if snapshots are enabled for a specific user
  */
-async function isSnapshotEnabled(): Promise<boolean> {
+async function isSnapshotEnabledForUser(userId: number): Promise<boolean> {
   const result = await db
     .select()
     .from(schema.settings)
-    .where(eq(schema.settings.key, SNAPSHOT_ENABLED_KEY))
+    .where(
+      and(
+        eq(schema.settings.key, SNAPSHOT_ENABLED_KEY),
+        eq(schema.settings.userId, userId)
+      )
+    )
     .limit(1);
 
+  // Default to true if no setting exists
   return result[0]?.value !== "false";
 }
 
@@ -162,13 +168,6 @@ async function runSnapshotTask() {
   console.log("[Scheduler] Running scheduled portfolio snapshots for all users...");
 
   try {
-    // Check if enabled
-    const enabled = await isSnapshotEnabled();
-    if (!enabled) {
-      console.log("[Scheduler] Snapshots are disabled, skipping.");
-      return;
-    }
-
     // Get all users
     const allUsers = await db.select().from(schema.users);
 
@@ -179,9 +178,16 @@ async function runSnapshotTask() {
 
     console.log(`[Scheduler] Processing ${allUsers.length} user(s)...`);
 
-    // Create snapshot for each user
+    // Create snapshot for each user (if enabled for them)
     for (const user of allUsers) {
       try {
+        // Check if snapshots are enabled for this user
+        const enabled = await isSnapshotEnabledForUser(user.id);
+        if (!enabled) {
+          console.log(`[Scheduler] Snapshots disabled for user #${user.id} (${user.username}), skipping.`);
+          continue;
+        }
+
         // Check if snapshot already exists today for this user
         const exists = await hasSnapshotTodayForUser(user.id);
         if (exists) {

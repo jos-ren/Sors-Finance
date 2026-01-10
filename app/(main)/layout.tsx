@@ -7,6 +7,8 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { PrivacyToggle } from "@/components/privacy-toggle";
 import { PageHeaderProvider, usePageHeader } from "@/lib/page-header-context";
 import { UnsavedChangesProvider } from "@/lib/unsaved-changes-context";
+import { SettingsProvider } from "@/lib/settings-context";
+import { SnapshotProvider } from "@/lib/snapshot-context";
 import { useAuth } from "@/lib/auth-context";
 import {
   Tooltip,
@@ -83,16 +85,20 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <UnsavedChangesProvider>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <PageHeaderProvider>
-            <HeaderContent />
-            <ScrollableContent>{children}</ScrollableContent>
-          </PageHeaderProvider>
-        </SidebarInset>
-      </SidebarProvider>
-    </UnsavedChangesProvider>
+    <SettingsProvider>
+      <SnapshotProvider>
+        <UnsavedChangesProvider>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <PageHeaderProvider>
+                <HeaderContent />
+                <ScrollableContent>{children}</ScrollableContent>
+              </PageHeaderProvider>
+            </SidebarInset>
+          </SidebarProvider>
+        </UnsavedChangesProvider>
+      </SnapshotProvider>
+    </SettingsProvider>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { MoreHorizontal, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
 import { lookupTicker, getExchangeRate } from "@/lib/hooks/useStockPrice";
-import { hasFinnhubApiKey } from "@/lib/settingsStore";
+import { useHasFinnhubApiKey, useFinnhubApiKey } from "@/lib/settings-context";
 
 interface PortfolioItemProps {
   item: DbPortfolioItem;
@@ -57,19 +57,11 @@ function getTimeAgo(date: Date): string {
   return `${diffDays} days ago`;
 }
 
-// Use useSyncExternalStore for client-side localStorage check
-function useHasApiKey() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => hasFinnhubApiKey(),
-    () => true
-  );
-}
-
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const apiKeyConfigured = useHasApiKey();
+  const apiKeyConfigured = useHasFinnhubApiKey();
+  const apiKey = useFinnhubApiKey();
   const { formatAmount } = usePrivacy();
 
   const hasTicker = Boolean(item.ticker);
@@ -94,7 +86,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
 
     setIsRefreshing(true);
     try {
-      const quote = await lookupTicker(item.ticker);
+      const quote = await lookupTicker(item.ticker, apiKey);
       if (quote) {
         let exchangeRate = 1;
         if (quote.currency !== "CAD") {

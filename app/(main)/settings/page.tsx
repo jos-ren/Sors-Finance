@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ExternalLink,
   Key,
@@ -67,12 +68,6 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import {
-  getFinnhubApiKey,
-  setFinnhubApiKey,
-  getCurrency,
-  setCurrency,
-  getTimezone,
-  setTimezone,
   SUPPORTED_CURRENCIES,
   type Currency,
 } from "@/lib/settingsStore";
@@ -163,6 +158,10 @@ const TIMEZONE_LIST = [
 ];
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") || "general";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
   // API Key state
   const [apiKey, setApiKey] = useState("");
   const [savedKey, setSavedKey] = useState<string | undefined>();
@@ -259,20 +258,40 @@ export default function SettingsPage() {
   }, [filteredTimezones]);
 
   useEffect(() => {
-    // Load saved settings
-    const key = getFinnhubApiKey();
-    setSavedKey(key);
-    if (key) {
-      setApiKey(key);
-    }
+    // Load saved settings from database
+    const loadSettings = async () => {
+      try {
+        const [apiKeyValue, currencyValue, timezoneValue, autoCopyValue] = await Promise.all([
+          getSetting("FINNHUB_API_KEY"),
+          getSetting("CURRENCY"),
+          getSetting("TIMEZONE"),
+          getSetting("autoCopyBudgets"),
+        ]);
 
-    setCurrencyState(getCurrency());
-    setTimezoneState(getTimezone());
+        if (apiKeyValue) {
+          setSavedKey(apiKeyValue);
+          setApiKey(apiKeyValue);
+        }
 
-    // Load preferences from IndexedDB
-    getSetting("autoCopyBudgets").then(value => {
-      setAutoCopyBudgets(value === "true");
-    });
+        if (currencyValue) {
+          setCurrencyState(currencyValue as Currency);
+        }
+
+        if (timezoneValue) {
+          setTimezoneState(timezoneValue);
+        } else {
+          // Default to browser timezone if not set
+          const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          setTimezoneState(defaultTimezone);
+        }
+
+        setAutoCopyBudgets(autoCopyValue === "true");
+      } catch (error) {
+        console.error("Failed to load settings:", error);
+      }
+    };
+
+    loadSettings();
 
     // Load snapshot scheduler config
     fetch("/api/scheduler/config")
@@ -302,9 +321,14 @@ export default function SettingsPage() {
     const trimmedKey = apiKey.trim();
 
     if (!trimmedKey) {
-      setFinnhubApiKey(undefined);
-      setSavedKey(undefined);
-      toast.success("API key removed");
+      try {
+        await setSetting("FINNHUB_API_KEY", "");
+        setSavedKey(undefined);
+        toast.success("API key removed");
+      } catch (error) {
+        console.error("Failed to remove API key:", error);
+        toast.error("Failed to remove API key");
+      }
       return;
     }
 
@@ -335,7 +359,7 @@ export default function SettingsPage() {
         return;
       }
 
-      setFinnhubApiKey(trimmedKey);
+      await setSetting("FINNHUB_API_KEY", trimmedKey);
       setSavedKey(trimmedKey);
       toast.success("API key saved and validated");
     } catch (error) {
@@ -346,20 +370,30 @@ export default function SettingsPage() {
     }
   };
 
-  const handleClearApiKey = () => {
-    setFinnhubApiKey(undefined);
-    setSavedKey(undefined);
-    setApiKey("");
-    toast.success("API key removed");
+  const handleClearApiKey = async () => {
+    try {
+      await setSetting("FINNHUB_API_KEY", "");
+      setSavedKey(undefined);
+      setApiKey("");
+      toast.success("API key removed");
+    } catch (error) {
+      console.error("Failed to remove API key:", error);
+      toast.error("Failed to remove API key");
+    }
   };
 
   // Currency handler
-  const handleCurrencyChange = (value: Currency) => {
+  const handleCurrencyChange = async (value: Currency) => {
     setCurrencyState(value);
-    setCurrency(value);
     setCurrencyOpen(false);
     setCurrencySearch("");
-    toast.success(`Currency set to ${value}`);
+    try {
+      await setSetting("CURRENCY", value);
+      toast.success(`Currency set to ${value}`);
+    } catch (error) {
+      console.error("Failed to save currency:", error);
+      toast.error("Failed to save currency setting");
+    }
   };
 
   // Auto-copy budgets handler
@@ -408,14 +442,14 @@ export default function SettingsPage() {
   };
 
   // Timezone handler
-  const handleTimezoneChange = (value: string) => {
+  const handleTimezoneChange = async (value: string) => {
     setTimezoneState(value);
-    setTimezone(value);
     setTimezoneOpen(false);
     setTimezoneSearch("");
 
-    // Get short abbreviation like "PST", "EST", etc.
     try {
+      await setSetting("TIMEZONE", value);
+      // Get short abbreviation like "PST", "EST", etc.
       const formatter = new Intl.DateTimeFormat("en-US", {
         timeZone: value,
         timeZoneName: "short",
@@ -423,8 +457,9 @@ export default function SettingsPage() {
       const parts = formatter.formatToParts(new Date());
       const abbrev = parts.find(p => p.type === "timeZoneName")?.value || value;
       toast.success(`Timezone set to ${abbrev}`);
-    } catch {
-      toast.success(`Timezone set to ${value}`);
+    } catch (error) {
+      console.error("Failed to save timezone:", error);
+      toast.error("Failed to save timezone setting");
     }
   };
 
@@ -523,9 +558,6 @@ export default function SettingsPage() {
       if (!res.ok) {
         throw new Error("Failed to delete account");
       }
-
-      // Clear local storage settings
-      setFinnhubApiKey(undefined);
 
       // Redirect to login page
       window.location.href = "/login";
@@ -795,7 +827,7 @@ export default function SettingsPage() {
         <div ref={sentinelRef} className="h-0" />
       </div>
 
-      <Tabs defaultValue="general" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
