@@ -18,6 +18,8 @@ import {
   Info,
   LogOut,
   User,
+  Upload,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -197,6 +199,11 @@ export default function SettingsPage() {
   const [snapshotEnabled, setSnapshotEnabled] = useState(true);
   const [snapshotTime, setSnapshotTime] = useState("03:00");
   const [isLoadingSnapshotConfig, setIsLoadingSnapshotConfig] = useState(true);
+
+  // Snapshot import/export state
+  const [isExportingSnapshots, setIsExportingSnapshots] = useState(false);
+  const [isImportingSnapshots, setIsImportingSnapshots] = useState(false);
+  const snapshotFileInputRef = useRef<HTMLInputElement>(null);
 
   // Page header
   const sentinelRef = useSetPageHeader("Settings");
@@ -661,6 +668,130 @@ export default function SettingsPage() {
     }
   };
 
+  // Snapshot export handler
+  const handleExportSnapshots = async () => {
+    setIsExportingSnapshots(true);
+    try {
+      const res = await fetch("/api/portfolio/snapshots");
+      if (!res.ok) {
+        throw new Error("Failed to fetch snapshots");
+      }
+      const { data: snapshots } = await res.json();
+
+      if (!snapshots || snapshots.length === 0) {
+        toast.error("No snapshots to export");
+        return;
+      }
+
+      // Create export object with metadata
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        version: 1,
+        count: snapshots.length,
+        snapshots: snapshots.map((s: {
+          date: string;
+          totalSavings: number;
+          totalInvestments: number;
+          totalAssets: number;
+          totalDebt: number;
+          netWorth: number;
+          details: unknown;
+        }) => ({
+          date: s.date,
+          totalSavings: s.totalSavings,
+          totalInvestments: s.totalInvestments,
+          totalAssets: s.totalAssets,
+          totalDebt: s.totalDebt,
+          netWorth: s.netWorth,
+          details: s.details,
+        })),
+      };
+
+      // Download as JSON
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sors-snapshots-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Exported ${snapshots.length} snapshots`);
+    } catch (error) {
+      console.error("Error exporting snapshots:", error);
+      toast.error("Failed to export snapshots");
+    } finally {
+      setIsExportingSnapshots(false);
+    }
+  };
+
+  // Snapshot import handler
+  const handleImportSnapshots = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingSnapshots(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      if (!data.snapshots || !Array.isArray(data.snapshots)) {
+        throw new Error("Invalid snapshot file format");
+      }
+
+      let imported = 0;
+      let skipped = 0;
+
+      for (const snapshot of data.snapshots) {
+        if (!snapshot.date) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          const res = await fetch("/api/portfolio/snapshots", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: snapshot.date,
+              totalSavings: snapshot.totalSavings ?? 0,
+              totalInvestments: snapshot.totalInvestments ?? 0,
+              totalAssets: snapshot.totalAssets ?? 0,
+              totalDebt: snapshot.totalDebt ?? 0,
+              netWorth: snapshot.netWorth ?? 0,
+              details: snapshot.details ?? { accounts: [], items: [] },
+            }),
+          });
+
+          if (res.ok) {
+            imported++;
+          } else {
+            skipped++;
+          }
+        } catch {
+          skipped++;
+        }
+      }
+
+      if (imported > 0) {
+        toast.success(`Imported ${imported} snapshots${skipped > 0 ? `, ${skipped} skipped` : ""}`);
+      } else {
+        toast.error("No snapshots were imported");
+      }
+    } catch (error) {
+      console.error("Error importing snapshots:", error);
+      toast.error("Failed to import snapshots. Check file format.");
+    } finally {
+      setIsImportingSnapshots(false);
+      // Reset file input
+      if (snapshotFileInputRef.current) {
+        snapshotFileInputRef.current.value = "";
+      }
+    }
+  };
+
   const hasKey = Boolean(savedKey);
 
   // Developer page content
@@ -721,7 +852,7 @@ export default function SettingsPage() {
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
-          {process.env.NODE_ENV === "development" && (
+          {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
             <TabsTrigger value="developer">Developer</TabsTrigger>
           )}
         </TabsList>
@@ -1184,8 +1315,70 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* Developer Tab */}
-        {process.env.NODE_ENV === "development" && (
+        {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
           <TabsContent value="developer" className="space-y-6">
+            {/* Snapshot History Import/Export */}
+            <Card className="max-w-2xl">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Snapshot History
+                </CardTitle>
+                <CardDescription>
+                  Import and export your complete portfolio snapshot history
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1 space-y-2">
+                    <Label>Export Snapshots</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Download all snapshots as a JSON file for backup or migration
+                    </p>
+                    <Button
+                      onClick={handleExportSnapshots}
+                      disabled={isExportingSnapshots}
+                      variant="outline"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      {isExportingSnapshots ? "Exporting..." : "Export to JSON"}
+                    </Button>
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <Label>Import Snapshots</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Restore snapshots from a previously exported JSON file
+                    </p>
+                    <div>
+                      <input
+                        ref={snapshotFileInputRef}
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportSnapshots}
+                        className="hidden"
+                        id="snapshot-import"
+                      />
+                      <Button
+                        onClick={() => snapshotFileInputRef.current?.click()}
+                        disabled={isImportingSnapshots}
+                        variant="outline"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        {isImportingSnapshots ? "Importing..." : "Import from JSON"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>Note</AlertTitle>
+                  <AlertDescription>
+                    Importing snapshots will add new entries. Duplicate dates will create additional snapshots.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
             {/* Primary Colors */}
             <Card>
               <CardHeader>
