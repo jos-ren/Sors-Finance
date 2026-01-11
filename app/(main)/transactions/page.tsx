@@ -23,10 +23,9 @@ import { toast } from "sonner";
 import { TransactionImporter } from "@/components/TransactionImporter";
 import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
-import { useImports, useTransactions, useCategories } from "@/lib/hooks";
+import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk } from "@/lib/hooks";
 import { usePrivacy } from "@/lib/privacy-context";
 import type { DbImport } from "@/lib/db";
-import { deleteTransaction, deleteTransactionsBulk } from "@/lib/db/client";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {

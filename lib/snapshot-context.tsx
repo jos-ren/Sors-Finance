@@ -161,15 +161,24 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       const cached = tickerQuotes.get(upperTicker);
       if (!cached || !cached.quote) continue;
 
-      const { quote, exchangeRate } = cached;
+      const { quote } = cached;
 
-      // Calculate new value
+      // Use item's existing currency if user manually set it, otherwise use quote's currency
+      const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
+
+      // Get exchange rate based on the effective currency (user's or API's)
+      let exchangeRate = 1;
+      if (effectiveCurrency !== "CAD") {
+        exchangeRate = await getExchangeRate(effectiveCurrency, "CAD");
+      }
+
+      // Calculate new value using the correct exchange rate
       const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
-      // Update the item
+      // Update the item - preserve user-set currency
       await updatePortfolioItem(item.id!, {
         pricePerUnit: quote.price,
-        currency: quote.currency,
+        currency: effectiveCurrency,
         currentValue: newValue,
         lastPriceUpdate: new Date(),
       });

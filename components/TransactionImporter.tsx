@@ -1,6 +1,15 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+
+// Generate unique IDs safely (works during SSR and in browsers)
+let idCounter = 0;
+function generateId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `temp-${Date.now()}-${++idCounter}`;
+}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -191,7 +200,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         // Convert parsed transactions to full Transaction objects
         for (const parsed of result.transactions) {
           allTransactions.push({
-            id: crypto.randomUUID(),
+            id: generateId(),
             ...parsed,
             source: result.bankId,
             categoryId: null,

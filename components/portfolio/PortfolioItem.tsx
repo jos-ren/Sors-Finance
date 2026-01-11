@@ -88,16 +88,20 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
     try {
       const quote = await lookupTicker(item.ticker, apiKey);
       if (quote) {
+        // Use item's existing currency if user manually set it, otherwise use quote's currency
+        const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
+
+        // Get exchange rate based on the effective currency
         let exchangeRate = 1;
-        if (quote.currency !== "CAD") {
-          exchangeRate = await getExchangeRate(quote.currency, "CAD");
+        if (effectiveCurrency !== "CAD") {
+          exchangeRate = await getExchangeRate(effectiveCurrency, "CAD");
         }
 
         const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
         await updatePortfolioItem(item.id!, {
           pricePerUnit: quote.price,
-          currency: quote.currency,
+          currency: effectiveCurrency,
           currentValue: newValue,
           lastPriceUpdate: new Date(),
         });

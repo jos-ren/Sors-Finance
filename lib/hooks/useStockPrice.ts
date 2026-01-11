@@ -334,15 +334,24 @@ export async function refreshAllTickerPrices(apiKey?: string | null): Promise<Re
       continue;
     }
 
-    const { quote, exchangeRate } = cached;
+    const { quote } = cached;
 
-    // Calculate new value
+    // Use item's existing currency if user manually set it, otherwise use quote's currency
+    const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
+
+    // Get exchange rate based on the effective currency (user's or API's)
+    let exchangeRate = 1;
+    if (effectiveCurrency !== 'CAD') {
+      exchangeRate = await getExchangeRate(effectiveCurrency, 'CAD');
+    }
+
+    // Calculate new value using the correct exchange rate
     const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
-    // Update the item - preserve user-set currency if already defined
+    // Update the item - preserve user-set currency
     await updatePortfolioItem(item.id!, {
       pricePerUnit: quote.price,
-      currency: item.currency || quote.currency, // Keep existing currency if user set it
+      currency: effectiveCurrency,
       currentValue: newValue,
       lastPriceUpdate: new Date(),
       isInternational: quote.isInternational,
