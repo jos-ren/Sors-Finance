@@ -76,6 +76,7 @@ import {
   setSetting,
 } from "@/lib/db/client";
 import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSettings } from "@/lib/settings-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
@@ -213,6 +214,9 @@ export default function SettingsPage() {
   // Auth
   const { user, logout } = useAuth();
 
+  // Settings context - for updating settings that need to be shared across app
+  const { updateSetting: updateContextSetting } = useSettings();
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -322,7 +326,7 @@ export default function SettingsPage() {
 
     if (!trimmedKey) {
       try {
-        await setSetting("FINNHUB_API_KEY", "");
+        await updateContextSetting("finnhubApiKey", null);
         setSavedKey(undefined);
         toast.success("API key removed");
       } catch (error) {
@@ -359,7 +363,7 @@ export default function SettingsPage() {
         return;
       }
 
-      await setSetting("FINNHUB_API_KEY", trimmedKey);
+      await updateContextSetting("finnhubApiKey", trimmedKey);
       setSavedKey(trimmedKey);
       toast.success("API key saved and validated");
     } catch (error) {
@@ -372,7 +376,7 @@ export default function SettingsPage() {
 
   const handleClearApiKey = async () => {
     try {
-      await setSetting("FINNHUB_API_KEY", "");
+      await updateContextSetting("finnhubApiKey", null);
       setSavedKey(undefined);
       setApiKey("");
       toast.success("API key removed");
