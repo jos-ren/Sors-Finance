@@ -134,3 +134,57 @@ export interface FilenamePattern {
   /** Regex pattern to match against filename */
   pattern: RegExp;
 }
+
+/**
+ * Column mapping configuration for custom imports
+ */
+export interface ColumnMapping {
+  /** Index of the date column */
+  dateColumn: number;
+  /** Date format (optional, auto-detected if not provided) */
+  dateFormat?: string;
+  /** Index of the description column */
+  descriptionColumn: number;
+  /** Index of the amount in column */
+  amountInColumn: number;
+  /** Index of the amount out column */
+  amountOutColumn: number;
+  /** Indices of columns to use for match field (defaults to description) */
+  matchFieldColumns?: number[];
+  /** Whether the first row contains headers */
+  hasHeaders?: boolean;
+  /** If both amount columns map to same index, use negative values for out */
+  useNegativeForOut?: boolean;
+}
+
+/**
+ * Auto-detected column information
+ */
+export interface DetectedColumn {
+  /** Column index */
+  index: number;
+  /** Detected header name (if hasHeaders is true) */
+  header?: string;
+  /** Confidence that this column matches the target field */
+  confidence: "high" | "medium" | "low";
+  /** Reason for the detection */
+  reason: string;
+}
+
+/**
+ * Result of auto-detecting columns
+ */
+export interface ColumnDetectionResult {
+  /** Detected date column */
+  dateColumn?: DetectedColumn;
+  /** Detected description column */
+  descriptionColumn?: DetectedColumn;
+  /** Detected amount in column */
+  amountInColumn?: DetectedColumn;
+  /** Detected amount out column */
+  amountOutColumn?: DetectedColumn;
+  /** Whether first row appears to be headers */
+  hasHeaders: boolean;
+  /** Auto-detected date format */
+  dateFormat?: string;
+}

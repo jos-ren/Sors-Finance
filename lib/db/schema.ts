@@ -254,6 +254,30 @@ export const portfolioSnapshots = sqliteTable(
 );
 
 // ============================================
+// Custom Import Templates Table
+// ============================================
+// Note: ColumnMapping type is defined in lib/parsers/types.ts
+
+export const customImportTemplates = sqliteTable(
+  "custom_import_templates",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    name: text("name").notNull(),
+    mapping: text("mapping", { mode: "json" }).notNull(), // Stores ColumnMapping as JSON
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("custom_import_templates_user_idx").on(table.userId),
+    index("custom_import_templates_name_idx").on(table.name),
+  ]
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
@@ -285,3 +309,6 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 export type Session = typeof sessions.$inferSelect;
+
+export type CustomImportTemplateRow = typeof customImportTemplates.$inferSelect;
+export type CustomImportTemplateInsert = typeof customImportTemplates.$inferInsert;

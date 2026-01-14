@@ -54,6 +54,8 @@ export interface UploadedFile {
   isManuallySet?: boolean;
   validationErrors?: string[];
   validationWarnings?: string[];
+  columnMapping?: any; // ColumnMapping for CUSTOM bank type (imported from parsers/types)
+  mappingConfigured?: boolean; // true if column mapping has been configured
 }
 
 /**

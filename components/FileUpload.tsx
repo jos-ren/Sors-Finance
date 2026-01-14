@@ -17,9 +17,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Upload, FileSpreadsheet, X, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Info } from "lucide-react";
+import { Upload, FileSpreadsheet, X, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Info, Settings } from "lucide-react";
 import { UploadedFile } from "@/lib/types";
 import { detectBank, validateFile, getAllBankMeta } from "@/lib/parsers";
+import { readFileToRows } from "@/lib/parsers/utils";
+import { ColumnMappingDialog } from "./ColumnMappingDialog";
+import type { ColumnMapping } from "@/lib/parsers/types";
 
 // Bank logos mapping (add new banks here as they are added)
 const BANK_LOGOS: Record<string, string> = {
@@ -37,6 +40,9 @@ export function FileUpload({
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
+  const [mappingFileIndex, setMappingFileIndex] = useState<number | null>(null);
+  const [mappingRows, setMappingRows] = useState<unknown[][]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get all available bank options from the registry
@@ -121,6 +127,7 @@ export function FileUpload({
   };
 
   const hasUnknownFiles = files.some((f) => f.bankId === null);
+  const hasUnconfiguredCustomFiles = files.some((f) => f.bankId === "CUSTOM" && !f.mappingConfigured);
   const hasValidationErrors = files.some((f) => f.validationErrors && f.validationErrors.length > 0);
 
   const getConfidenceIcon = (file: UploadedFile) => {
@@ -146,6 +153,45 @@ export function FileUpload({
   const getBankOption = (bankId: string | null) => {
     if (!bankId) return null;
     return bankOptions.find(b => b.id === bankId);
+  };
+
+  const handleConfigureMapping = async (index: number) => {
+    const file = files[index];
+
+    try {
+      setIsAnalyzing(true);
+      const rows = await readFileToRows(file.file);
+      setMappingRows(rows);
+      setMappingFileIndex(index);
+      setMappingDialogOpen(true);
+    } catch (error) {
+      console.error("Error reading file:", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleMappingConfirm = (mapping: ColumnMapping) => {
+    if (mappingFileIndex === null) return;
+
+    const updated = files.map((f, i) =>
+      i === mappingFileIndex
+        ? {
+            ...f,
+            columnMapping: mapping,
+            mappingConfigured: true,
+            detectionConfidence: "high" as const,
+            detectionReason: "Custom mapping configured",
+            validationErrors: [],
+            validationWarnings: [],
+          }
+        : f
+    );
+
+    setFiles(updated);
+    onFilesSelected(updated);
+    setMappingDialogOpen(false);
+    setMappingFileIndex(null);
   };
 
   return (
@@ -311,25 +357,77 @@ export function FileUpload({
                       </ul>
                     </div>
                   )}
+
+                  {/* Configure Mapping for CUSTOM bank type */}
+                  {uploadedFile.bankId === "CUSTOM" && !uploadedFile.mappingConfigured && (
+                    <div className="ml-8 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-medium text-sm">Column Mapping Required</p>
+                          <p className="text-xs text-muted-foreground">
+                            Configure how columns in your file map to transaction fields
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleConfigureMapping(index)}
+                          className="flex-shrink-0"
+                        >
+                          <Settings className="mr-2 h-4 w-4" />
+                          Configure
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mapping Configured Message */}
+                  {uploadedFile.bankId === "CUSTOM" && uploadedFile.mappingConfigured && (
+                    <div className="ml-8 p-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        <p className="text-sm text-green-600 dark:text-green-400">Column mapping configured</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleConfigureMapping(index)}
+                      >
+                        Edit Mapping
+                      </Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
 
-        {(hasUnknownFiles || hasValidationErrors) && (
+        {(hasUnknownFiles || hasUnconfiguredCustomFiles || hasValidationErrors) && (
           <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
             <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
             <p className="text-sm text-destructive">
-              {hasUnknownFiles && hasValidationErrors
-                ? "Please select a bank for each file and fix validation errors before processing."
-                : hasUnknownFiles
-                ? "Please select a bank for each file before processing."
+              {hasUnknownFiles || hasUnconfiguredCustomFiles
+                ? hasValidationErrors
+                  ? "Please select a bank for each file, configure custom mappings, and fix validation errors before processing."
+                  : hasUnconfiguredCustomFiles
+                  ? "Please configure column mapping for custom imports before processing."
+                  : "Please select a bank for each file before processing."
                 : "Please fix file validation errors before processing."}
             </p>
           </div>
         )}
       </CardContent>
+
+      {/* Column Mapping Dialog */}
+      {mappingFileIndex !== null && (
+        <ColumnMappingDialog
+          open={mappingDialogOpen}
+          onOpenChange={setMappingDialogOpen}
+          rows={mappingRows}
+          fileName={files[mappingFileIndex]?.file.name || ""}
+          onConfirm={handleMappingConfirm}
+        />
+      )}
     </Card>
   );
 }
