@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       id: row.id,
       uuid: row.uuid,
       name: row.name,
-      mapping: JSON.parse(row.mapping) as ColumnMapping,
+      mapping: JSON.parse(row.mapping as string) as ColumnMapping,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
