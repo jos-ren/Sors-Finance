@@ -25,13 +25,16 @@ import type {
   ParsedTransaction,
   BankParserMeta,
   FilenamePattern,
+  ColumnMapping,
 } from "./types";
 import { readFileToRows } from "./utils";
+import { createCustomParser } from "./banks/custom";
 
 // Import all bank parsers
 // To add a new bank, create a file in banks/ and import it here
 import { cibcParser } from "./banks/cibc";
 import { amexParser } from "./banks/amex";
+import { customParser } from "./banks/custom";
 
 // ============================================
 // Parser Registry
@@ -44,6 +47,7 @@ import { amexParser } from "./banks/amex";
 const PARSERS: BankParser[] = [
   cibcParser,
   amexParser,
+  customParser, // Custom import with user-defined column mapping
   // Add new parsers here:
   // tdParser,
   // rbcParser,
@@ -233,7 +237,19 @@ export interface FullParseResult extends ParseResult {
 /**
  * Parse a file using a specific bank parser
  */
-export async function parseFile(file: File, bankId: string): Promise<FullParseResult> {
+export async function parseFile(file: File, bankId: string, columnMapping?: ColumnMapping): Promise<FullParseResult> {
+  // Handle custom parser with column mapping
+  if (bankId === "CUSTOM") {
+    if (!columnMapping) {
+      return {
+        bankId,
+        transactions: [],
+        errors: ["Column mapping is required for custom imports"],
+      };
+    }
+    return parseFileWithMapping(file, columnMapping);
+  }
+
   const parser = PARSER_MAP.get(bankId);
   if (!parser) {
     return {
@@ -265,6 +281,41 @@ export async function parseFile(file: File, bankId: string): Promise<FullParseRe
   } catch (error) {
     return {
       bankId,
+      transactions: [],
+      errors: [`Error parsing file: ${error instanceof Error ? error.message : "Unknown error"}`],
+    };
+  }
+}
+
+/**
+ * Parse a file using custom column mapping
+ */
+export async function parseFileWithMapping(file: File, columnMapping: ColumnMapping): Promise<FullParseResult> {
+  try {
+    const rows = await readFileToRows(file);
+
+    // Create a custom parser instance with the provided mapping
+    const parser = createCustomParser(columnMapping);
+
+    // Validate first
+    const validation = parser.validate(file, rows);
+    if (!validation.isValid) {
+      return {
+        bankId: "CUSTOM",
+        transactions: [],
+        errors: validation.errors,
+      };
+    }
+
+    // Parse
+    const result = parser.parse(file, rows);
+    return {
+      bankId: "CUSTOM",
+      ...result,
+    };
+  } catch (error) {
+    return {
+      bankId: "CUSTOM",
       transactions: [],
       errors: [`Error parsing file: ${error instanceof Error ? error.message : "Unknown error"}`],
     };

@@ -195,7 +195,12 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           continue;
         }
 
-        const result = await parseFile(uploadedFile.file, uploadedFile.bankId);
+        // Pass column mapping for custom imports
+        const result = await parseFile(
+          uploadedFile.file,
+          uploadedFile.bankId,
+          uploadedFile.columnMapping
+        );
 
         // Convert parsed transactions to full Transaction objects
         for (const parsed of result.transactions) {
