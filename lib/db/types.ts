@@ -119,6 +119,7 @@ export interface DbPortfolioItem {
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
   isInternational?: boolean;
+  plaidAccountId?: number; // Links to Plaid account for auto-sync
 }
 
 export interface DbPortfolioSnapshot {

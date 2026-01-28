@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import { TransactionImporter } from "@/components/TransactionImporter";
 import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
-import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk } from "@/lib/hooks";
+import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
 import { usePrivacy } from "@/lib/privacy-context";
 import type { DbImport } from "@/lib/db";
 
@@ -81,19 +81,21 @@ export default function TransactionsPage() {
   const categories = useCategories();
 
   const handleImportComplete = () => {
+    invalidateTransactions();
+    invalidateImports();
     setIsImportOpen(false);
   };
 
-  // Header actions for sticky header (smaller text buttons)
+  // Header actions for sticky header
   const headerActions = useMemo(
     () => (
       <>
-        <Button variant="outline" size="xs" onClick={() => setIsAddOpen(true)}>
-          <Plus className="h-3 w-3 mr-1" />
-          Add
+        <Button variant="outline" size="sm" onClick={() => setIsAddOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Transaction
         </Button>
-        <Button size="xs" onClick={() => setIsImportOpen(true)}>
-          <Upload className="h-3 w-3 mr-1" />
+        <Button size="sm" onClick={() => setIsImportOpen(true)}>
+          <Upload className="h-4 w-4 mr-2" />
           Import
         </Button>
       </>

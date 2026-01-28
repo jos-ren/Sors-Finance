@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -79,6 +80,7 @@ import { useSetPageHeader } from "@/lib/page-header-context";
 import { useSettings } from "@/lib/settings-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
+import { PlaidBankingConnections } from "@/components/plaid/PlaidBankingConnections";
 
 // Generate timezone list with UTC offsets and friendly names
 function getTimezoneWithOffset(tz: string): { value: string; label: string; offset: number } {
@@ -1139,8 +1141,12 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                Stock Price Data
+                <img
+                  src="/logos/finnhub.png"
+                  alt="Finnhub"
+                  className="h-5 w-auto object-contain"
+                />
+                Finnhub
               </CardTitle>
               <CardDescription>
                 Connect to Finnhub to get real-time stock prices for your investments
@@ -1240,6 +1246,9 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Plaid Banking Connections */}
+          <PlaidBankingConnections />
         </TabsContent>
 
         {/* Data Tab */}

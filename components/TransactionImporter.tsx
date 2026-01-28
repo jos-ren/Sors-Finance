@@ -13,8 +13,9 @@ function generateId(): string {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Link2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { FileUpload } from "@/components/FileUpload";
+import { PlaidAccountSelector } from "@/components/PlaidAccountSelector";
 import { ConflictResolver } from "@/components/ConflictResolver";
 import { DuplicateResolver } from "@/components/DuplicateResolver";
 import { UncategorizedList, UncategorizedBulkActions } from "@/components/UncategorizedList";
@@ -71,7 +73,8 @@ function getCategoryInfoDismissed(): boolean {
 }
 
 export function TransactionImporter({ onComplete, onCancel }: TransactionImporterProps) {
-  const [currentStep, setCurrentStep] = useState<WizardStep>("upload");
+  const [currentStep, setCurrentStep] = useState<WizardStep>("source");
+  const [importSource, setImportSource] = useState<"manual" | "plaid" | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -252,6 +255,73 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     }
   };
 
+  const handlePlaidTransactionsFetch = async (itemId: number, accountIds: string[], startDate: string, endDate: string) => {
+    setIsProcessing(true);
+    setErrors([]);
+
+    try {
+      const response = await fetch("/api/plaid/transactions/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId, accountIds, startDate, endDate }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to fetch transactions");
+      }
+
+      const data = await response.json();
+      // Convert date strings back to Date objects
+      const plaidTransactions = data.transactions.map((t: Transaction) => ({
+        ...t,
+        date: new Date(t.date),
+      }));
+
+      if (plaidTransactions.length === 0) {
+        setErrors(["No transactions found for the selected date range and accounts."]);
+        return;
+      }
+
+      // Check for duplicates
+      const duplicateSignatures = await findDuplicateSignatures(plaidTransactions);
+
+      // Mark duplicates and categorize transactions (duplicates are skipped by default)
+      const withDuplicates = plaidTransactions.map((t: Transaction) => {
+        const signature = `${t.date.toISOString()}|${t.description}|${t.amountOut}|${t.amountIn}`;
+        const isDuplicate = duplicateSignatures.has(signature);
+        return {
+          ...t,
+          isDuplicate,
+          importDuplicate: false,
+          skipDuplicate: isDuplicate, // Skip duplicates by default
+        };
+      });
+
+      // Categorize transactions
+      const categorized = categorizeTransactions(withDuplicates, categories);
+
+      // Mark transactions that are originally uncategorized (no category, not conflict)
+      // This flag stays true even after keywords are added later
+      const withUncategorizedFlag = categorized.map(t => ({
+        ...t,
+        wasUncategorized: !t.categoryId && !t.isConflict,
+      }));
+
+      setTransactions(withUncategorizedFlag);
+      updateSectionStates(withUncategorizedFlag);
+      setCurrentStep("resolve");
+      toast.success(`Fetched ${data.settledCount} transactions from ${data.institutionName}`);
+    } catch (error) {
+      setErrors([
+        `Error fetching Plaid transactions: ${error instanceof Error ? error.message : "Unknown error"}`,
+      ]);
+      throw error; // Re-throw so PlaidAccountSelector can handle it
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleReprocessTransactions = () => {
     if (categories.length === 0) return;
     const categorized = categorizeTransactions(transactions, categories);
@@ -319,7 +389,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   };
 
   const handleReset = () => {
-    setCurrentStep("upload");
+    setCurrentStep("source");
+    setImportSource(null);
     setTransactions([]);
     setUploadedFiles([]);
     setErrors([]);
@@ -392,7 +463,17 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       if (totalAdded > 0) {
         const sources = [...new Set(transactions.map(t => t.source))];
         const uploadedFile = uploadedFiles[0];
-        const fileName = uploadedFile?.file.name || `${sources.join(', ')} Import`;
+        
+        // Generate fileName based on import source
+        let fileName: string;
+        if (importSource === "plaid") {
+          // For Plaid: use institution name + date range or first source name
+          fileName = sources[0] || "Plaid Import";
+        } else {
+          // For manual: use file name
+          fileName = uploadedFile?.file.name || `${sources.join(', ')} Import`;
+        }
+        
         const totalAmount = transactions.reduce((sum, t) => sum + t.amountOut, 0);
 
         await addImport({
@@ -448,12 +529,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       )}
 
       <Tabs value={currentStep} onValueChange={(value) => setCurrentStep(value as WizardStep)} className="flex flex-col flex-1 min-h-0">
-        <TabsList className="grid w-full grid-cols-3 mb-4 flex-shrink-0">
-          <TabsTrigger value="upload">
-            1. Upload Files
+        <TabsList className="grid w-full grid-cols-4 mb-4 flex-shrink-0">
+          <TabsTrigger value="source">
+            1. Select Source
+          </TabsTrigger>
+          <TabsTrigger value="upload" disabled={importSource === null}>
+            2. {importSource === "plaid" ? "Select Accounts" : "Upload Files"}
           </TabsTrigger>
           <TabsTrigger value="resolve" disabled={transactions.length === 0}>
-            2. Resolve Issues
+            3. Resolve Issues
             {transactions.length > 0 && hasBlockingIssues && (
               <Badge variant="destructive" className="ml-2">
                 {unresolvedConflicts + unresolvedDuplicates}
@@ -461,14 +545,60 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             )}
           </TabsTrigger>
           <TabsTrigger value="results" disabled={transactions.length === 0 || hasBlockingIssues}>
-            3. Review & Import
+            4. Review & Import
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="upload" className="flex flex-col flex-1 min-h-0 mt-0 space-y-4">
-          <FileUpload
-            onFilesSelected={setUploadedFiles}
-          />
+        <TabsContent value="source" className="flex flex-col flex-1 min-h-0 mt-0 space-y-4">
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold">Choose Import Method</h3>
+            <p className="text-sm text-muted-foreground">
+              Select how you want to import transactions into Sors Finance.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card
+              className={`cursor-pointer transition-colors hover:border-primary/50 ${
+                importSource === "manual" ? "border-primary bg-primary/5" : ""
+              }`}
+              onClick={() => {
+                setImportSource("manual");
+                setCurrentStep("upload");
+              }}
+            >
+              <CardContent className="flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <FileUp className="h-12 w-12 text-muted-foreground" />
+                <div>
+                  <h4 className="font-semibold text-base">Upload Files</h4>
+                  <CardDescription className="mt-1">
+                    Import from CSV or Excel files exported from your bank
+                  </CardDescription>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className={`cursor-pointer transition-colors hover:border-primary/50 ${
+                importSource === "plaid" ? "border-primary bg-primary/5" : ""
+              }`}
+              onClick={() => {
+                setImportSource("plaid");
+                setCurrentStep("upload");
+              }}
+            >
+              <CardContent className="flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <Link2 className="h-12 w-12 text-muted-foreground" />
+                <div>
+                  <h4 className="font-semibold text-base">Connect with Plaid</h4>
+                  <CardDescription className="mt-1">
+                    Automatically sync transactions from your connected bank accounts
+                  </CardDescription>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Spacer to keep action buttons at bottom */}
           <div className="flex-1" />
           <div className="flex justify-center gap-3 flex-shrink-0">
@@ -477,13 +607,37 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 Cancel
               </Button>
             )}
-            <Button
-              onClick={handleProcessFiles}
-              disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankId === null || (f.validationErrors && f.validationErrors.length > 0))}
-            >
-              {isProcessing ? "Processing..." : "Process Files"}
-            </Button>
           </div>
+        </TabsContent>
+
+        <TabsContent value="upload" className="flex flex-col flex-1 min-h-0 mt-0 space-y-4">
+          {importSource === "manual" ? (
+            <>
+              <FileUpload
+                onFilesSelected={setUploadedFiles}
+              />
+              {/* Spacer to keep action buttons at bottom */}
+              <div className="flex-1" />
+              <div className="flex justify-center gap-3 flex-shrink-0">
+                <Button variant="outline" onClick={() => setCurrentStep("source")}>
+                  Back
+                </Button>
+                <Button
+                  onClick={handleProcessFiles}
+                  disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankId === null || (f.validationErrors && f.validationErrors.length > 0))}
+                >
+                  {isProcessing ? "Processing..." : "Process Files"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+              <PlaidAccountSelector
+                onFetchTransactions={handlePlaidTransactionsFetch}
+                onBack={() => setCurrentStep("source")}
+              />
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="resolve" className="flex flex-col flex-1 min-h-0 mt-0 gap-3">

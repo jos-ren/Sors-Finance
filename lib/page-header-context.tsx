@@ -88,20 +88,12 @@ export function useSetPageHeader(title: string, actions?: ReactNode) {
   // Set actions via ref (doesn't trigger re-renders)
   useEffect(() => {
     actionsRef.current = actions || null;
-    bumpActionsVersion();
+    // Don't bump version here - it causes infinite loops
+    // Version is only used for manual refresh if needed
     return () => {
       actionsRef.current = null;
-      bumpActionsVersion();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount/unmount
-
-  // Update actions ref when actions prop changes (without re-render loop)
-  const prevActionsRef = useRef(actions);
-  if (prevActionsRef.current !== actions) {
-    prevActionsRef.current = actions;
-    actionsRef.current = actions || null;
-  }
+  }, [actions, actionsRef]);
 
   // Set up intersection observer - triggers when page header scrolls out of view
   useEffect(() => {

@@ -1,14 +1,17 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
@@ -122,7 +125,23 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
     <>
       <div className="flex items-center justify-between py-2 px-3 hover:bg-muted/50 rounded-md group">
         <div className="min-w-0 flex-1">
-          <p className="font-medium truncate">{item.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="font-medium truncate">{item.name}</p>
+            {item.plaidAccountId && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <img
+                    src="/logos/plaid.png"
+                    alt="Plaid"
+                    className="h-3.5 w-auto object-contain shrink-0 cursor-help"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Balance synced via Plaid.
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
           {hasTicker ? (
             <p className="text-xs text-muted-foreground truncate">
               {item.ticker}

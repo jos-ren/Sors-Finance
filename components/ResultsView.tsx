@@ -121,6 +121,18 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
       .filter((result) => result.transactions.length > 0); // Only show categories with transactions
   }, [categories, filteredTransactions]);
 
+  // Get uncategorized transactions
+  const uncategorizedTransactions = useMemo(() => {
+    const uncategorized = filteredTransactions.filter(t => !t.categoryId);
+    // Sort by date (newest first)
+    uncategorized.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return uncategorized;
+  }, [filteredTransactions]);
+
+  const uncategorizedTotal = useMemo(() => {
+    return uncategorizedTransactions.reduce((sum, t) => sum + t.netAmount, 0);
+  }, [uncategorizedTransactions]);
+
   const handleFilterChange = (value: string) => {
     if (value === "all") {
       setDateFilter({ type: "all" });
@@ -186,9 +198,9 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
         </div>
       </CardHeader>
       <CardContent>
-        {categoryResults.length === 0 ? (
+        {categoryResults.length === 0 && uncategorizedTransactions.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No categorized transactions found for the selected date range.
+            No transactions found for the selected date range.
           </p>
         ) : (
           <Accordion type="multiple" className="w-full">
@@ -196,7 +208,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
               <AccordionItem
                 key={category.uuid}
                 value={category.uuid}
-                className={index === categoryResults.length - 1 ? "border-b-0" : ""}
+                className={index === categoryResults.length - 1 && uncategorizedTransactions.length === 0 ? "border-b-0" : ""}
               >
                 <AccordionTrigger>
                   <div className="flex items-center justify-between w-full pr-4">
@@ -250,6 +262,70 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                 </AccordionContent>
               </AccordionItem>
             ))}
+            
+            {/* Uncategorized transactions accordion */}
+            {uncategorizedTransactions.length > 0 && (
+              <AccordionItem
+                value="uncategorized"
+                className="border-b-0"
+              >
+                <AccordionTrigger>
+                  <div className="flex items-center justify-between w-full pr-4">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Uncategorized</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {uncategorizedTransactions.length}
+                      </Badge>
+                    </div>
+                    <span
+                      className={`font-semibold ${
+                        isPrivacyMode ? "text-muted-foreground" : uncategorizedTotal >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {formatAmount(Math.abs(uncategorizedTotal), formatCurrency)}
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">Date</TableHead>
+                        <TableHead className="min-w-[300px]">Description</TableHead>
+                        <TableHead className="w-[100px]">Source</TableHead>
+                        <TableHead className="w-[140px] text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {uncategorizedTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell className="w-[120px] whitespace-nowrap">
+                            {formatDate(transaction.date)}
+                          </TableCell>
+                          <TableCell className="min-w-[300px]">
+                            <p className="truncate">{transaction.description}</p>
+                          </TableCell>
+                          <TableCell className="w-[100px]">
+                            <BankSourceBadge source={transaction.source} size="sm" />
+                          </TableCell>
+                          <TableCell className="w-[140px] text-right whitespace-nowrap">
+                            {transaction.amountOut > 0 ? (
+                              <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
+                                {formatAmount(transaction.amountOut, formatCurrency)}
+                              </span>
+                            ) : (
+                              <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
+                                {formatAmount(transaction.amountIn, formatCurrency)}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </AccordionContent>
+              </AccordionItem>
+            )}
           </Accordion>
         )}
       </CardContent>

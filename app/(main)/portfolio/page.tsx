@@ -63,6 +63,7 @@ import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { useSnapshot } from "@/lib/snapshot-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
+import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { toast } from "sonner";
 
 const BUCKET_COLORS: Record<string, string> = {
@@ -219,7 +220,11 @@ export default function PortfolioPage() {
     }
   }, [allSnapshots]);
 
-  const sentinelRef = useSetPageHeader("Portfolio", null);
+  const headerActions = useMemo(() => (
+    <PlaidSyncButton />
+  ), []);
+
+  const sentinelRef = useSetPageHeader("Portfolio", headerActions);
 
   // Available years from snapshots
   const availableYears = useMemo(() => {
@@ -290,10 +295,13 @@ export default function PortfolioPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Portfolio</h1>
-        <p className="text-muted-foreground">Track your net worth</p>
-        <div ref={sentinelRef} className="h-0" />
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Portfolio</h1>
+          <p className="text-muted-foreground">Track your net worth</p>
+          <div ref={sentinelRef} className="h-0" />
+        </div>
+        <PlaidSyncButton />
       </div>
 
       {/* Summary Cards */}

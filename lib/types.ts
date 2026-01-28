@@ -70,7 +70,7 @@ export interface CategorizationSummary {
 /**
  * App wizard steps
  */
-export type WizardStep = "upload" | "resolve" | "results";
+export type WizardStep = "source" | "upload" | "resolve" | "results";
 
 /**
  * Date filter options

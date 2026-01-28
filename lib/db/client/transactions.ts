@@ -118,8 +118,11 @@ export async function findDuplicateSignatures(
 
   const duplicates = new Set<string>();
   for (const t of transactions) {
-    const date = t.date.toISOString().split("T")[0];
-    const sig = `${date}|${t.description}|${t.amountOut}|${t.amountIn}`;
+    // Handle both Date objects and ISO string dates
+    const dateStr = t.date instanceof Date 
+      ? t.date.toISOString().split("T")[0] 
+      : String(t.date).split("T")[0];
+    const sig = `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
     if (existingSignatures.has(sig)) {
       duplicates.add(sig);
     }

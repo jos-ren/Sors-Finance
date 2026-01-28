@@ -12,6 +12,7 @@ import {
 import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/portfolio";
+import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 
 interface BucketPageProps {
   bucket: BucketType;
@@ -47,10 +48,13 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
 
   // Header actions
   const headerActions = useMemo(() => (
-    <Button size="sm" onClick={() => setShowAddAccount(true)}>
-      <Plus className="h-4 w-4 mr-2" />
-      Add Account
-    </Button>
+    <div className="flex gap-2">
+      <PlaidSyncButton />
+      <Button size="sm" onClick={() => setShowAddAccount(true)}>
+        <Plus className="h-4 w-4 mr-2" />
+        Add Account
+      </Button>
+    </div>
   ), []);
 
   const sentinelRef = useSetPageHeader(bucket, headerActions);
@@ -77,10 +81,13 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
           </div>
           <div ref={sentinelRef} className="h-0" />
         </div>
-        <Button onClick={() => setShowAddAccount(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Account
-        </Button>
+        <div className="flex gap-2">
+          <PlaidSyncButton />
+          <Button size="sm" onClick={() => setShowAddAccount(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Account
+          </Button>
+        </div>
       </div>
 
       {/* Total */}

@@ -153,7 +153,9 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Second pass: update all items using cached quotes (no API calls, no rate limiting needed)
+    // Second pass: update all items using cached quotes (batch without SWR invalidation)
+    const updatePromises: Promise<void>[] = [];
+    
     for (const item of tickerItems) {
       if (!item.ticker) continue;
 
@@ -175,14 +177,31 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       // Calculate new value using the correct exchange rate
       const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
-      // Update the item - preserve user-set currency
-      await updatePortfolioItem(item.id!, {
-        pricePerUnit: quote.price,
-        currency: effectiveCurrency,
-        currentValue: newValue,
-        lastPriceUpdate: new Date(),
+      // Make direct API call without triggering SWR invalidation
+      const updatePromise = fetch(`/api/portfolio/items/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pricePerUnit: quote.price,
+          currency: effectiveCurrency,
+          currentValue: newValue,
+          lastPriceUpdate: new Date().toISOString(),
+        }),
+      }).then(response => {
+        if (!response.ok) {
+          console.error(`Failed to update item ${item.id}`);
+        }
       });
+      
+      updatePromises.push(updatePromise);
     }
+    
+    // Wait for all updates to complete
+    await Promise.all(updatePromises);
+    
+    // Invalidate SWR cache once after all updates are done
+    const { invalidatePortfolio } = await import("./hooks/useDatabase");
+    invalidatePortfolio();
 
     // Get failed item names for the toast message
     const failedItems = tickerItems

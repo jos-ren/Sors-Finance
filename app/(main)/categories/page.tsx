@@ -126,7 +126,7 @@ export default function CategoriesPage() {
       (transactionCount ?? 0) > 0 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="xs" disabled={isRecategorizing}>
+            <Button variant="outline" size="sm" disabled={isRecategorizing}>
               <RefreshCw className={`h-3 w-3 mr-1 ${isRecategorizing ? 'animate-spin' : ''}`} />
               Re-categorize
             </Button>

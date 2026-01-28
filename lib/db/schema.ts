@@ -211,6 +211,7 @@ export const portfolioItems = sqliteTable(
     lastPriceUpdate: integer("last_price_update", { mode: "timestamp" }),
     priceMode: text("price_mode"), // 'manual' | 'ticker'
     isInternational: integer("is_international", { mode: "boolean" }),
+    plaidAccountId: integer("plaid_account_id").references(() => plaidAccounts.id, { onDelete: "set null" }), // Link to Plaid account for syncing
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -220,6 +221,7 @@ export const portfolioItems = sqliteTable(
     index("portfolio_items_active_idx").on(table.isActive),
     index("portfolio_items_order_idx").on(table.order),
     index("portfolio_items_user_idx").on(table.userId),
+    index("portfolio_items_plaid_idx").on(table.plaidAccountId),
   ]
 );
 
@@ -285,3 +287,75 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 export type Session = typeof sessions.$inferSelect;
+
+// ============================================
+// Plaid Items Table
+// ============================================
+
+export const plaidItems = sqliteTable(
+  "plaid_items",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: text("item_id").notNull(),
+    accessToken: text("access_token").notNull(), // Encrypted
+    institutionId: text("institution_id").notNull(),
+    institutionName: text("institution_name").notNull(),
+    environment: text("environment").notNull().default("sandbox"), // 'sandbox' | 'development' | 'production'
+    status: text("status").notNull().default("active"), // 'active' | 'login_required' | 'error'
+    lastSync: integer("last_sync", { mode: "timestamp" }),
+    errorMessage: text("error_message"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("plaid_items_user_idx").on(table.userId),
+    index("plaid_items_item_idx").on(table.itemId),
+    index("plaid_items_status_idx").on(table.status),
+  ]
+);
+
+// ============================================
+// Plaid Accounts Table
+// ============================================
+
+export const plaidAccounts = sqliteTable(
+  "plaid_accounts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    plaidItemId: integer("plaid_item_id")
+      .notNull()
+      .references(() => plaidItems.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(), // Plaid's account_id
+    name: text("name").notNull(),
+    officialName: text("official_name"),
+    type: text("type").notNull(), // 'depository', 'credit', 'investment', 'loan'
+    subtype: text("subtype").notNull(), // 'checking', 'savings', 'credit card', etc.
+    mask: text("mask"), // Last 4 digits
+    portfolioAccountId: integer("portfolio_account_id").references(
+      () => portfolioAccounts.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("plaid_accounts_user_idx").on(table.userId),
+    index("plaid_accounts_item_idx").on(table.plaidItemId),
+    index("plaid_accounts_account_idx").on(table.accountId),
+    index("plaid_accounts_portfolio_idx").on(table.portfolioAccountId),
+  ]
+);
+
+export type PlaidItemRow = typeof plaidItems.$inferSelect;
+export type PlaidItemInsert = typeof plaidItems.$inferInsert;
+
+export type PlaidAccountRow = typeof plaidAccounts.$inferSelect;
+export type PlaidAccountInsert = typeof plaidAccounts.$inferInsert;

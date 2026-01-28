@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       lastPriceUpdate: row.lastPriceUpdate,
       priceMode: row.priceMode,
       isInternational: row.isInternational,
+      plaidAccountId: row.plaidAccountId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));

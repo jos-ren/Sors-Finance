@@ -15,6 +15,27 @@
       "when": 1768022401558,
       "tag": "0001_normal_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1769544104095,
+      "tag": "0002_certain_tombstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1769555201654,
+      "tag": "0003_even_sharon_ventura",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1769567191896,
+      "tag": "0004_goofy_rage",
+      "breakpoints": true
     }
   ]
 }
