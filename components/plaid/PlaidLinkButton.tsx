@@ -208,7 +208,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
           ) : (
             <>
               <Building2 className="h-4 w-4 mr-2" />
-              Connect Bank
+              Add a Bank
             </>
           )}
         </Button>

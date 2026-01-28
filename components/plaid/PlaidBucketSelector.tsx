@@ -107,8 +107,8 @@ export function PlaidBucketSelector({
             acc.id, 
             existing || { 
               bucket: acc.suggestedBucket, 
-              accountName: `${institutionName} ${acc.type === 'depository' ? 'Accounts' : acc.name}`,
-              itemName: acc.name // Use the Plaid account name as default item name
+              accountName: '', // Default to empty - user must select
+              itemName: '' // Default to empty - user must type
             }
           ];
         }))
@@ -153,13 +153,11 @@ export function PlaidBucketSelector({
     setAccountSelections(prev => {
       const newMap = new Map(prev);
       const current = newMap.get(accountId)!;
-      const newAccountName = `${institutionName} ${current.bucket === 'Savings' || current.bucket === 'Debt' ? 'Accounts' : current.itemName}`;
-      console.log('Resetting account name in bucket change to:', newAccountName);
-      // Reset account name to default for new bucket
+      // Reset account selection when bucket changes
       newMap.set(accountId, {
         ...current,
         bucket,
-        accountName: newAccountName,
+        accountName: '', // Clear account selection
       });
       return newMap;
     });
@@ -172,10 +170,10 @@ export function PlaidBucketSelector({
       const current = newMap.get(accountId)!;
       
       if (value === '__CREATE_NEW__') {
-        // User wants to create new - clear the account name so they can type
+        // User wants to create new - prefill with institution name
         newMap.set(accountId, {
           ...current,
-          accountName: '',
+          accountName: institutionName,
         });
       } else {
         // User selected existing account
@@ -310,7 +308,7 @@ export function PlaidBucketSelector({
       }}>
         <DialogHeader>
           <DialogTitle>
-            {mode === 'edit' ? 'Edit' : 'Map'} {accounts.length} Account{accounts.length !== 1 ? 's' : ''}
+            Map {accounts.length} account{accounts.length !== 1 ? 's' : ''} from {institutionName}
           </DialogTitle>
           <DialogDescription>
             {mode === 'edit' 
@@ -319,7 +317,7 @@ export function PlaidBucketSelector({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 py-3">
+        <div className="space-y-4 py-3">
           {accounts.map((account) => {
             const selection = accountSelections.get(account.id);
             if (!selection) return null; // Skip if not initialized yet
@@ -351,79 +349,85 @@ export function PlaidBucketSelector({
                     </div>
                   </div>
 
-                  {/* Form Fields */}
-                  <div className="space-y-3">
-                    {/* Item Name - Half Width */}
-                    <div className="space-y-1 w-1/2">
-                      <Label htmlFor={`item-${account.id}`} className="text-xs text-muted-foreground">
-                        Item Name
-                      </Label>
-                      <Input
-                        id={`item-${account.id}`}
-                        value={selection.itemName}
-                        onChange={(e) => handleItemNameChange(account.id, e.target.value)}
-                        placeholder="e.g., Chequing, Savings"
-                        className="h-8 text-sm"
-                      />
-                    </div>
+                  {/* Form Fields - 2x2 Grid */}
+                  <div className="space-y-2">
+                    {/* Row 1: Item Name | Bucket */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Item Name */}
+                      <div className="space-y-1">
+                        <Label htmlFor={`item-${account.id}`} className="text-xs text-muted-foreground">
+                          Item Name
+                        </Label>
+                        <Input
+                          id={`item-${account.id}`}
+                          value={selection.itemName}
+                          onChange={(e) => handleItemNameChange(account.id, e.target.value)}
+                          placeholder="e.g., Chequing, Savings"
+                          size="sm"
+                          className="text-sm"
+                        />
+                      </div>
 
-                    {/* Bucket and Account - Side by Side with 8px gap */}
-                    <div className="grid grid-cols-2 gap-2">
                       {/* Bucket */}
                       <div className="space-y-1">
-                      <Label htmlFor={`bucket-${account.id}`} className="text-xs text-muted-foreground">
-                        Bucket
-                      </Label>
-                      <Select
-                        value={selection.bucket}
-                        onValueChange={(value) => handleBucketChange(account.id, value as BucketType)}
-                      >
-                        <SelectTrigger id={`bucket-${account.id}`} className="h-8 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Savings">
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Savings")}`} />
-                              Savings
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="Investments">
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Investments")}`} />
-                              Investments
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="Assets">
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Assets")}`} />
-                              Assets
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="Debt">
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Debt")}`} />
-                              Debt
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <Label htmlFor={`bucket-${account.id}`} className="text-xs text-muted-foreground">
+                          Bucket
+                        </Label>
+                        <Select
+                          value={selection.bucket}
+                          onValueChange={(value) => handleBucketChange(account.id, value as BucketType)}
+                        >
+                          <SelectTrigger id={`bucket-${account.id}`} size="sm" className="text-sm w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Savings">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Savings")}`} />
+                                Savings
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Investments">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Investments")}`} />
+                                Investments
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Assets">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Assets")}`} />
+                                Assets
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Debt">
+                              <div className="flex items-center gap-1.5">
+                                <div className={`w-1.5 h-1.5 rounded-full ${getBucketColor("Debt")}`} />
+                                Debt
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
 
-                    {/* Account Selection */}
-                    <div className="space-y-1">
+                    {/* Row 2: Account | New Account Name (conditional) */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Account Selection */}
+                      <div className="space-y-1">
                         <Label htmlFor={`account-select-${account.id}`} className="text-xs text-muted-foreground">
                           Account
                         </Label>
                         <Select
                           value={
-                            availableAccounts.find(acc => acc.name === selection.accountName)
+                            selection.accountName === '' 
+                              ? '' 
+                              : availableAccounts.find(acc => acc.name === selection.accountName)
                               ? selection.accountName
                               : '__CREATE_NEW__'
                           }
                           onValueChange={(value) => handleAccountSelectionChange(account.id, value)}
                         >
-                          <SelectTrigger id={`account-select-${account.id}`} className="h-8 text-sm">
+                          <SelectTrigger id={`account-select-${account.id}`} size="sm" className="text-sm w-full">
                             <SelectValue placeholder="Select account..." />
                           </SelectTrigger>
                           <SelectContent>
@@ -443,7 +447,7 @@ export function PlaidBucketSelector({
                       </div>
 
                       {/* New Account Name Input - Only show if creating new */}
-                      {!availableAccounts.find(acc => acc.name === selection.accountName) && (
+                      {selection.accountName !== '' && !availableAccounts.find(acc => acc.name === selection.accountName) && (
                         <div className="space-y-1">
                           <Label htmlFor={`account-name-${account.id}`} className="text-xs text-muted-foreground">
                             New Account Name
@@ -453,7 +457,8 @@ export function PlaidBucketSelector({
                             value={selection.accountName}
                             onChange={(e) => handleAccountNameChange(account.id, e.target.value)}
                             placeholder="e.g., CIBC Accounts"
-                            className="h-8 text-sm"
+                            size="sm"
+                            className="text-sm"
                           />
                         </div>
                       )}

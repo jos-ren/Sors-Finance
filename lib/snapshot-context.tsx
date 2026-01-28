@@ -179,7 +179,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
 
       // Make direct API call without triggering SWR invalidation
       const updatePromise = fetch(`/api/portfolio/items/${item.id}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pricePerUnit: quote.price,
@@ -187,9 +187,10 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
           currentValue: newValue,
           lastPriceUpdate: new Date().toISOString(),
         }),
-      }).then(response => {
+      }).then(async response => {
         if (!response.ok) {
-          console.error(`Failed to update item ${item.id}`);
+          const errorText = await response.text();
+          console.error(`Failed to update item ${item.id}:`, response.status, errorText);
         }
       });
       

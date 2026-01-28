@@ -5,14 +5,15 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export interface CurrencyInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "type"> {
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "type" | "size"> {
   value: string;
   onChange: (value: string) => void;
   allowNegative?: boolean;
+  size?: "sm" | "default";
 }
 
 const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
-  ({ className, value, onChange, allowNegative = false, onBlur, ...props }, ref) => {
+  ({ className, value, onChange, allowNegative = false, onBlur, size, ...props }, ref) => {
     // Only allow numbers, decimal point, and optionally negative sign
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const inputValue = e.target.value;
@@ -50,6 +51,7 @@ const CurrencyInput = React.forwardRef<HTMLInputElement, CurrencyInputProps>(
         value={value}
         onChange={handleChange}
         onBlur={handleBlur}
+        size={size}
         className={cn(className)}
         {...props}
       />

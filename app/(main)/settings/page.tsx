@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   ExternalLink,
   Key,
@@ -162,8 +162,24 @@ const TIMEZONE_LIST = [
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const initialTab = searchParams.get("tab") || "general";
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Update URL when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    router.push(`${pathname}?tab=${value}`, { scroll: false });
+  };
+
+  // Sync tab state when URL changes (back/forward navigation)
+  useEffect(() => {
+    const tabFromUrl = searchParams.get("tab") || "general";
+    if (tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [searchParams, activeTab]);
 
   // API Key state
   const [apiKey, setApiKey] = useState("");
@@ -833,7 +849,7 @@ export default function SettingsPage() {
         <div ref={sentinelRef} className="h-0" />
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>

@@ -67,12 +67,14 @@ interface PlaidInstitution {
   accounts: Array<{
     id: number;
     name: string;
+    officialName?: string | null;
     type: string;
     subtype: string;
     mask?: string;
     portfolioAccountId?: number | null;
     portfolioAccountName?: string | null;
     portfolioBucket?: string | null;
+    portfolioItemName?: string | null;
   }>;
 }
 
@@ -85,7 +87,6 @@ export function PlaidBankingConnections() {
   const [isSaving, setIsSaving] = useState(false);
   const [institutions, setInstitutions] = useState<PlaidInstitution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
-  const [isSyncingBalances, setIsSyncingBalances] = useState(false);
   const [encryptionConfigured, setEncryptionConfigured] = useState<boolean | null>(null);
   const [generatedKey, setGeneratedKey] = useState<string>("");
   const [editingInstitution, setEditingInstitution] = useState<PlaidInstitution | null>(null);
@@ -267,39 +268,6 @@ export function PlaidBankingConnections() {
   };
 
   // Sync balances
-  const handleSyncBalances = async () => {
-    setIsSyncingBalances(true);
-    try {
-      const response = await fetch("/api/plaid/balances", {
-        method: "POST",
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        if (data.accountsUpdated > 0) {
-          toast.success(data.message || `Synced ${data.accountsUpdated} account${data.accountsUpdated !== 1 ? 's' : ''}`);
-        } else {
-          toast.info(data.message || "No accounts to sync");
-        }
-        // Reload institutions to show updated sync times
-        await loadInstitutions();
-      } else {
-        const errorMsg = data.error || "Failed to sync balances";
-        if (data.errors && data.errors.length > 0) {
-          toast.error(`${errorMsg}: ${data.errors[0]}`);
-        } else {
-          toast.error(errorMsg);
-        }
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      toast.error("Failed to sync balances");
-    } finally {
-      setIsSyncingBalances(false);
-    }
-  };
-
   // Disconnect institution
   const handleDisconnect = async (itemId: number) => {
     try {
@@ -670,14 +638,6 @@ export function PlaidBankingConnections() {
                     hasCredentials={true}
                   />
                   <Button
-                    onClick={handleSyncBalances}
-                    variant="default"
-                    disabled={isSyncingBalances || institutions.length === 0}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isSyncingBalances ? "animate-spin" : ""}`} />
-                    {isSyncingBalances ? "Syncing..." : "Sync Balances"}
-                  </Button>
-                  <Button
                     onClick={loadInstitutions}
                     variant="outline"
                     size="icon"
@@ -702,21 +662,20 @@ export function PlaidBankingConnections() {
                               </div>
                               <div className="space-y-0.5">
                                 {institution.accounts.map((account) => (
-                                  <div key={account.id} className="flex items-center gap-2">
-                                    <p className="text-sm text-muted-foreground">
-                                      {account.name} ({account.type})
+                                  <div key={account.id} className="flex items-center justify-between gap-4">
+                                    <p className="text-sm text-muted-foreground flex-shrink">
+                                      {account.officialName || account.name} ({account.type})
                                       {account.mask && ` ••${account.mask}`}
                                     </p>
                                     {account.portfolioAccountId ? (
-                                      <Badge variant="secondary" className="text-xs flex items-center gap-1">
-                                        <CheckCircle2 className="h-3 w-3" />
-                                        {account.portfolioBucket}
-                                      </Badge>
+                                      <div className="text-xs flex flex-col leading-tight flex-shrink-0 items-end">
+                                        <span className="text-muted-foreground">{account.portfolioBucket}</span>
+                                        <span className="text-[10px] text-muted-foreground/60">{account.portfolioAccountName}</span>
+                                      </div>
                                     ) : (
-                                      <Badge variant="outline" className="text-xs flex items-center gap-1">
-                                        <Circle className="h-3 w-3" />
-                                        Not in Portfolio
-                                      </Badge>
+                                      <div className="text-xs text-muted-foreground flex-shrink-0">
+                                        No Account Yet
+                                      </div>
                                     )}
                                   </div>
                                 ))}
@@ -774,7 +733,7 @@ export function PlaidBankingConnections() {
           id: acc.id,
           accountId: acc.id.toString(),
           name: acc.name,
-          officialName: null,
+          officialName: acc.officialName || null,
           type: acc.type,
           subtype: acc.subtype,
           mask: acc.mask || null,
@@ -796,7 +755,7 @@ export function PlaidBankingConnections() {
               {
                 bucket: (acc.portfolioBucket as any) || 'Savings',
                 accountName: acc.portfolioAccountName || '',
-                itemName: acc.name,
+                itemName: acc.portfolioItemName || '',
               }
             ])
         )}

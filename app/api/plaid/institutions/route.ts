@@ -25,11 +25,16 @@ export async function GET(req: NextRequest) {
           .select({
             account: schema.plaidAccounts,
             portfolioAccount: schema.portfolioAccounts,
+            portfolioItem: schema.portfolioItems,
           })
           .from(schema.plaidAccounts)
           .leftJoin(
             schema.portfolioAccounts,
             eq(schema.plaidAccounts.portfolioAccountId, schema.portfolioAccounts.id)
+          )
+          .leftJoin(
+            schema.portfolioItems,
+            eq(schema.plaidAccounts.id, schema.portfolioItems.plaidAccountId)
           )
           .where(eq(schema.plaidAccounts.plaidItemId, item.id));
 
@@ -51,6 +56,7 @@ export async function GET(req: NextRequest) {
             portfolioAccountId: row.account.portfolioAccountId,
             portfolioAccountName: row.portfolioAccount?.name || null,
             portfolioBucket: row.portfolioAccount?.bucket || null,
+            portfolioItemName: row.portfolioItem?.name || null,
           })),
         };
       })

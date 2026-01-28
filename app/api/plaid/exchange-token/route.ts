@@ -75,7 +75,12 @@ export async function POST(req: NextRequest) {
       country_codes: [CountryCode.Ca],
     });
 
-    const institutionName = institutionResponse.data.institution.name;
+    // Clean up institution name by removing everything after dash and anything in parentheses
+    const rawInstitutionName = institutionResponse.data.institution.name;
+    const institutionName = rawInstitutionName
+      .replace(/\s*-\s*.*$/, '')  // Remove everything after dash
+      .replace(/\s*\(.*?\)/g, '')  // Remove anything in parentheses
+      .trim();
 
     // Get accounts
     const accountsResponse = await client.accountsGet({
