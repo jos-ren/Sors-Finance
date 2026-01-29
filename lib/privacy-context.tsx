@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useSyncExternalStore } from "react";
 
 interface PrivacyContextType {
   isPrivacyMode: boolean;
@@ -12,17 +12,31 @@ const PrivacyContext = createContext<PrivacyContextType | undefined>(undefined);
 
 const PRIVACY_STORAGE_KEY = "sors-privacy-mode";
 
-export function PrivacyProvider({ children }: { children: ReactNode }) {
-  const [isPrivacyMode, setIsPrivacyMode] = useState(false);
-  const [mounted, setMounted] = useState(false);
+// Use useSyncExternalStore pattern for hydration-safe localStorage access
+function getStoredPrivacyMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(PRIVACY_STORAGE_KEY) === "true";
+}
 
+function subscribeToStorage(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+export function PrivacyProvider({ children }: { children: ReactNode }) {
+  // Use useSyncExternalStore for hydration-safe state
+  const storedValue = useSyncExternalStore(
+    subscribeToStorage,
+    getStoredPrivacyMode,
+    () => false // Server snapshot
+  );
+  
+  const [isPrivacyMode, setIsPrivacyMode] = useState(storedValue);
+
+  // Sync with stored value after hydration
   useEffect(() => {
-    setMounted(true);
-    const stored = localStorage.getItem(PRIVACY_STORAGE_KEY);
-    if (stored === "true") {
-      setIsPrivacyMode(true);
-    }
-  }, []);
+    setIsPrivacyMode(storedValue);
+  }, [storedValue]);
 
   const togglePrivacyMode = useCallback(() => {
     setIsPrivacyMode((prev) => {
@@ -42,12 +56,11 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
       }).format(n);
 
     const fmt = formatter || defaultFormatter;
-    if (!mounted) return fmt(amount);
     if (isPrivacyMode) {
       return "******";
     }
     return fmt(amount);
-  }, [mounted, isPrivacyMode]);
+  }, [isPrivacyMode]);
 
   const contextValue = useMemo(
     () => ({ isPrivacyMode, togglePrivacyMode, formatAmount }),

@@ -14,8 +14,6 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
-  RefreshCw,
-  Circle,
   Monitor,
   Pencil,
   Info,
@@ -49,7 +47,6 @@ import { toast } from "sonner";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
 import { PlaidLinkButton } from "./PlaidLinkButton";
 import { PlaidBucketSelector } from "./PlaidBucketSelector";
-import { invalidatePortfolio } from "@/lib/hooks/useDatabase";
 
 interface PlaidInstitution {
   id: number;
@@ -87,7 +84,6 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
   const [institutions, setInstitutions] = useState<PlaidInstitution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
   const [editingInstitution, setEditingInstitution] = useState<PlaidInstitution | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
 
   // Load connected institutions
@@ -127,29 +123,6 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
       toast.error("Failed to test credentials");
     } finally {
       setIsTesting(false);
-    }
-  };
-
-  // Sync balances
-  const handleSyncBalances = async () => {
-    setIsSyncing(true);
-    try {
-      const response = await fetch("/api/plaid/balances", { method: "POST" });
-      const data = await response.json();
-
-      if (data.success || data.accountsUpdated > 0) {
-        toast.success(data.message || "Balances synced successfully");
-        // Invalidate portfolio cache to refresh UI with new balances
-        invalidatePortfolio();
-        await loadInstitutions();
-      } else {
-        toast.error(data.error || "Failed to sync balances");
-      }
-    } catch (error) {
-      console.error("Sync error:", error);
-      toast.error("Failed to sync balances");
-    } finally {
-      setIsSyncing(false);
     }
   };
 
@@ -304,7 +277,7 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
 
         {/* Configuration Status */}
         {plaidConfigured === null ? (
-          <>  </>
+          null
         ) : plaidConfigured ? (
           <>
             {/* Bank Connections Section */}
@@ -451,7 +424,7 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
               )}
             </div>
           </>
-        ) : (<> </>)}
+        ) : null}
       </CardContent>
 
       {/* Bucket Selector Dialog */}
@@ -473,7 +446,7 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
           type: acc.type,
           subtype: acc.subtype,
           mask: acc.mask || undefined,
-          suggestedBucket: (acc.portfolioBucket as any) || "Savings",
+          suggestedBucket: (acc.portfolioBucket as "Savings" | "Investments" | "Assets" | "Debt") || "Savings",
           currentBalance: 0,
         })) || []}
         mode="edit"
@@ -485,7 +458,7 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
                   .map((acc) => [
                     acc.id,
                     {
-                      bucket: (acc.portfolioBucket || "Savings") as any,
+                      bucket: (acc.portfolioBucket || "Savings") as "Savings" | "Investments" | "Assets" | "Debt",
                       accountName: acc.portfolioAccountName || "",
                       itemName: acc.portfolioItemName || acc.officialName || acc.name,
                     },

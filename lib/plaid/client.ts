@@ -4,7 +4,7 @@
  * Creates and configures Plaid client instances from environment variables
  */
 
-import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
+import { Configuration, PlaidApi } from "plaid";
 import { getPlaidEnvironment, type PlaidEnvironmentType } from "./types";
 
 /**
@@ -76,8 +76,9 @@ export async function testPlaidCredentials(
     await client.categoriesGet({});
     
     return { success: true };
-  } catch (error: any) {
-    const errorMessage = error?.response?.data?.error_message || error.message || "Unknown error";
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error_message?: string } }; message?: string };
+    const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
     return {
       success: false,
       error: errorMessage,

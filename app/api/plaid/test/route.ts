@@ -24,8 +24,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Test with sandbox environment by default
-    const result = await testPlaidCredentials("sandbox");
+    // Test with production environment (matches PlaidLinkButton default)
+    const result = await testPlaidCredentials("production");
 
     if (result.success) {
       return NextResponse.json({ 
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
         { status: 400 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Plaid test error:", error);
     return NextResponse.json(
       { error: "Failed to test Plaid credentials" },

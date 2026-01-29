@@ -14,8 +14,6 @@ import {
   Pencil,
 } from "lucide-react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -136,9 +134,9 @@ export default function PortfolioPage() {
   const [editingSnapshot, setEditingSnapshot] = useState<DbPortfolioSnapshot | null>(null);
 
   // Trend chart period state
-  const now = new Date();
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
   const [trendPeriod, setTrendPeriod] = useState<TrendPeriod>("all");
-  const [trendYear, setTrendYear] = useState(now.getFullYear());
+  const [trendYear, setTrendYear] = useState(currentYear);
 
   // Get the latest snapshot to compare with current net worth
   const latestSnapshot = useMemo(() => {
@@ -228,10 +226,10 @@ export default function PortfolioPage() {
 
   // Available years from snapshots
   const availableYears = useMemo(() => {
-    if (!allSnapshots || allSnapshots.length === 0) return [now.getFullYear()];
+    if (!allSnapshots || allSnapshots.length === 0) return [currentYear];
     const years = [...new Set(allSnapshots.map(s => s.date.getFullYear()))].sort((a, b) => b - a);
-    return years.length > 0 ? years : [now.getFullYear()];
-  }, [allSnapshots, now]);
+    return years.length > 0 ? years : [currentYear];
+  }, [allSnapshots, currentYear]);
 
   // Transform snapshot data for chart based on selected period
   const trendData = useMemo(() => {

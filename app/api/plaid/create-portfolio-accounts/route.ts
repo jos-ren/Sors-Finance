@@ -169,9 +169,10 @@ export async function POST(req: NextRequest) {
           .where(eq(schema.plaidAccounts.id, mapping.plaidAccountId));
 
         created.push(mapping.plaidAccountId);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`Failed to create portfolio item for ${mapping.plaidAccountId}:`, error);
-        failed.push(`Account ${mapping.plaidAccountId}: ${error.message || "Unknown error"}`);
+        const err = error as { message?: string };
+        failed.push(`Account ${mapping.plaidAccountId}: ${err.message || "Unknown error"}`);
       }
     }
 
@@ -182,10 +183,11 @@ export async function POST(req: NextRequest) {
       failed: failed.length,
       errors: failed.length > 0 ? failed : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Create portfolio accounts error:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to create portfolio accounts" },
+      { error: err.message || "Failed to create portfolio accounts" },
       { status: 500 }
     );
   }

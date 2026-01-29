@@ -6,7 +6,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { usePlaidLink, PlaidLinkOnSuccess, PlaidLinkOptions } from "react-plaid-link";
+import { usePlaidLink, PlaidLinkOnSuccess, PlaidLinkOptions, PlaidLinkError, PlaidLinkOnExitMetadata } from "react-plaid-link";
 import { Button } from "@/components/ui/button";
 import { Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,10 +28,9 @@ interface PlaidAccount {
 interface PlaidLinkButtonProps {
   onSuccess?: () => void;
   onExit?: () => void;
-  hasCredentials?: boolean;
 }
 
-export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: PlaidLinkButtonProps) {
+export function PlaidLinkButton({ onSuccess, onExit }: PlaidLinkButtonProps) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
   
@@ -61,8 +60,9 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
 
       const data = await response.json();
       setLinkToken(data.linkToken);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to initialize Plaid Link");
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast.error(err.message || "Failed to initialize Plaid Link");
       console.error("Link token creation error:", error);
     } finally {
       setIsCreatingToken(false);
@@ -71,7 +71,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
 
   // Handle successful connection
   const handleOnSuccess = useCallback<PlaidLinkOnSuccess>(
-    async (publicToken, metadata) => {
+    async (publicToken, _metadata) => {
       try {
         // Fix body scroll lock (Plaid sometimes leaves overflow: hidden)
         document.body.style.overflow = '';
@@ -107,8 +107,9 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
 
         // Reset link token so user can connect another bank
         setLinkToken(null);
-      } catch (error: any) {
-        toast.error(error.message || "Failed to complete connection");
+      } catch (error: unknown) {
+        const err = error as { message?: string };
+        toast.error(err.message || "Failed to complete connection");
         console.error("Token exchange error:", error);
       }
     },
@@ -117,7 +118,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
 
   // Handle exit/cancellation
   const handleOnExit = useCallback(
-    (error: any, metadata: any) => {
+    (error: PlaidLinkError | null, _metadata: PlaidLinkOnExitMetadata) => {
       // Fix body scroll lock (Plaid sometimes leaves overflow: hidden)
       document.body.style.overflow = '';
       document.body.style.removeProperty('overflow');

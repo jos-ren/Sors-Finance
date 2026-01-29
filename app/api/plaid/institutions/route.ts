@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({ institutions: itemsWithAccounts });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Get institutions error:", error);
     return NextResponse.json(
       { error: "Failed to get institutions" },

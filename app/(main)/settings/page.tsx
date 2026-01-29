@@ -77,7 +77,6 @@ import {
   setSetting,
 } from "@/lib/db/client";
 import { useSetPageHeader } from "@/lib/page-header-context";
-import { useSettings } from "@/lib/settings-context";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { PlaidBankingConnections } from "@/components/plaid/PlaidBankingConnections";
@@ -232,9 +231,6 @@ export default function SettingsPage() {
 
   // Auth
   const { user, logout } = useAuth();
-
-  // Settings context - for updating settings that need to be shared across app
-  const { updateSetting: _updateContextSetting } = useSettings();
 
   const handleLogout = async () => {
     try {

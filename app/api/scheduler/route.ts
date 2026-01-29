@@ -45,10 +45,11 @@ export async function GET(request: NextRequest) {
       snapshotEnabled: snapshotSetting[0]?.value !== "false", // Default true
       plaidSyncEnabled: plaidSyncSetting[0]?.value !== "false", // Default true
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error getting scheduler settings:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to get settings" },
+      { error: err.message || "Failed to get settings" },
       { status: 500 }
     );
   }
@@ -115,10 +116,11 @@ export async function PUT(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating scheduler settings:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to update settings" },
+      { error: err.message || "Failed to update settings" },
       { status: 500 }
     );
   }

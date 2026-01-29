@@ -40,10 +40,11 @@ export async function GET(request: NextRequest) {
       success: true,
       accounts,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching Plaid accounts:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to fetch accounts" },
+      { error: err.message || "Failed to fetch accounts" },
       { status: 500 }
     );
   }

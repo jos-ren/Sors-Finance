@@ -2,11 +2,7 @@
  * Plaid-related type definitions
  */
 
-import {
-  CountryCode,
-  Products,
-  PlaidEnvironments,
-} from "plaid";
+import { PlaidEnvironments } from "plaid";
 
 /**
  * Plaid environment configuration
@@ -99,7 +95,7 @@ export interface PlaidBalance {
  */
 export function mapPlaidTypeToPortfolioBucket(
   type: string,
-  subtype: string
+  _subtype: string
 ): "Savings" | "Investments" | "Assets" | "Debt" {
   switch (type) {
     case "depository":

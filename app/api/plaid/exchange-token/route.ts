@@ -142,10 +142,11 @@ export async function POST(req: NextRequest) {
         currentBalance: acc.currentBalance,
       })),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Token exchange error:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to exchange token" },
+      { error: err.message || "Failed to exchange token" },
       { status: 500 }
     );
   }

@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/api-helper";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
 import type { PlaidEnvironmentType } from "@/lib/plaid/types";
-import { CountryCode, Products } from "plaid";
+import { CountryCode, Products, LinkTokenCreateRequest } from "plaid";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const client = createPlaidClient(environment as PlaidEnvironmentType);
 
     // Create link token request
-    const request: any = {
+    const request: LinkTokenCreateRequest = {
       user: {
         client_user_id: userId.toString(),
       },
@@ -49,10 +49,11 @@ export async function POST(req: NextRequest) {
       linkToken: response.data.link_token,
       expiration: response.data.expiration,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Link token creation error:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to create link token" },
+      { error: err.message || "Failed to create link token" },
       { status: 500 }
     );
   }

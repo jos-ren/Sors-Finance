@@ -211,9 +211,10 @@ export async function PUT(req: NextRequest) {
           .where(eq(schema.plaidAccounts.id, mapping.plaidAccountId));
 
         updated.push(mapping.plaidAccountId);
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error(`Failed to update portfolio item for ${mapping.plaidAccountId}:`, error);
-        failed.push(`Account ${mapping.plaidAccountId}: ${error.message || "Unknown error"}`);
+        const err = error as { message?: string };
+        failed.push(`Account ${mapping.plaidAccountId}: ${err.message || "Unknown error"}`);
       }
     }
 
@@ -224,10 +225,11 @@ export async function PUT(req: NextRequest) {
       failed: failed.length,
       errors: failed.length > 0 ? failed : undefined,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Update portfolio accounts error:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to update portfolio accounts" },
+      { error: err.message || "Failed to update portfolio accounts" },
       { status: 500 }
     );
   }

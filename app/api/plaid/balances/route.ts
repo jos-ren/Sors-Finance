@@ -154,9 +154,10 @@ export async function POST(request: NextRequest) {
             updatedAt: new Date(),
           })
           .where(eq(plaidItems.id, item.id));
-      } catch (error: any) {
+      } catch (error: unknown) {
         result.accountsFailed++;
-        const errorMessage = error?.response?.data?.error_message || error.message || "Unknown error";
+        const err = error as { response?: { data?: { error_message?: string } }; message?: string };
+        const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
         result.errors.push(`${item.institutionName}: ${errorMessage}`);
 
         // Update item status
@@ -208,10 +209,11 @@ export async function POST(request: NextRequest) {
         ? `Successfully synced ${result.accountsUpdated} account${result.accountsUpdated !== 1 ? 's' : ''}`
         : "No accounts to sync",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error syncing Plaid balances:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
-      { error: error.message || "Failed to sync balances" },
+      { error: err.message || "Failed to sync balances" },
       { status: 500 }
     );
   }

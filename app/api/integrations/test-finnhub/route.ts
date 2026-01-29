@@ -82,12 +82,13 @@ export async function GET(req: NextRequest) {
         { status: 500 }
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Finnhub test error:", error);
+    const err = error as { message?: string };
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to test Finnhub API key"
+        error: err.message || "Failed to test Finnhub API key"
       },
       { status: 500 }
     );

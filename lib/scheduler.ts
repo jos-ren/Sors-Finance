@@ -162,8 +162,9 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
             updatedAt: new Date(),
           })
           .where(eq(plaidItems.id, item.id));
-      } catch (error: any) {
-        const errorMessage = error?.response?.data?.error_message || error.message || "Unknown error";
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { error_message?: string } }; message?: string };
+        const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
         errors.push(`${item.institutionName}: ${errorMessage}`);
 
         // Update item status
@@ -179,9 +180,10 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
     }
 
     return { success: errors.length === 0, accountsUpdated, errors };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[Scheduler] Plaid sync error for user #${userId}:`, error);
-    return { success: false, accountsUpdated: 0, errors: [error.message || "Unknown error"] };
+    const err = error as { message?: string };
+    return { success: false, accountsUpdated: 0, errors: [err.message || "Unknown error"] };
   }
 }
 

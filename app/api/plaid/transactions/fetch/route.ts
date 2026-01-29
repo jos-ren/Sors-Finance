@@ -71,7 +71,6 @@ export async function POST(request: NextRequest) {
     const accessToken = plaidItem.accessToken;
 
     // Check if Plaid is configured
-    const { isPlaidConfigured, createPlaidClient } = await import("@/lib/plaid/client");
     if (!isPlaidConfigured()) {
       return NextResponse.json(
         { error: "Plaid credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET in your .env file." },
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Plaid client
-    const client = createPlaidClient(plaidItem.environment as "sandbox" | "development" | "production");
+    const client = createPlaidClient(plaidItem.environment as "sandbox" | "production");
 
     // Fetch transactions from Plaid
     const plaidRequest: TransactionsGetRequest = {
@@ -152,12 +151,13 @@ export async function POST(request: NextRequest) {
       pendingCount: allTransactions.length - settledTransactions.length,
       institutionName: plaidItem.institutionName,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching Plaid transactions:", error);
 
     // Handle Plaid-specific errors
-    if (error.response?.data) {
-      const plaidError = error.response.data;
+    const err = error as { response?: { data?: { error_message?: string; error_code?: string } }; message?: string };
+    if (err.response?.data) {
+      const plaidError = err.response.data;
       return NextResponse.json(
         {
           error: `Plaid error: ${plaidError.error_message || "Unknown error"}`,
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to fetch transactions" },
+      { error: err.message || "Failed to fetch transactions" },
       { status: 500 }
     );
   }

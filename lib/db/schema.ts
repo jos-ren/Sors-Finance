@@ -301,10 +301,10 @@ export const plaidItems = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     itemId: text("item_id").notNull(),
-    accessToken: text("access_token").notNull(), // Encrypted
+    accessToken: text("access_token").notNull(), // Plaid access token
     institutionId: text("institution_id").notNull(),
     institutionName: text("institution_name").notNull(),
-    environment: text("environment").notNull().default("sandbox"), // 'sandbox' | 'development' | 'production'
+    environment: text("environment").notNull().default("sandbox"), // 'sandbox' | 'production'
     status: text("status").notNull().default("active"), // 'active' | 'login_required' | 'error'
     lastSync: integer("last_sync", { mode: "timestamp" }),
     errorMessage: text("error_message"),
