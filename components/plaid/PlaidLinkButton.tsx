@@ -10,13 +10,6 @@ import { usePlaidLink, PlaidLinkOnSuccess, PlaidLinkOptions } from "react-plaid-
 import { Button } from "@/components/ui/button";
 import { Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
 import { PlaidBucketSelector } from "./PlaidBucketSelector";
 
@@ -36,12 +29,12 @@ interface PlaidLinkButtonProps {
   onSuccess?: () => void;
   onExit?: () => void;
   hasCredentials?: boolean;
+  environment?: PlaidEnvironmentType; // Accept environment from parent
 }
 
-export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: PlaidLinkButtonProps) {
+export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false, environment = "production" }: PlaidLinkButtonProps) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
-  const [selectedEnvironment, setSelectedEnvironment] = useState<PlaidEnvironmentType>("sandbox");
   
   // Bucket selector state
   const [showBucketSelector, setShowBucketSelector] = useState(false);
@@ -56,7 +49,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
       const response = await fetch("/api/plaid/link-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ environment: selectedEnvironment }),
+        body: JSON.stringify({ environment }),
       });
 
       if (!response.ok) {
@@ -86,7 +79,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
         const response = await fetch("/api/plaid/exchange-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ publicToken, environment: selectedEnvironment }),
+          body: JSON.stringify({ publicToken, environment }),
         });
 
         if (!response.ok) {
@@ -117,7 +110,7 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
         console.error("Token exchange error:", error);
       }
     },
-    [selectedEnvironment]
+    [environment]
   );
 
   // Handle exit/cancellation
@@ -175,30 +168,14 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
 
   return (
     <>
-      <div className="flex gap-2 items-center">
-        <Select
-          value={selectedEnvironment}
-          onValueChange={(val) => setSelectedEnvironment(val as PlaidEnvironmentType)}
-          disabled={isCreatingToken || (linkToken !== null && !ready)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sandbox">Sandbox</SelectItem>
-            <SelectItem value="development">Development</SelectItem>
-            <SelectItem value="production">Production</SelectItem>
-          </SelectContent>
-        </Select>
-        
-        <Button
-          onClick={handleClick}
-          disabled={isCreatingToken || (linkToken !== null && !ready)}
-        >
-          {isCreatingToken ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Initializing...
+      <Button
+        onClick={handleClick}
+        disabled={isCreatingToken || (linkToken !== null && !ready)}
+      >
+        {isCreatingToken ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Initializing...
             </>
           ) : linkToken && !ready ? (
             <>
@@ -212,7 +189,6 @@ export function PlaidLinkButton({ onSuccess, onExit, hasCredentials = false }: P
             </>
           )}
         </Button>
-      </div>
 
       {/* Bucket Selector Dialog */}
       <PlaidBucketSelector

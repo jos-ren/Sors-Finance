@@ -27,6 +27,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -89,6 +96,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
   const [editingInstitution, setEditingInstitution] = useState<PlaidInstitution | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [environmentFilter, setEnvironmentFilter] = useState<PlaidEnvironmentType>("sandbox"); // Start with sandbox to see existing banks
 
   // Load connected institutions
   const loadInstitutions = async () => {
@@ -105,6 +113,11 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
       setIsLoadingInstitutions(false);
     }
   };
+
+  // Filter institutions by environment
+  const filteredInstitutions = institutions.filter(
+    (inst) => inst.environment === environmentFilter
+  );
 
   useEffect(() => {
     loadInstitutions();
@@ -302,10 +315,24 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  {/* Environment Filter */}
+                  <Select
+                    value={environmentFilter}
+                    onValueChange={(value) => setEnvironmentFilter(value as PlaidEnvironmentType)}
+                  >
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="production">Production</SelectItem>
+                      <SelectItem value="sandbox">Sandbox</SelectItem>
+                    </SelectContent>
+                  </Select>
 
                   <PlaidLinkButton
+                    environment={environmentFilter}
                     onSuccess={() => {
-                      loadInstitutions();
+                      // Institutions will refresh when bucket mapping is confirmed
                     }}
                   />
                 </div>
@@ -315,15 +342,15 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : institutions.length === 0 ? (
+              ) : filteredInstitutions.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Building2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No banks connected yet</p>
+                  <p>No banks connected in {environmentFilter} environment</p>
                   <p className="text-sm">Click &quot;Connect a Bank&quot; to get started</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {institutions.map((institution) => (
+                  {filteredInstitutions.map((institution) => (
                     <div
                       key={institution.id}
                       className="border rounded-lg p-4 space-y-3"
@@ -446,8 +473,7 @@ PLAID_CLIENT_ID=your_client_id_here{"\n"}PLAID_SECRET=your_secret_here
         onOpenChange={(open) => {
           if (!open) {
             setEditingInstitution(null);
-            // Refresh institutions list to show any unmapped accounts
-            loadInstitutions();
+            // Don't refresh here - will refresh in onConfirm if user saved changes
           }
         }}
         itemId={editingInstitution?.id || 0}

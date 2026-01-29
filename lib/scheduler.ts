@@ -15,7 +15,7 @@ let currentJob: ScheduledTask | null = null;
 
 const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
-const PLAID_SYNC_ENABLED_KEY = "PLAID_SYNC_ENABLED";
+const PLAID_SYNC_WITH_SNAPSHOT_KEY = "PLAID_SYNC_WITH_SNAPSHOT";
 
 /**
  * Get the configured snapshot time from the database (uses first found or default)
@@ -51,6 +51,7 @@ async function isSnapshotEnabledForUser(userId: number): Promise<boolean> {
 
 /**
  * Check if Plaid sync is enabled for a specific user
+ * When enabled, Plaid balances will sync before creating portfolio snapshots
  */
 async function isPlaidSyncEnabledForUser(userId: number): Promise<boolean> {
   const result = await db
@@ -58,14 +59,14 @@ async function isPlaidSyncEnabledForUser(userId: number): Promise<boolean> {
     .from(schema.settings)
     .where(
       and(
-        eq(schema.settings.key, PLAID_SYNC_ENABLED_KEY),
+        eq(schema.settings.key, PLAID_SYNC_WITH_SNAPSHOT_KEY),
         eq(schema.settings.userId, userId)
       )
     )
     .limit(1);
 
-  // Default to true if no setting exists (opt-out model)
-  return result[0]?.value !== "false";
+  // Default to false if no setting exists (opt-in model)
+  return result[0]?.value === "true";
 }
 
 /**

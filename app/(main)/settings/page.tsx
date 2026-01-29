@@ -210,6 +210,7 @@ export default function SettingsPage() {
   // Snapshot scheduler state
   const [snapshotEnabled, setSnapshotEnabled] = useState(true);
   const [snapshotTime, setSnapshotTime] = useState("03:00");
+  const [plaidSyncEnabled, setPlaidSyncEnabled] = useState(false); // Opt-in for Plaid sync with snapshot
   const [isLoadingSnapshotConfig, setIsLoadingSnapshotConfig] = useState(true);
 
   // Snapshot import/export state
@@ -335,6 +336,7 @@ export default function SettingsPage() {
       .then(({ data }) => {
         setSnapshotEnabled(data?.enabled ?? true);
         setSnapshotTime(data?.time || "03:00");
+        setPlaidSyncEnabled(data?.plaidSync ?? false); // Load Plaid sync setting
       })
       .catch(err => {
         console.error("Failed to load scheduler config:", err);
@@ -428,6 +430,22 @@ export default function SettingsPage() {
       toast.success(`Snapshot time set to ${time}`);
     } catch (err) {
       console.error("Failed to update snapshot time:", err);
+      toast.error("Failed to update setting");
+    }
+  };
+
+  const handlePlaidSyncChange = async (checked: boolean) => {
+    try {
+      const res = await fetch("/api/scheduler/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plaidSync: checked }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setPlaidSyncEnabled(checked);
+      toast.success(checked ? "Plaid sync enabled with snapshots" : "Plaid sync disabled");
+    } catch (err) {
+      console.error("Failed to update Plaid sync setting:", err);
       toast.error("Failed to update setting");
     }
   };
@@ -1099,6 +1117,24 @@ export default function SettingsPage() {
                       Time of day when the automatic snapshot will be taken
                     </p>
                   </div>
+
+                  {/* Plaid Sync Toggle - Only show if Plaid is configured */}
+                  {plaidConfigured && (
+                    <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                      <div className="space-y-1">
+                        <Label htmlFor="plaid-sync-enabled">Sync Plaid balances with snapshot</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Automatically sync Plaid account balances when taking scheduled portfolio snapshots
+                        </p>
+                      </div>
+                      <Switch
+                        id="plaid-sync-enabled"
+                        checked={plaidSyncEnabled}
+                        onCheckedChange={handlePlaidSyncChange}
+                        disabled={!snapshotEnabled}
+                      />
+                    </div>
+                  )}
 
                   <Alert>
                     <Info className="h-4 w-4" />

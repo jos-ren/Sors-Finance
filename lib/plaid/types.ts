@@ -141,7 +141,7 @@ export const PLAID_SETTINGS_KEYS = {
   SECRET: "PLAID_SECRET",
   
   // Sync settings
-  SYNC_ENABLED: "PLAID_SYNC_ENABLED",
+  SYNC_WITH_SNAPSHOT: "PLAID_SYNC_WITH_SNAPSHOT", // New opt-in setting
   LAST_SYNC: "PLAID_LAST_SYNC",
 } as const;
 

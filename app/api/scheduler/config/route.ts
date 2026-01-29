@@ -5,6 +5,7 @@ import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 
 const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
+const PLAID_SYNC_WITH_SNAPSHOT_KEY = "PLAID_SYNC_WITH_SNAPSHOT";
 
 // GET /api/scheduler/config
 export async function GET(request: NextRequest) {
@@ -33,10 +34,22 @@ export async function GET(request: NextRequest) {
       )
       .limit(1);
 
+    const plaidSyncResult = await db
+      .select()
+      .from(schema.settings)
+      .where(
+        and(
+          eq(schema.settings.key, PLAID_SYNC_WITH_SNAPSHOT_KEY),
+          eq(schema.settings.userId, userId)
+        )
+      )
+      .limit(1);
+
     return NextResponse.json({
       data: {
         time: timeResult[0]?.value || "03:00",
         enabled: enabledResult[0]?.value !== "false",
+        plaidSync: plaidSyncResult[0]?.value === "true", // Opt-in: default false
       },
       success: true,
     });
@@ -60,7 +73,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
 
-    const { time, enabled } = await request.json();
+    const { time, enabled, plaidSync } = await request.json();
 
     // Update time if provided
     if (time !== undefined) {
@@ -130,6 +143,38 @@ export async function PUT(request: NextRequest) {
         await db.insert(schema.settings).values({
           key: SNAPSHOT_ENABLED_KEY,
           value: String(enabled),
+          userId,
+        });
+      }
+    }
+
+    // Update plaidSync if provided
+    if (plaidSync !== undefined) {
+      const existing = await db
+        .select()
+        .from(schema.settings)
+        .where(
+          and(
+            eq(schema.settings.key, PLAID_SYNC_WITH_SNAPSHOT_KEY),
+            eq(schema.settings.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(schema.settings)
+          .set({ value: String(plaidSync) })
+          .where(
+            and(
+              eq(schema.settings.key, PLAID_SYNC_WITH_SNAPSHOT_KEY),
+              eq(schema.settings.userId, userId)
+            )
+          );
+      } else {
+        await db.insert(schema.settings).values({
+          key: PLAID_SYNC_WITH_SNAPSHOT_KEY,
+          value: String(plaidSync),
           userId,
         });
       }
