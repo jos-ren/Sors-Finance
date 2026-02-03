@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -86,14 +87,22 @@ export function TransactionDataTable({
   onDeleteTransaction,
   onBulkDeleteTransactions,
 }: TransactionDataTableProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Read initial state from URL
+  const initialSearch = searchParams.get("search") || "";
+
   const [sorting, setSorting] = useState<SortingState>([
     { id: "date", desc: true },
   ]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [globalFilter, setGlobalFilter] = useState("");
+  const [globalFilter, setGlobalFilter] = useState(initialSearch);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [showBulkCategoryDialog, setShowBulkCategoryDialog] = useState(false);
+  const [bulkCategoryId, setBulkCategoryId] = useState<string | null>(null);
 
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -113,6 +122,12 @@ export function TransactionDataTable({
     return category?.name || "Unknown";
   };
 
+  // Get unique sources from transactions (for dynamic filter)
+  const uniqueSources = useMemo(() => {
+    const sources = new Set(transactions.map((t) => t.source));
+    return Array.from(sources).sort();
+  }, [transactions]);
+
   // Column definitions
   const columns: ColumnDef<DbTransaction>[] = useMemo(
     () => [
@@ -129,11 +144,13 @@ export function TransactionDataTable({
           />
         ),
         cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
-            aria-label="Select row"
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={row.getIsSelected()}
+              onCheckedChange={(value) => row.toggleSelected(!!value)}
+              aria-label="Select row"
+            />
+          </div>
         ),
         enableSorting: false,
         enableHiding: false,
@@ -233,13 +250,14 @@ export function TransactionDataTable({
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
         cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-sm">
-                <MoreHorizontal className="h-4 w-4" />
-                <span className="sr-only">Open menu</span>
-              </Button>
-            </DropdownMenuTrigger>
+          <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-sm">
+                  <MoreHorizontal className="h-4 w-4" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => setEditingTransaction(row.original)}>
                 <Pencil className="h-4 w-4 mr-2" />
@@ -256,6 +274,7 @@ export function TransactionDataTable({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         ),
       },
     ],
@@ -352,10 +371,41 @@ export function TransactionDataTable({
     },
     initialState: {
       pagination: {
+        pageIndex: 0,
         pageSize: 10,
       },
     },
   });
+
+  // Sync page and search term to URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (globalFilter) {
+      params.set("search", globalFilter);
+    } else {
+      params.delete("search");
+    }
+    // Only push if changed
+    const newQuery = params.toString();
+    const currentQuery = searchParams.toString();
+    if (newQuery !== currentQuery) {
+      router.replace("?" + newQuery, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table.getState().pagination.pageIndex, globalFilter]);
+
+  // When URL changes (back/forward), update state
+  useEffect(() => {
+    const urlSearch = searchParams.get("search") || "";
+    
+    // If search term changed, reset to page 1
+    if (urlSearch !== globalFilter) {
+      table.setPageIndex(0);
+      setGlobalFilter(urlSearch);
+      return;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Get selected transaction IDs
   const selectedTransactionIds = useMemo(() => {
@@ -371,6 +421,40 @@ export function TransactionDataTable({
       setRowSelection({});
     }
     setShowBulkDeleteConfirm(false);
+  };
+
+  // Handle bulk category change
+  const handleBulkCategoryChange = async () => {
+    if (selectedTransactionIds.length === 0 || bulkCategoryId === null) {
+      return;
+    }
+
+    try {
+      const categoryIdNum = bulkCategoryId === "null" ? null : parseInt(bulkCategoryId);
+
+      const response = await fetch("/api/transactions/bulk-category", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ids: selectedTransactionIds,
+          categoryId: categoryIdNum,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update categories");
+      }
+
+      // Refresh the page to show updated data
+      window.location.reload();
+    } catch (error) {
+      console.error("Error updating categories:", error);
+      alert("Failed to update transaction categories");
+    } finally {
+      setShowBulkCategoryDialog(false);
+      setBulkCategoryId(null);
+      setRowSelection({});
+    }
   };
 
   const hasActiveFilters =
@@ -485,9 +569,11 @@ export function TransactionDataTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="CIBC">CIBC</SelectItem>
-              <SelectItem value="AMEX">AMEX</SelectItem>
-              <SelectItem value="Manual">Manual</SelectItem>
+              {uniqueSources.map((source) => (
+                <SelectItem key={source} value={source}>
+                  {source}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -496,6 +582,17 @@ export function TransactionDataTable({
             <Button variant="ghost" size="sm" onClick={clearAllFilters}>
               <X className="h-4 w-4 mr-1" />
               Clear filters
+            </Button>
+          )}
+
+          {/* Bulk Category Change */}
+          {selectedTransactionIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowBulkCategoryDialog(true)}
+            >
+              Change Category ({selectedTransactionIds.length})
             </Button>
           )}
 
@@ -534,7 +631,12 @@ export function TransactionDataTable({
             <TableBody>
               {table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    onClick={() => row.toggleSelected()}
+                    className="cursor-pointer"
+                  >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
                         {flexRender(
@@ -622,6 +724,44 @@ export function TransactionDataTable({
         transaction={editingTransaction}
         categories={categories}
       />
+
+      {/* Bulk Category Change Dialog */}
+      <AlertDialog open={showBulkCategoryDialog} onOpenChange={setShowBulkCategoryDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Category</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a category to apply to {selectedTransactionIds.length} selected transaction{selectedTransactionIds.length !== 1 ? 's' : ''}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-4">
+            <Select value={bulkCategoryId || undefined} onValueChange={setBulkCategoryId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="null">Uncategorized</SelectItem>
+                {categories
+                  .filter((cat) => cat.name !== SYSTEM_CATEGORIES.UNCATEGORIZED)
+                  .map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id!.toString()}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setBulkCategoryId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkCategoryChange}
+              disabled={!bulkCategoryId}
+            >
+              Update Category
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Bulk Delete Confirmation Dialog */}
       <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
