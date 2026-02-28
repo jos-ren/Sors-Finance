@@ -225,7 +225,10 @@ export async function updatePortfolioSnapshot(
 
 export async function hasSnapshotToday(): Promise<boolean> {
   const res = await fetch("/api/portfolio/snapshots?today=true");
-  if (!res.ok) throw new Error("Failed to check snapshot");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to check snapshot (${res.status})`);
+  }
   const { exists } = await res.json();
   return exists;
 }
