@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon, CloudSync } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,29 +17,12 @@ import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
 import { lookupTicker, getExchangeRate } from "@/lib/hooks/useStockPrice";
-import { useHasFinnhubApiKey, useFinnhubApiKey } from "@/lib/settings-context";
+import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
+import { formatCurrency as formatCurrencyUtil } from "@/lib/formatters";
 
 interface PortfolioItemProps {
   item: DbPortfolioItem;
   bucket?: BucketType;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatPrice(price: number, currency: string): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(price);
 }
 
 function getTimeAgo(date: Date): string {
@@ -63,8 +46,8 @@ function getTimeAgo(date: Date): string {
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const userCurrency = useCurrency();
   const apiKeyConfigured = useHasFinnhubApiKey();
-  const apiKey = useFinnhubApiKey();
   const { formatAmount } = usePrivacy();
 
   const hasTicker = Boolean(item.ticker);
@@ -82,14 +65,32 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const handleRefreshPrice = async () => {
     if (!item.ticker) return;
 
-    if (!apiKeyConfigured) {
+    // Only require API key for stocks (metals and crypto don't need it)
+    if (item.tickerType !== "metal" && item.tickerType !== "crypto" && !apiKeyConfigured) {
       toast.error("Finnhub API key not configured. Go to Settings to add your API key.");
       return;
     }
 
     setIsRefreshing(true);
     try {
-      const quote = await lookupTicker(item.ticker, apiKey);
+      let quote: { price: number; currency: string; name?: string } | null = null;
+
+      // Fetch from the appropriate API based on tickerType
+      if (item.tickerType === "metal") {
+        const response = await fetch(`/api/metals/${encodeURIComponent(item.ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else if (item.tickerType === "crypto") {
+        const response = await fetch(`/api/crypto/${encodeURIComponent(item.ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else {
+        // Default to stock lookup
+        quote = await lookupTicker(item.ticker);
+      }
+
       if (quote) {
         // Use item's existing currency if user manually set it, otherwise use quote's currency
         const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
@@ -111,7 +112,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
 
         toast.success("Price updated");
       } else {
-        toast.error("Failed to fetch price. Check your API key in Settings.");
+        toast.error("Failed to fetch price.");
       }
     } catch (error) {
       toast.error("Failed to refresh price");
@@ -143,14 +144,12 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             {!item.plaidAccountId && hasTicker && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <img
-                    src="/logos/finnhub.png"
-                    alt="Finnhub"
-                    className="h-3.5 w-auto object-contain shrink-0 cursor-help"
-                  />
+                  <CloudSync className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Price synced via Finnhub.
+                  {item.tickerType === "crypto" && "Price synced via CoinGecko"}
+                  {item.tickerType === "metal" && "Price synced via Gold API"}
+                  {(!item.tickerType || item.tickerType === "stock") && "Price synced via Finnhub"}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -160,7 +159,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             <p className="text-xs text-muted-foreground truncate">
               {item.ticker}
               {item.quantity !== undefined && ` · ${item.quantity} ${item.quantity === 1 ? "share" : "shares"}`}
-              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatPrice(item.pricePerUnit, item.currency)}`}
+              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatCurrencyUtil(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
           ) : item.notes ? (
@@ -173,17 +172,21 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               variant="ghost"
               size="icon"
               className={`h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity ${
-                !apiKeyConfigured ? "text-muted-foreground" : ""
+                !apiKeyConfigured && item.tickerType !== "metal" && item.tickerType !== "crypto" ? "text-muted-foreground" : ""
               }`}
               onClick={handleRefreshPrice}
               disabled={isRefreshing}
-              title={apiKeyConfigured ? "Refresh price" : "API key not configured - Go to Settings"}
+              title={
+                item.tickerType === "metal" || item.tickerType === "crypto" || apiKeyConfigured
+                  ? "Refresh price"
+                  : "API key not configured - Go to Settings"
+              }
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
           )}
           <span className="font-semibold tabular-nums">
-            {formatAmount(item.currentValue, formatCurrency)}
+            {formatAmount(item.currentValue, (amount) => formatCurrencyUtil(amount, userCurrency))}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

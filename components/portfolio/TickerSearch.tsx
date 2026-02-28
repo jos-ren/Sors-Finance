@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Search, Loader2, CheckCircle2, X, AlertTriangle } from "lucide-react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { useFinnhubApiKey } from "@/lib/settings-context";
+import { useHasFinnhubApiKey } from "@/lib/settings-context";
 
 export interface TickerResult {
   symbol: string;
@@ -25,19 +26,19 @@ export interface SelectedTicker {
   price: number;
   currency: string;
   isInternational?: boolean;
+  tickerType: "stock" | "crypto" | "metal";
 }
 
-type SearchMode = "stocks" | "crypto";
+type SearchMode = "stocks" | "crypto" | "metals";
 
 interface TickerSearchProps {
   value?: SelectedTicker | null;
   onSelect: (ticker: SelectedTicker | null) => void;
   disabled?: boolean;
-  hasApiKey: boolean;
 }
 
-export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSearchProps) {
-  const apiKey = useFinnhubApiKey();
+export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
+  const hasApiKey = useHasFinnhubApiKey();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<TickerResult[]>([]);
@@ -53,8 +54,9 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
 
   // Search for symbols with debounce
   const searchSymbols = useCallback(async (query: string, mode: SearchMode) => {
-    if (!apiKey) {
-      setError("API key required");
+    // Only stocks require API key - crypto and metals work without it
+    if (!hasApiKey && mode === "stocks") {
+      setError("API key required for stock search");
       return;
     }
 
@@ -62,9 +64,14 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     setError(null);
 
     try {
-      const endpoint = mode === "crypto"
-        ? `/api/crypto/search?q=${encodeURIComponent(query)}`
-        : `/api/stock/search?q=${encodeURIComponent(query)}`;
+      let endpoint: string;
+      if (mode === "crypto") {
+        endpoint = `/api/crypto/search?q=${encodeURIComponent(query)}`;
+      } else if (mode === "metals") {
+        endpoint = `/api/metals/search?q=${encodeURIComponent(query)}`;
+      } else {
+        endpoint = `/api/stock/search?q=${encodeURIComponent(query)}`;
+      }
 
       const response = await fetch(endpoint);
 
@@ -88,7 +95,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     } finally {
       setIsSearching(false);
     }
-  }, [apiKey]);
+  }, [hasApiKey]);
 
   // Debounced search effect
   useEffect(() => {
@@ -96,8 +103,8 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
       clearTimeout(debounceRef.current);
     }
 
-    // For crypto, show popular results even without search query
-    if (searchMode === "crypto" && !search.trim()) {
+    // For crypto and metals, show results even without search query
+    if ((searchMode === "crypto" || searchMode === "metals") && !search.trim()) {
       debounceRef.current = setTimeout(() => {
         searchSymbols("", searchMode);
       }, 100);
@@ -119,7 +126,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
   // Re-search when mode changes
   useEffect(() => {
     if (open) {
-      if (searchMode === "crypto") {
+      if (searchMode === "crypto" || searchMode === "metals") {
         searchSymbols(search, searchMode);
       } else if (search.trim()) {
         searchSymbols(search, searchMode);
@@ -131,7 +138,8 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
 
   // Fetch price when selecting a ticker
   const handleSelect = async (result: TickerResult) => {
-    if (!apiKey) return;
+    // Only stocks require API key
+    if (!hasApiKey && searchMode === "stocks") return;
 
     setIsLoadingPrice(true);
     setOpen(false);
@@ -139,9 +147,14 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     setError(null);
 
     try {
-      const endpoint = searchMode === "crypto"
-        ? `/api/crypto/${encodeURIComponent(result.symbol)}`
-        : `/api/stock/${encodeURIComponent(result.symbol)}`;
+      let endpoint: string;
+      if (searchMode === "crypto") {
+        endpoint = `/api/crypto/${encodeURIComponent(result.symbol)}`;
+      } else if (searchMode === "metals") {
+        endpoint = `/api/metals/${encodeURIComponent(result.symbol)}`;
+      } else {
+        endpoint = `/api/stock/${encodeURIComponent(result.symbol)}`;
+      }
 
       const response = await fetch(endpoint);
 
@@ -159,6 +172,7 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
         price: data.price,
         currency: data.currency,
         isInternational: data.isInternational,
+        tickerType: searchMode === "crypto" ? "crypto" : searchMode === "metals" ? "metal" : "stock",
       });
     } catch (err) {
       console.error("Price fetch error:", err);
@@ -288,43 +302,87 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
     );
   }
 
-  // Show API key warning if not configured
-  if (!hasApiKey) {
-    return (
-      <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/30">
-        <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
-        <p className="text-sm text-muted-foreground">
-          API key required for ticker search. Add one in Settings.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                ref={inputRef}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={searchMode === "crypto"
+      {/* Mode toggle */}
+      <div className="flex rounded-md border p-0.5 gap-0.5 w-fit">
+        <button
+          type="button"
+          onClick={() => handleModeChange("stocks")}
+          className={cn(
+            "px-2 py-1 text-xs font-medium rounded transition-colors",
+            searchMode === "stocks"
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-muted-foreground"
+          )}
+        >
+          Stocks
+        </button>
+        <button
+          type="button"
+          onClick={() => handleModeChange("crypto")}
+          className={cn(
+            "px-2 py-1 text-xs font-medium rounded transition-colors",
+            searchMode === "crypto"
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-muted-foreground"
+          )}
+        >
+          Crypto
+        </button>
+        <button
+          type="button"
+          onClick={() => handleModeChange("metals")}
+          className={cn(
+            "px-2 py-1 text-xs font-medium rounded transition-colors",
+            searchMode === "metals"
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-muted-foreground"
+          )}
+        >
+          Metals
+        </button>
+      </div>
+
+      {/* API key warning for stocks mode */}
+      {!hasApiKey && searchMode === "stocks" && (
+        <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/30">
+          <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            Finnhub API key required for stock search.{" "}
+            <Link href="/settings?tab=integrations" className="text-primary underline underline-offset-2 hover:text-primary/80">
+              Add one in Integrations
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {/* Search input */}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                searchMode === "crypto"
                   ? "Search crypto..."
-                  : "Search stocks..."
-                }
-                className="pl-9"
-                disabled={disabled}
-                onFocus={() => setOpen(true)}
-              />
-              {isSearching && (
-                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-              )}
-            </div>
-          </PopoverTrigger>
+                  : searchMode === "metals"
+                    ? "Search metals..."
+                    : "Search stocks..."
+              }
+              className="pl-9"
+              disabled={disabled || (!hasApiKey && searchMode === "stocks")}
+              onFocus={() => setOpen(true)}
+            />
+            {isSearching && (
+              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
+          </div>
+        </PopoverTrigger>
         <PopoverContent
           className="w-[var(--radix-popover-trigger-width)] p-0"
           align="start"
@@ -342,6 +400,11 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
             {!error && results.length === 0 && !search.trim() && !isSearching && searchMode === "stocks" && (
               <div className="p-3 text-sm text-muted-foreground">
                 Type to search for stocks and ETFs...
+              </div>
+            )}
+            {!error && results.length === 0 && !isSearching && searchMode === "metals" && (
+              <div className="p-3 text-sm text-muted-foreground">
+                Loading metals...
               </div>
             )}
             {results.map((result, index) => (
@@ -371,40 +434,14 @@ export function TickerSearch({ value, onSelect, disabled, hasApiKey }: TickerSea
             ))}
           </div>
         </PopoverContent>
-        </Popover>
+      </Popover>
 
-        {/* Mode toggle */}
-        <div className="flex rounded-md border p-0.5 gap-0.5">
-          <button
-            type="button"
-            onClick={() => handleModeChange("stocks")}
-            className={cn(
-              "px-2 py-1 text-xs font-medium rounded transition-colors",
-              searchMode === "stocks"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-muted-foreground"
-            )}
-          >
-            Stocks
-          </button>
-          <button
-            type="button"
-            onClick={() => handleModeChange("crypto")}
-            className={cn(
-              "px-2 py-1 text-xs font-medium rounded transition-colors",
-              searchMode === "crypto"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted text-muted-foreground"
-            )}
-          >
-            Crypto
-          </button>
-        </div>
-      </div>
       <p className="text-xs text-muted-foreground">
         {searchMode === "crypto"
-          ? "Crypto prices from Binance (USDT pairs)"
-          : "Search by company name or ticker"
+          ? "Prices from CoinGecko · e.g. Bitcoin, Ethereum, Solana"
+          : searchMode === "metals"
+            ? "Prices from Gold API · Gold, Silver, Platinum, Palladium"
+            : "Prices from Finnhub · e.g. AAPL, MSFT, VTI, SPY"
         }
       </p>
     </div>

@@ -174,7 +174,7 @@ export function useExchangeRate(from: string | undefined, to: string = 'CAD') {
 }
 
 // Utility function to lookup a ticker (for one-time lookups in forms)
-export async function lookupTicker(ticker: string, apiKey?: string | null): Promise<StockQuote | null> {
+export async function lookupTicker(ticker: string): Promise<StockQuote | null> {
   if (!ticker) return null;
 
   const upperTicker = ticker.toUpperCase();
@@ -265,7 +265,7 @@ export interface SnapshotResult {
 
 // Refresh all ticker-mode items and update their prices
 // Returns success only if ALL tickers are fetched successfully
-export async function refreshAllTickerPrices(apiKey?: string | null): Promise<RefreshAllResult> {
+export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
   // Import dynamically to avoid circular dependencies
   const { getTickerModeItems, updatePortfolioItem } = await import('./useDatabase');
 
@@ -275,20 +275,44 @@ export async function refreshAllTickerPrices(apiKey?: string | null): Promise<Re
     return { success: true, updated: 0, failed: [] };
   }
 
-  // Get unique tickers to avoid duplicate API calls
-  const uniqueTickers = [...new Set(
-    items
-      .map(item => item.ticker?.toUpperCase())
-      .filter((ticker): ticker is string => Boolean(ticker))
-  )];
+  // Get unique tickers to avoid duplicate API calls, but preserve tickerType
+  const tickerMap = new Map<string, string>(); // ticker -> tickerType
+  for (const item of items) {
+    if (item.ticker) {
+      const upperTicker = item.ticker.toUpperCase();
+      // Use the first tickerType we find for each unique ticker
+      if (!tickerMap.has(upperTicker)) {
+        tickerMap.set(upperTicker, item.tickerType || "stock");
+      }
+    }
+  }
+  const uniqueTickers = Array.from(tickerMap.keys());
 
   // First pass: fetch unique ticker prices
   const tickerQuotes = new Map<string, { quote: StockQuote | null; exchangeRate: number; error?: string }>();
   const failedTickers: string[] = [];
 
   for (const ticker of uniqueTickers) {
+    const tickerType = tickerMap.get(ticker) || "stock";
+    
     try {
-      const quote = await lookupTicker(ticker, apiKey);
+      let quote = null;
+
+      // Fetch from the appropriate API based on tickerType
+      if (tickerType === "metal") {
+        const response = await fetch(`/api/metals/${encodeURIComponent(ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else if (tickerType === "crypto") {
+        const response = await fetch(`/api/crypto/${encodeURIComponent(ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else {
+        // Default to stock lookup (requires API key)
+        quote = await lookupTicker(ticker);
+      }
 
       if (!quote) {
         failedTickers.push(ticker);
@@ -372,9 +396,8 @@ export async function refreshAllTickerPrices(apiKey?: string | null): Promise<Re
 //
 // Options:
 // - forceUpdate: If true, will replace existing snapshot for today instead of skipping
-// - apiKey: Finnhub API key for fetching stock prices
-export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: boolean; apiKey?: string | null }): Promise<SnapshotResult> {
-  const { forceUpdate = false, apiKey } = options || {};
+export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: boolean }): Promise<SnapshotResult> {
+  const { forceUpdate = false } = options || {};
 
   // Import dynamically to avoid circular dependencies
   const { hasSnapshotToday, getTodaySnapshot, deletePortfolioSnapshot, createPortfolioSnapshot, getTickerModeItems } = await import('./useDatabase');
@@ -393,7 +416,7 @@ export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: b
 
   // If there are ticker items, refresh their prices first
   if (tickerItems.length > 0) {
-    const priceRefreshResult = await refreshAllTickerPrices(apiKey);
+    const priceRefreshResult = await refreshAllTickerPrices();
 
     // If any ticker failed, don't create snapshot
     if (!priceRefreshResult.success) {

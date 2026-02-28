@@ -84,6 +84,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.lastPriceUpdate !== undefined)
       updateValues.lastPriceUpdate = updates.lastPriceUpdate ? new Date(updates.lastPriceUpdate) : null;
     if (updates.priceMode !== undefined) updateValues.priceMode = updates.priceMode;
+    if (updates.tickerType !== undefined) updateValues.tickerType = updates.tickerType;
     if (updates.isInternational !== undefined) updateValues.isInternational = updates.isInternational;
     if (updates.isActive !== undefined) updateValues.isActive = updates.isActive;
 

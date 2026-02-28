@@ -210,6 +210,7 @@ export const portfolioItems = sqliteTable(
     currency: text("currency"),
     lastPriceUpdate: integer("last_price_update", { mode: "timestamp" }),
     priceMode: text("price_mode"), // 'manual' | 'ticker'
+    tickerType: text("ticker_type"), // 'stock' | 'crypto' | 'metal'
     isInternational: integer("is_international", { mode: "boolean" }),
     plaidAccountId: integer("plaid_account_id").references(() => plaidAccounts.id, { onDelete: "set null" }), // Link to Plaid account for syncing
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),

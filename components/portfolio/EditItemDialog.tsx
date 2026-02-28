@@ -58,6 +58,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       name: item.name,
       price: item.pricePerUnit || 0,
       currency: item.currency || "USD",
+      tickerType: item.tickerType || "stock",
     } : null
   );
 
@@ -81,6 +82,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
         name: item.name,
         price: item.pricePerUnit || 0,
         currency: item.currency || "USD",
+        tickerType: item.tickerType || "stock",
       } : null
     );
     setQuantity(item.quantity?.toString() || "");
@@ -258,7 +260,6 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 <TickerSearch
                   value={selectedTicker}
                   onSelect={handleTickerSelect}
-                  hasApiKey={hasFinnhubApiKey}
                 />
               </div>
             )}

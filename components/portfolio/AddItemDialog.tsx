@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Info } from "lucide-react";
+import { RefreshCw, AlertTriangle, Info, TrendingUp, Wallet } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -16,11 +16,10 @@ import { Input } from "@/components/ui/input";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { addPortfolioItem, BucketType, PriceMode } from "@/lib/hooks/useDatabase";
+import { addPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
-import { useSettings } from "@/lib/settings-context";
+import { useHasFinnhubApiKey, useSettings } from "@/lib/settings-context";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Tooltip,
@@ -29,6 +28,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TickerSearch, SelectedTicker } from "./TickerSearch";
+
+type InvestmentType = "security" | "balance";
 
 interface AddItemDialogProps {
   open: boolean;
@@ -46,17 +47,30 @@ export function AddItemDialog({
   bucket,
 }: AddItemDialogProps) {
   const isInvestment = bucket === "Investments";
-  const { hasFinnhubApiKey, isLoading: settingsLoading } = useSettings();
-  // Only show warning after settings have loaded and there's no key
-  const showApiKeyWarning = !settingsLoading && !hasFinnhubApiKey;
+  const hasApiKey = useHasFinnhubApiKey();
+  const { isLoading } = useSettings();
+
+  // Show warning if no API key is configured (only after settings loaded)
+  const showApiKeyWarning = !isLoading && !hasApiKey;
+
+  // Debug logging
+  useEffect(() => {
+    if (open && isInvestment) {
+      console.log("AddItemDialog - API Key Check:", {
+        hasApiKey,
+        isLoading,
+        showApiKeyWarning
+      });
+    }
+  }, [open, isInvestment, hasApiKey, isLoading, showApiKeyWarning]);
 
   // Basic fields
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Price mode toggle (ticker = auto-fetch, manual = user-entered)
-  const [priceMode, setPriceMode] = useState<PriceMode>("ticker");
+  // Investment type selection (security = ticker-based, balance = manual)
+  const [investmentType, setInvestmentType] = useState<InvestmentType | null>(null);
 
   // Selected ticker from search
   const [selectedTicker, setSelectedTicker] = useState<SelectedTicker | null>(null);
@@ -105,21 +119,33 @@ export function AddItemDialog({
     setIsSubmitting(true);
 
     try {
-      if (isInvestment) {
+      if (isInvestment && investmentType === "security") {
+        // Security type - ticker-based with quantity and price
         await addPortfolioItem({
           accountId,
           name: name.trim(),
           currentValue: totalCAD,
           notes: notes.trim() || undefined,
-          ticker: priceMode === "ticker" && selectedTicker ? selectedTicker.symbol : undefined,
+          ticker: selectedTicker ? selectedTicker.symbol : undefined,
           quantity: parseFloat(quantity) || 0,
           pricePerUnit: parseFloat(pricePerUnit) || 0,
           currency,
-          lastPriceUpdate: priceMode === "ticker" && selectedTicker ? new Date() : undefined,
-          priceMode,
-          isInternational: priceMode === "ticker" && selectedTicker ? selectedTicker.isInternational : undefined,
+          lastPriceUpdate: selectedTicker ? new Date() : undefined,
+          priceMode: "ticker",
+          tickerType: selectedTicker ? selectedTicker.tickerType : undefined,
+          isInternational: selectedTicker ? selectedTicker.isInternational : undefined,
+        });
+      } else if (isInvestment && investmentType === "balance") {
+        // Balance type - simple manual value
+        await addPortfolioItem({
+          accountId,
+          name: name.trim(),
+          currentValue: parseFloat(value) || 0,
+          notes: notes.trim() || undefined,
+          priceMode: "manual",
         });
       } else {
+        // Non-investment items
         await addPortfolioItem({
           accountId,
           name: name.trim(),
@@ -149,7 +175,7 @@ export function AddItemDialog({
     setPricePerUnit("");
     setCurrency("CAD");
     setExchangeRate(1);
-    setPriceMode("ticker");
+    setInvestmentType(null);
   };
 
   // Handle ticker selection from search
@@ -186,70 +212,73 @@ export function AddItemDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-            {/* Price mode toggle for investments */}
-            {isInvestment && (
-              <div className="grid gap-2">
-                <Label>Price Mode</Label>
-                <div className="flex rounded-lg border p-1 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setPriceMode("ticker")}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-                      priceMode === "ticker"
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    Ticker (Auto)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPriceMode("manual")}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-                      priceMode === "manual"
-                        ? "bg-primary text-primary-foreground"
-                        : "hover:bg-muted"
-                    )}
-                  >
-                    Manual
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {priceMode === "ticker"
-                    ? "Price updates automatically via Finnhub (requires API key)"
-                    : "You enter and update the price manually"}
-                </p>
-                {priceMode === "ticker" && showApiKeyWarning && (
-                  <Alert className="mt-2 border-yellow-500/50 bg-yellow-500/10">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-xs">
-                      <strong>API key required.</strong> Ticker lookup won&apos;t work without a Finnhub API key.{" "}
-                      <Link href="/settings" className="underline font-medium">
-                        Add API key in Settings
-                      </Link>{" "}
-                      or switch to Manual mode.
-                    </AlertDescription>
-                  </Alert>
-                )}
+            {/* Show loading while settings are being fetched */}
+            {isInvestment && isLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-sm text-muted-foreground">Loading settings...</div>
               </div>
             )}
 
-            {/* Ticker search for investments in ticker mode */}
-            {isInvestment && priceMode === "ticker" && (
+            {/* Investment type selection */}
+            {isInvestment && !isLoading && !investmentType && (
+              <div className="grid gap-3">
+                {showApiKeyWarning && (
+                  <Alert className="border-yellow-500/50 bg-yellow-500/10">
+                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription className="text-xs">
+                      <strong>API key required for live prices.</strong> Add a Finnhub API key to track stocks, crypto, and metals.{" "}
+                      <Link href="/settings?tab=integrations" className="underline font-medium">
+                        Add in Integrations
+                      </Link>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Label>What type of investment?</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => !showApiKeyWarning && setInvestmentType("security")}
+                    disabled={showApiKeyWarning}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
+                      showApiKeyWarning
+                        ? "border-muted bg-muted/30 cursor-not-allowed opacity-50"
+                        : "border-muted hover:border-primary hover:bg-muted/50"
+                    }`}
+                  >
+                    <TrendingUp className="h-8 w-8 text-muted-foreground" />
+                    <span className="font-medium">Security</span>
+                    <span className="text-xs text-muted-foreground text-center">
+                      Stocks, ETFs, crypto, commodities
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvestmentType("balance")}
+                    className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-muted hover:border-primary hover:bg-muted/50 transition-colors"
+                  >
+                    <Wallet className="h-8 w-8 text-muted-foreground" />
+                    <span className="font-medium">Balance</span>
+                    <span className="text-xs text-muted-foreground text-center">
+                      Manually tracked account balance
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Ticker search for security type */}
+            {isInvestment && investmentType === "security" && (
               <div className="grid gap-2">
                 <Label>Search Ticker</Label>
                 <TickerSearch
                   value={selectedTicker}
                   onSelect={handleTickerSelect}
-                  hasApiKey={hasFinnhubApiKey}
                 />
               </div>
             )}
 
-            {/* Name - show for manual mode or when ticker is selected */}
-            {(!isInvestment || priceMode === "manual" || selectedTicker) && (
+            {/* Name - show for balance type, non-investments, or when ticker is selected */}
+            {(!isInvestment || investmentType === "balance" || selectedTicker) && (
               <div className="grid gap-2">
                 <Label htmlFor="name">Name</Label>
                 <Input
@@ -258,118 +287,136 @@ export function AddItemDialog({
                   onChange={(e) => setName(e.target.value)}
                   placeholder={
                     isInvestment
-                      ? "e.g., Apple Inc., Bitcoin"
+                      ? investmentType === "balance"
+                        ? "e.g., RRSP, TFSA, Brokerage Cash"
+                        : "e.g., Apple Inc., Bitcoin"
                       : "e.g., TD Chequing, Visa Infinite"
                   }
-                  autoFocus={!isInvestment || priceMode === "manual"}
-                  disabled={isInvestment && priceMode === "ticker" && !!selectedTicker}
+                  autoFocus={!isInvestment || investmentType === "balance"}
+                  disabled={isInvestment && investmentType === "security" && !!selectedTicker}
                 />
               </div>
             )}
 
-            {/* Investment-specific fields */}
-            {isInvestment ? (
+            {/* Security-specific fields (quantity, price, currency) */}
+            {isInvestment && investmentType === "security" && selectedTicker && (
               <>
-                {/* Quantity - show when ticker selected or manual mode */}
-                {(priceMode === "manual" || selectedTicker) && (
+                <div className="grid gap-2">
+                  <Label htmlFor="quantity">Quantity</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="Number of shares/units"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="quantity">Quantity</Label>
-                    <Input
-                      id="quantity"
-                      type="number"
-                      step="any"
-                      min="0"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      placeholder="Number of shares/units"
+                    <Label htmlFor="price">Price per Unit</Label>
+                    <CurrencyInput
+                      id="price"
+                      value={pricePerUnit}
+                      onChange={setPricePerUnit}
+                      placeholder="0.00"
+                      disabled={!!selectedTicker}
                     />
                   </div>
-                )}
-
-                {/* Price per unit - show when ticker selected or manual mode */}
-                {(priceMode === "manual" || selectedTicker) && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="price">Price per Unit</Label>
-                      <CurrencyInput
-                        id="price"
-                        value={pricePerUnit}
-                        onChange={setPricePerUnit}
-                        placeholder="0.00"
-                        disabled={priceMode === "ticker" && !!selectedTicker}
-                      />
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="currency">Currency</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px]">
+                            <p className="text-xs">
+                              The currency the stock trades in. You can change this if the auto-detected value is incorrect.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
-                    <div className="grid gap-2">
-                      <div className="flex items-center gap-1">
-                        <Label htmlFor="currency">Currency</Label>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[220px]">
-                              <p className="text-xs">
-                                The currency the stock trades in. You can change this if the auto-detected value is incorrect.
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input
-                          id="currency"
-                          value={currency}
-                          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                          onBlur={async () => {
-                            // Fetch exchange rate when user is done typing
-                            if (currency && currency !== "CAD") {
-                              const rate = await getExchangeRate(currency, "CAD");
-                              setExchangeRate(rate);
-                            } else {
-                              setExchangeRate(1);
-                            }
+                    <div className="flex gap-2">
+                      <Input
+                        id="currency"
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                        onBlur={async () => {
+                          if (currency && currency !== "CAD") {
+                            const rate = await getExchangeRate(currency, "CAD");
+                            setExchangeRate(rate);
+                          } else {
+                            setExchangeRate(1);
+                          }
+                        }}
+                        placeholder="USD"
+                        className="flex-1"
+                      />
+                      {currency !== "CAD" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={async () => {
+                            const rate = await getExchangeRate(currency, "CAD");
+                            setExchangeRate(rate);
                           }}
-                          placeholder="USD"
-                          className="flex-1"
-                        />
-                        {currency !== "CAD" && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={async () => {
-                              const rate = await getExchangeRate(currency, "CAD");
-                              setExchangeRate(rate);
-                            }}
-                            title="Refresh exchange rate"
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                          title="Refresh exchange rate"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
 
-                {/* Exchange rate info */}
-                {(priceMode === "manual" || selectedTicker) && currency !== "CAD" && exchangeRate !== 1 && (
+                {currency !== "CAD" && exchangeRate !== 1 && (
                   <p className="text-xs text-muted-foreground">
                     Exchange rate: 1 {currency} = {exchangeRate.toFixed(4)} CAD
                   </p>
                 )}
 
-                {/* Total value */}
-                {(priceMode === "manual" || selectedTicker) && (
-                  <div className="rounded-lg bg-muted p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Total Value (CAD)</span>
-                      <span className="text-lg font-semibold">{formatCurrency(totalCAD)}</span>
-                    </div>
+                <div className="rounded-lg bg-muted p-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total Value (CAD)</span>
+                    <span className="text-lg font-semibold">{formatCurrency(totalCAD)}</span>
                   </div>
-                )}
+                </div>
               </>
-            ) : (
-              /* Non-investment: simple value field */
+            )}
+
+            {/* Balance type - simple value entry */}
+            {isInvestment && investmentType === "balance" && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="value">Current Balance ($)</Label>
+                  <CurrencyInput
+                    id="value"
+                    value={value}
+                    onChange={setValue}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="notes">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any additional notes..."
+                    rows={2}
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Non-investment items */}
+            {!isInvestment && (
               <>
                 <div className="grid gap-2">
                   <Label htmlFor="value">Current Value ($)</Label>
@@ -382,7 +429,6 @@ export function AddItemDialog({
                   />
                 </div>
 
-                {/* Notes - only for non-investments */}
                 <div className="grid gap-2">
                   <Label htmlFor="notes">Notes (optional)</Label>
                   <Textarea
@@ -397,6 +443,23 @@ export function AddItemDialog({
             )}
           </div>
           <DialogFooter>
+            {isInvestment && investmentType && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setInvestmentType(null);
+                  setSelectedTicker(null);
+                  setName("");
+                  setValue("");
+                  setQuantity("");
+                  setPricePerUnit("");
+                }}
+                className="mr-auto"
+              >
+                Back
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -406,9 +469,19 @@ export function AddItemDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || !name.trim()}
+              disabled={
+                isSubmitting ||
+                !name.trim() ||
+                (isInvestment && !investmentType)
+              }
             >
-              {isSubmitting ? "Adding..." : isInvestment ? "Add Investment" : "Add Item"}
+              {isSubmitting
+                ? "Adding..."
+                : isInvestment
+                  ? investmentType === "security"
+                    ? "Add Security"
+                    : "Add Balance"
+                  : "Add Item"}
             </Button>
           </DialogFooter>
         </form>

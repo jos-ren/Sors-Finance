@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from "react";
 import { toast } from "sonner";
-import { useFinnhubApiKey, useHasFinnhubApiKey } from "@/lib/settings-context";
+import { useHasFinnhubApiKey } from "@/lib/settings-context";
 
 interface SnapshotProgress {
   isRunning: boolean;
@@ -32,7 +32,6 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   });
 
   const isRunningRef = useRef(false);
-  const apiKey = useFinnhubApiKey();
   const hasApiKey = useHasFinnhubApiKey();
 
   const startBackgroundSnapshot = useCallback(async (options?: { forceUpdate?: boolean }) => {
@@ -64,8 +63,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
     // Get ticker items
     const tickerItems = await getTickerModeItems();
 
-    // If no ticker items or no API key, just create snapshot directly
-    if (tickerItems.length === 0 || !hasApiKey) {
+    // If no ticker items, just create snapshot directly
+    if (tickerItems.length === 0) {
       if (forceUpdate && existsToday) {
         const todaySnapshot = await getTodaySnapshot();
         if (todaySnapshot?.id) {
@@ -82,12 +81,39 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Get unique tickers to avoid duplicate API calls
-    const uniqueTickers = [...new Set(
-      tickerItems
-        .map(item => item.ticker?.toUpperCase())
-        .filter((ticker): ticker is string => Boolean(ticker))
-    )];
+    // Check if we have any stocks that require API key
+    const hasStocks = tickerItems.some(item => (!item.tickerType || item.tickerType === "stock"));
+    
+    // If we have stocks but no API key, skip price updates and just create snapshot
+    if (hasStocks && !hasApiKey) {
+      if (forceUpdate && existsToday) {
+        const todaySnapshot = await getTodaySnapshot();
+        if (todaySnapshot?.id) {
+          await deletePortfolioSnapshot(todaySnapshot.id);
+        }
+      }
+
+      try {
+        await createPortfolioSnapshot();
+        toast.success("Portfolio snapshot saved (stock prices not updated - API key required)");
+      } catch {
+        toast.error("Failed to create snapshot");
+      }
+      return;
+    }
+
+    // Get unique tickers to avoid duplicate API calls, but preserve tickerType
+    const tickerMap = new Map<string, string>(); // ticker -> tickerType
+    for (const item of tickerItems) {
+      if (item.ticker) {
+        const upperTicker = item.ticker.toUpperCase();
+        // Use the first tickerType we find for each unique ticker
+        if (!tickerMap.has(upperTicker)) {
+          tickerMap.set(upperTicker, item.tickerType || "stock");
+        }
+      }
+    }
+    const uniqueTickers = Array.from(tickerMap.keys());
 
     // Start background processing
     isRunningRef.current = true;
@@ -113,6 +139,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
     // First pass: fetch unique ticker prices with rate limiting
     for (let i = 0; i < uniqueTickers.length; i++) {
       const ticker = uniqueTickers[i];
+      const tickerType = tickerMap.get(ticker) || "stock";
 
       setProgress(prev => ({
         ...prev,
@@ -120,7 +147,23 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       }));
 
       try {
-        const quote = await lookupTicker(ticker, apiKey);
+        let quote = null;
+
+        // Fetch from the appropriate API based on tickerType
+        if (tickerType === "metal") {
+          const response = await fetch(`/api/metals/${encodeURIComponent(ticker)}`);
+          if (response.ok) {
+            quote = await response.json();
+          }
+        } else if (tickerType === "crypto") {
+          const response = await fetch(`/api/crypto/${encodeURIComponent(ticker)}`);
+          if (response.ok) {
+            quote = await response.json();
+          }
+        } else {
+          // Default to stock lookup (requires API key)
+          quote = await lookupTicker(ticker);
+        }
 
         if (!quote) {
           failedCount++;
@@ -253,7 +296,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       completed: 0,
       failed: 0,
     });
-  }, [apiKey, hasApiKey]);
+  }, [hasApiKey]);
 
   const contextValue = useMemo(
     () => ({
