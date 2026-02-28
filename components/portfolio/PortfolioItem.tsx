@@ -126,7 +126,6 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       <div className="flex items-center justify-between py-2 px-3 hover:bg-muted/50 rounded-md group">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="font-medium truncate">{item.name}</p>
             {item.plaidAccountId && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -141,6 +140,21 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
                 </TooltipContent>
               </Tooltip>
             )}
+            {!item.plaidAccountId && hasTicker && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <img
+                    src="/logos/finnhub.png"
+                    alt="Finnhub"
+                    className="h-3.5 w-auto object-contain shrink-0 cursor-help"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Price synced via Finnhub.
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <p className="font-medium truncate">{item.name}</p>
           </div>
           {hasTicker ? (
             <p className="text-xs text-muted-foreground truncate">
