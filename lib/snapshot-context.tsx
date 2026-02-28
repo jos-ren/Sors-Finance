@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useMemo, useRef, ReactNode } from "react";
 import { toast } from "sonner";
-import { useHasFinnhubApiKey } from "@/lib/settings-context";
+import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
 
 interface SnapshotProgress {
   isRunning: boolean;
@@ -33,6 +33,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
 
   const isRunningRef = useRef(false);
   const hasApiKey = useHasFinnhubApiKey();
+  const userCurrency = useCurrency();
 
   const startBackgroundSnapshot = useCallback(async (options?: { forceUpdate?: boolean }) => {
     // Prevent multiple concurrent snapshots
@@ -172,8 +173,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         } else {
           // Get exchange rate if currency differs
           let exchangeRate = 1;
-          if (quote.currency !== "CAD") {
-            exchangeRate = await getExchangeRate(quote.currency, "CAD");
+          if (quote.currency !== userCurrency) {
+            exchangeRate = await getExchangeRate(quote.currency, userCurrency);
           }
           tickerQuotes.set(ticker, { quote, exchangeRate });
           completedCount++;
@@ -213,8 +214,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
 
       // Get exchange rate based on the effective currency (user's or API's)
       let exchangeRate = 1;
-      if (effectiveCurrency !== "CAD") {
-        exchangeRate = await getExchangeRate(effectiveCurrency, "CAD");
+      if (effectiveCurrency !== userCurrency) {
+        exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
       }
 
       // Calculate new value using the correct exchange rate

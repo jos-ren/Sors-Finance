@@ -97,7 +97,7 @@ export function useStockPrice(ticker: string | undefined, apiKey: string | null 
   };
 }
 
-export function useExchangeRate(from: string | undefined, to: string = 'CAD') {
+export function useExchangeRate(from: string | undefined, to: string) {
   const [data, setData] = useState<ExchangeRate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,7 +204,7 @@ export async function lookupTicker(ticker: string): Promise<StockQuote | null> {
 }
 
 // Utility function to get exchange rate (for one-time lookups in forms)
-export async function getExchangeRate(from: string, to: string = 'CAD'): Promise<number> {
+export async function getExchangeRate(from: string, to: string): Promise<number> {
   const upperFrom = from.toUpperCase();
   const upperTo = to.toUpperCase();
 
@@ -265,7 +265,7 @@ export interface SnapshotResult {
 
 // Refresh all ticker-mode items and update their prices
 // Returns success only if ALL tickers are fetched successfully
-export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
+export async function refreshAllTickerPrices(targetCurrency: string): Promise<RefreshAllResult> {
   // Import dynamically to avoid circular dependencies
   const { getTickerModeItems, updatePortfolioItem } = await import('./useDatabase');
 
@@ -320,8 +320,8 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
       } else {
         // Get exchange rate if currency differs
         let exchangeRate = 1;
-        if (quote.currency !== 'CAD') {
-          exchangeRate = await getExchangeRate(quote.currency, 'CAD');
+        if (quote.currency !== targetCurrency) {
+          exchangeRate = await getExchangeRate(quote.currency, targetCurrency);
         }
         tickerQuotes.set(ticker, { quote, exchangeRate });
       }
@@ -361,8 +361,8 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
 
     // Get exchange rate based on the effective currency (user's or API's)
     let exchangeRate = 1;
-    if (effectiveCurrency !== 'CAD') {
-      exchangeRate = await getExchangeRate(effectiveCurrency, 'CAD');
+    if (effectiveCurrency !== targetCurrency) {
+      exchangeRate = await getExchangeRate(effectiveCurrency, targetCurrency);
     }
 
     // Calculate new value using the correct exchange rate
@@ -396,7 +396,7 @@ export async function refreshAllTickerPrices(): Promise<RefreshAllResult> {
 //
 // Options:
 // - forceUpdate: If true, will replace existing snapshot for today instead of skipping
-export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: boolean }): Promise<SnapshotResult> {
+export async function createSnapshotWithPriceRefresh(targetCurrency: string, options?: { forceUpdate?: boolean }): Promise<SnapshotResult> {
   const { forceUpdate = false } = options || {};
 
   // Import dynamically to avoid circular dependencies
@@ -416,7 +416,7 @@ export async function createSnapshotWithPriceRefresh(options?: { forceUpdate?: b
 
   // If there are ticker items, refresh their prices first
   if (tickerItems.length > 0) {
-    const priceRefreshResult = await refreshAllTickerPrices();
+    const priceRefreshResult = await refreshAllTickerPrices(targetCurrency);
 
     // If any ticker failed, don't create snapshot
     if (!priceRefreshResult.success) {

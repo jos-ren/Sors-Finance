@@ -97,8 +97,8 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
 
         // Get exchange rate based on the effective currency
         let exchangeRate = 1;
-        if (effectiveCurrency !== "CAD") {
-          exchangeRate = await getExchangeRate(effectiveCurrency, "CAD");
+        if (effectiveCurrency !== userCurrency) {
+          exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
         }
 
         const newValue = (item.quantity || 0) * quote.price * exchangeRate;

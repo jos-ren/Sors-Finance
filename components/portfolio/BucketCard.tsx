@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BucketType, useBucketTotal, usePortfolioAccounts } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
+import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 
 interface BucketCardProps {
@@ -44,19 +46,11 @@ const BUCKET_CONFIG: Record<BucketType, {
   },
 };
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 export function BucketCard({ bucket }: BucketCardProps) {
   const total = useBucketTotal(bucket);
   const accounts = usePortfolioAccounts(bucket);
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
   const config = BUCKET_CONFIG[bucket];
   const Icon = config.icon;
 
@@ -71,7 +65,7 @@ export function BucketCard({ bucket }: BucketCardProps) {
         <div className="mt-3">
           <p className="text-sm text-muted-foreground">{bucket}</p>
           <p className="text-2xl font-bold tabular-nums mt-1">
-            {formatAmount(total ?? 0, formatCurrency)}
+            {formatAmount(total ?? 0, (amount) => formatCurrency(amount, userCurrency))}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {accountCount} {accountCount === 1 ? "account" : "accounts"}
