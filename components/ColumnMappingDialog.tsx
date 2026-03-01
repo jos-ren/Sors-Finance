@@ -34,7 +34,7 @@ import { AlertCircle, CheckCircle2, Info, Save, FolderOpen, Sparkles } from "luc
 // These are starting points users can customize
 const SUGGESTED_TEMPLATES: { name: string; description: string; mapping: ColumnMapping }[] = [
   {
-    name: "CIBC-style (4 columns)",
+    name: "4-column format",
     description: "Date, Description, Money Out, Money In - no headers",
     mapping: {
       dateColumn: 0,
@@ -301,7 +301,18 @@ export function ColumnMappingDialog({
       }
     }
 
-    onConfirm(mapping, saveAsTemplate ? templateName.trim() : undefined);
+    // Determine which template name to use as source
+    let sourceTemplateName: string | undefined;
+    if (saveAsTemplate && templateName.trim()) {
+      // User is saving a new template
+      sourceTemplateName = templateName.trim();
+    } else if (selectedTemplateId && selectedTemplateId !== "none" && !selectedTemplateId.startsWith("suggested-")) {
+      // User selected an existing saved template - use its name
+      const selectedTemplate = savedTemplates.find(t => t.id.toString() === selectedTemplateId);
+      sourceTemplateName = selectedTemplate?.name;
+    }
+
+    onConfirm(mapping, sourceTemplateName);
     onOpenChange(false);
   };
 
@@ -616,7 +627,7 @@ export function ColumnMappingDialog({
                 {saveAsTemplate && (
                   <Input
                     className="mt-2 max-w-xs"
-                    placeholder="Template name (e.g., TD Bank CSV)"
+                    placeholder="Template name (e.g., My Bank)"
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
                   />

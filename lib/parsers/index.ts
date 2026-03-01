@@ -11,7 +11,7 @@
  *   const detection = await detectBank(file);
  *
  *   // Parse a file with a specific bank parser
- *   const result = await parseFile(file, 'CIBC');
+ *   const result = await parseFile(file, 'CUSTOM');
  *
  *   // Get all available parsers
  *   const parsers = getAllParsers();
@@ -32,8 +32,6 @@ import { createCustomParser } from "./banks/custom";
 
 // Import all bank parsers
 // To add a new bank, create a file in banks/ and import it here
-import { cibcParser } from "./banks/cibc";
-import { amexParser } from "./banks/amex";
 import { customParser } from "./banks/custom";
 
 // ============================================
@@ -45,8 +43,6 @@ import { customParser } from "./banks/custom";
  * Add new parsers to this array
  */
 const PARSERS: BankParser[] = [
-  cibcParser,
-  amexParser,
   customParser, // Custom import with user-defined column mapping
   // Add new parsers here:
   // tdParser,
@@ -64,8 +60,6 @@ const PARSER_MAP = new Map<string, BankParser>(
  * Filename patterns for quick detection
  */
 const FILENAME_PATTERNS: FilenamePattern[] = [
-  { bankId: "CIBC", pattern: /cibc/i },
-  { bankId: "AMEX", pattern: /^summary|amex/i },
   // Add patterns for new banks here
 ];
 

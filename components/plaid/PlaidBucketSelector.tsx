@@ -564,7 +564,7 @@ export function PlaidBucketSelector({
                             id={`account-name-${account.id}`}
                             value={selection.accountName}
                             onChange={(e) => handleAccountNameChange(account.id, e.target.value)}
-                            placeholder="e.g., CIBC Accounts"
+                            placeholder="e.g., My Bank Accounts"
                             size="sm"
                             className="text-sm"
                           />

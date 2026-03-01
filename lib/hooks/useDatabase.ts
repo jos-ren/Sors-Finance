@@ -133,7 +133,7 @@ export function useTransactions(options?: {
   startDate?: Date;
   endDate?: Date;
   categoryId?: number;
-  source?: "CIBC" | "AMEX" | "Manual";
+  source?: string;
   limit?: number;
 }): DbTransaction[] | undefined {
   const key = options

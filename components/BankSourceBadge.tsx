@@ -12,18 +12,21 @@ import {
 
 // Map of bank sources to their logo paths
 const BANK_LOGOS: Record<string, string> = {
-  CIBC: "/logos/cibc.png",
-  AMEX: "/logos/amex.png",
+  // Add custom bank logos here
 };
 
 interface BankSourceBadgeProps {
   source: string;
+  sourceMethod?: "Plaid" | "CSV" | "Manual";
+  sourceAccountName?: string;
   size?: "sm" | "md" | "lg";
   showTooltip?: boolean;
 }
 
 export function BankSourceBadge({
   source,
+  sourceMethod,
+  sourceAccountName,
   size = "md",
   showTooltip = true,
 }: BankSourceBadgeProps) {
@@ -60,6 +63,15 @@ export function BankSourceBadge({
     return content;
   }
 
+  // Build tooltip content
+  const tooltipLines: string[] = [source];
+  if (sourceMethod) {
+    tooltipLines.push(`Imported via ${sourceMethod}`);
+  }
+  if (sourceAccountName) {
+    tooltipLines.push(`Account: ${sourceAccountName}`);
+  }
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -69,7 +81,13 @@ export function BankSourceBadge({
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          <p>{source}</p>
+          <div className="flex flex-col gap-0.5">
+            {tooltipLines.map((line, i) => (
+              <p key={i} className={i === 0 ? "font-medium" : "text-muted-foreground text-xs"}>
+                {line}
+              </p>
+            ))}
+          </div>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

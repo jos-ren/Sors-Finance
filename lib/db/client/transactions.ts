@@ -104,24 +104,25 @@ export async function recategorizeTransactions(mode: RecategorizeMode = "uncateg
 }
 
 export async function findDuplicateSignatures(
-  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number }>
+  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number; source: string }>
 ): Promise<Set<string>> {
   // Get all existing transactions
   const existing = await getTransactions();
 
   // Build set of existing transaction signatures
+  // Include source to avoid false positives across different banks
   // Use local date (YYYY-MM-DD) to avoid timezone issues
   const existingSignatures = new Set(
     existing.map((t) => {
       const dateStr = normalizeTransactionDate(t.date);
-      return `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+      return `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
     })
   );
 
   const duplicates = new Set<string>();
   for (const t of transactions) {
     const dateStr = normalizeTransactionDate(t.date);
-    const sig = `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+    const sig = `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
     if (existingSignatures.has(sig)) {
       duplicates.add(sig);
     }

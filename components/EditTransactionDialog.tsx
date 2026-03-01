@@ -200,16 +200,12 @@ export function EditTransactionDialog({
           {/* Source */}
           <div className="space-y-2">
             <Label htmlFor="edit-source">Source</Label>
-            <Select value={source} onValueChange={(value) => setSource(value as "CIBC" | "AMEX" | "Manual")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CIBC">CIBC</SelectItem>
-                <SelectItem value="AMEX">AMEX</SelectItem>
-                <SelectItem value="Manual">Manual</SelectItem>
-              </SelectContent>
-            </Select>
+            <Input
+              id="edit-source"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="e.g., My Bank, CSV Import, Plaid"
+            />
           </div>
         </div>
 

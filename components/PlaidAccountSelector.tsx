@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
@@ -18,7 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CalendarIcon, Loader2, AlertCircle, Building2, CreditCard, ChevronDown, Info } from "lucide-react";
+import { CalendarIcon, Loader2, AlertCircle, Building2, ChevronDown, Info, CreditCard, PiggyBank, TrendingUp, Home } from "lucide-react";
 import { format, subMonths, startOfMonth, addDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -43,8 +43,16 @@ interface PlaidInstitutionWithAccounts {
     subtype: string;
     mask?: string | null;
     portfolioAccountId?: number | null;
+    portfolioBucket?: string | null;
   }>;
 }
+
+const BUCKET_ICONS: Record<string, { icon: typeof PiggyBank; color: string; bgColor: string }> = {
+  Savings: { icon: PiggyBank, color: "text-emerald-500", bgColor: "bg-emerald-500/20" },
+  Investments: { icon: TrendingUp, color: "text-blue-500", bgColor: "bg-blue-500/20" },
+  Assets: { icon: Home, color: "text-amber-500", bgColor: "bg-amber-500/20" },
+  Debt: { icon: CreditCard, color: "text-red-500", bgColor: "bg-red-500/20" },
+};
 
 interface SelectedAccount {
   itemId: number;
@@ -97,25 +105,6 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
     }
   };
 
-  // Auto-expand first institution and select all its accounts
-  useEffect(() => {
-    if (plaidItems.length > 0 && expandedInstitutions.size === 0) {
-      const firstItem = plaidItems[0];
-      setExpandedInstitutions(new Set([firstItem.id]));
-      
-      const newSelected = new Map<string, SelectedAccount>();
-      firstItem.accounts.forEach(account => {
-        const key = `${firstItem.id}-${account.accountId}`;
-        newSelected.set(key, {
-          itemId: firstItem.id,
-          accountId: account.accountId,
-          institutionName: firstItem.institutionName,
-          accountName: account.name,
-        });
-      });
-      setSelectedAccounts(newSelected);
-    }
-  }, [plaidItems, expandedInstitutions.size]);
 
   const loadPlaidItems = async () => {
     try {
@@ -143,7 +132,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
     });
   };
 
-  const toggleAccount = (itemId: number, accountId: string, institutionName: string, accountName: string) => {
+  const toggleAccount = (itemId: number, accountId: string, institutionName: string, accountName: string, displayName?: string) => {
     setSelectedAccounts(prev => {
       const key = `${itemId}-${accountId}`;
       const newMap = new Map(prev);
@@ -151,7 +140,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
       if (newMap.has(key)) {
         newMap.delete(key);
       } else {
-        newMap.set(key, { itemId, accountId, institutionName, accountName });
+        newMap.set(key, { itemId, accountId, institutionName, accountName: displayName || accountName });
       }
       
       return newMap;
@@ -169,7 +158,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
             itemId: item.id,
             accountId: account.accountId,
             institutionName: item.institutionName,
-            accountName: account.name,
+            accountName: account.officialName || account.name,
           });
         } else {
           newMap.delete(key);
@@ -310,37 +299,36 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
             {selectedAccounts.size} selected
           </span>
         </div>
-        <div className="space-y-3">
-          {plaidItems.map((item) => {
+        <Card className="overflow-hidden p-0 gap-0">
+          {plaidItems.map((item, index) => {
             const isExpanded = expandedInstitutions.has(item.id);
-            const accountsSelected = item.accounts.filter(acc => 
+            const accountsSelected = item.accounts.filter(acc =>
               selectedAccounts.has(`${item.id}-${acc.accountId}`)
             ).length;
-            
+
             return (
               <Collapsible
                 key={item.id}
                 open={isExpanded}
                 onOpenChange={() => toggleInstitution(item.id)}
+                className="m-0"
               >
-                <Card className={cn(
-                  "overflow-hidden transition-colors",
-                  isExpanded && "ring-1 ring-border"
-                )}>
-                  <CollapsibleTrigger asChild>
-                    <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors">
+                <CollapsibleTrigger asChild>
+                  <div className={cn(index > 0 && "border-t")}>
+                    <div className="flex items-center gap-3 p-[20px] cursor-pointer hover:bg-accent/50 transition-colors">
                       <div className="flex items-center justify-center h-9 w-9 rounded-md bg-muted">
                         <Building2 className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{item.institutionName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {accountsSelected > 0 
+                          {accountsSelected > 0
                             ? `${accountsSelected} of ${item.accounts.length} accounts selected`
                             : `${item.accounts.length} account${item.accounts.length !== 1 ? 's' : ''} available`
                           }
                         </p>
                       </div>
+                      <span className="text-sm text-muted-foreground">Select All</span>
                       <Checkbox
                         checked={isInstitutionFullySelected(item)}
                         onCheckedChange={(checked) => {
@@ -357,49 +345,52 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
                         isExpanded && "rotate-180"
                       )} />
                     </div>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="px-4 pb-3 space-y-2 border-t bg-muted/30">
-                      <div className="pt-3">
-                        {item.accounts.map((account) => {
-                          const key = `${item.id}-${account.accountId}`;
-                          const isSelected = selectedAccounts.has(key);
-                          
-                          return (
-                            <div
-                              key={account.id}
-                              className={cn(
-                                "flex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-colors",
-                                isSelected 
-                                  ? "bg-primary/10 hover:bg-primary/15" 
-                                  : "hover:bg-accent/50"
-                              )}
-                              onClick={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name)}
-                            >
-                              <Checkbox
-                                checked={isSelected}
-                                onClick={(e) => e.stopPropagation()}
-                                onCheckedChange={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name)}
-                                className="h-4 w-4"
-                              />
-                              <CreditCard className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate">{account.name}</p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {account.subtype}{account.mask && ` • ••${account.mask}`}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="border-t bg-muted/30">
+                  {item.accounts.map((account) => {
+                    const key = `${item.id}-${account.accountId}`;
+                    const isSelected = selectedAccounts.has(key);
+                    const displayName = account.officialName || account.name;
+                    const bucketConfig = account.portfolioBucket ? BUCKET_ICONS[account.portfolioBucket] : null;
+                    const Icon = bucketConfig?.icon || CreditCard;
+                    const iconColor = bucketConfig?.color || "text-muted-foreground";
+                    const bgColor = bucketConfig?.bgColor || "bg-muted";
+
+                    return (
+                      <div
+                        key={account.id}
+                        className={cn(
+                          "flex items-center gap-3 pl-[40px] pr-[48px] py-[10px] cursor-pointer transition-colors",
+                          isSelected
+                            ? "bg-primary/10 hover:bg-primary/15"
+                            : "hover:bg-accent/50"
+                        )}
+                        onClick={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name, displayName)}
+                      >
+                        <div className={cn("flex items-center justify-center h-6 w-6 flex-shrink-0 -ml-[14px] mr-[6px] rounded-[6px]", bgColor)}>
+                          <Icon className={cn("h-3.5 w-3.5", iconColor)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{displayName}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {account.subtype}{account.mask && ` ••${account.mask}`}
+                          </p>
+                        </div>
+                        <Checkbox
+                          checked={isSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name, displayName)}
+                          className="h-5 w-5"
+                        />
                       </div>
-                    </div>
-                  </CollapsibleContent>
-                </Card>
+                    );
+                  })}
+                </CollapsibleContent>
               </Collapsible>
             );
           })}
-        </div>
+        </Card>
       </div>
 
       {/* Date Range Selection */}

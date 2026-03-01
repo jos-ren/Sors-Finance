@@ -39,6 +39,8 @@ export interface DbTransaction {
   amountIn: number;
   netAmount: number;
   source: string;
+  sourceMethod?: string | null; // "Plaid", "CSV", or "Manual"
+  sourceAccountName?: string | null; // Specific account name for tooltip
   categoryId: number | null;
   importId: number | null;
   createdAt: Date;

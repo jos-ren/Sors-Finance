@@ -226,7 +226,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           allTransactions.push({
             id: generateId(),
             ...parsed,
-            source: result.bankId,
+            source: uploadedFile.templateName || result.bankId, // Use template name if available
+            sourceMethod: "CSV",
             categoryId: null,
             isConflict: false,
           });
@@ -245,8 +246,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       // Mark duplicates and categorize transactions (duplicates are skipped by default)
       const withDuplicates = allTransactions.map(t => {
         // Normalize date to local YYYY-MM-DD format to avoid timezone issues
+        // Include source to avoid false positives across different banks
         const dateStr = normalizeDate(t.date);
-        const signature = `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+        const signature = `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         const isDuplicate = duplicateSignatures.has(signature);
         return {
           ...t,
@@ -359,8 +361,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       // Mark duplicates and categorize transactions (duplicates are skipped by default)
       const withDuplicates = allPlaidTransactions.map((t: Transaction) => {
         // Normalize date to local YYYY-MM-DD format to avoid timezone issues
+        // Include source to avoid false positives across different banks
         const dateStr = normalizeDate(t.date);
-        const signature = `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+        const signature = `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         const isDuplicate = duplicateSignatures.has(signature);
         return {
           ...t,
@@ -517,7 +520,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             amountOut: t.amountOut,
             amountIn: t.amountIn,
             netAmount: t.netAmount,
-            source: t.source as 'CIBC' | 'AMEX' | 'Manual',
+            source: t.source,
+            sourceMethod: t.sourceMethod,
+            sourceAccountName: t.sourceAccountName,
             categoryId: category?.id ?? null,
             importId: null as number | null,
           };

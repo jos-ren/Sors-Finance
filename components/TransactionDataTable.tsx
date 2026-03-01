@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, CalendarDays, Check } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,7 +28,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -40,12 +42,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -58,6 +54,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
@@ -99,7 +101,6 @@ export function TransactionDataTable({
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   // Unified date filter: "all", "7days", "30days", "90days", "thisMonth", "lastMonth", "thisYear", "year:2024", "month:2024-0"
   const [dateFilter, setDateFilter] = useState<string>("all");
-  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
   // Edit state
   const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
@@ -139,6 +140,17 @@ export function TransactionDataTable({
         return b.month - a.month;
       }),
     };
+  }, [transactions]);
+
+  // Get available sources from transactions
+  const availableSources = useMemo(() => {
+    const sources = new Set<string>();
+    transactions.forEach((t) => {
+      if (t.source) {
+        sources.add(t.source);
+      }
+    });
+    return Array.from(sources).sort((a, b) => a.localeCompare(b));
   }, [transactions]);
 
   // Column definitions
@@ -198,9 +210,18 @@ export function TransactionDataTable({
           </Button>
         ),
         cell: ({ row }) => (
-          <div className="max-w-[300px] truncate" title={row.getValue("description")}>
-            {row.getValue("description")}
-          </div>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="max-w-[300px] truncate cursor-default">
+                  {row.getValue("description")}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[400px] break-words">
+                {row.getValue("description")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         ),
       },
       {
@@ -254,7 +275,12 @@ export function TransactionDataTable({
         header: "Source",
         enableSorting: false,
         cell: ({ row }) => (
-          <BankSourceBadge source={row.getValue("source")} size="sm" />
+          <BankSourceBadge
+            source={row.getValue("source")}
+            sourceMethod={row.original.sourceMethod as "Plaid" | "CSV" | "Manual" | undefined}
+            sourceAccountName={row.original.sourceAccountName as string | undefined}
+            size="sm"
+          />
         ),
       },
       {
@@ -428,26 +454,6 @@ export function TransactionDataTable({
     setGlobalFilter("");
   };
 
-  // Get human-readable label for current date filter
-  const getDateFilterLabel = () => {
-    if (dateFilter === "all") return "All Time";
-    if (dateFilter === "7days") return "Last 7 Days";
-    if (dateFilter === "30days") return "Last 30 Days";
-    if (dateFilter === "90days") return "Last 90 Days";
-    if (dateFilter === "thisMonth") return "This Month";
-    if (dateFilter === "lastMonth") return "Last Month";
-    if (dateFilter === "thisYear") return "This Year";
-    if (dateFilter.startsWith("year:")) {
-      return dateFilter.replace("year:", "");
-    }
-    if (dateFilter.startsWith("month:")) {
-      const [year, month] = dateFilter.replace("month:", "").split("-").map(Number);
-      const date = new Date(year, month, 1);
-      return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
-    }
-    return "Custom";
-  };
-
   // Get the Ignore category ID
   const ignoreCategoryId = useMemo(() => {
     const ignoreCategory = categories.find(c => c.name === SYSTEM_CATEGORIES.EXCLUDED);
@@ -506,88 +512,47 @@ export function TransactionDataTable({
             />
           </div>
 
-          {/* Unified Date Filter Popover */}
-          <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[160px] justify-start text-left font-normal",
-                  dateFilter !== "all" && "border-primary"
-                )}
-              >
-                <CalendarDays className="mr-2 h-4 w-4" />
-                {getDateFilterLabel()}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[220px] px-0 py-[10px] gap-0 max-h-[400px] overflow-y-auto" align="start">
-              <p className="text-xs text-muted-foreground px-2 mb-[6px]">Quick Filters</p>
-              <div className="flex flex-col">
-                {[
-                  { value: "all", label: "All Time" },
-                  { value: "7days", label: "Last 7 Days" },
-                  { value: "30days", label: "Last 30 Days" },
-                  { value: "90days", label: "Last 90 Days" },
-                  { value: "thisMonth", label: "This Month" },
-                  { value: "lastMonth", label: "Last Month" },
-                  { value: "thisYear", label: "This Year" },
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => { setDateFilter(option.value); setDatePopoverOpen(false); }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent text-left",
-                      dateFilter === option.value && "bg-accent"
-                    )}
-                  >
-                    {option.label}
-                    {dateFilter === option.value && <Check className="h-3.5 w-3.5" />}
-                  </button>
-                ))}
-              </div>
+          {/* Unified Date Filter Select */}
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className={cn(
+              "w-[160px]",
+              dateFilter !== "all" && "border-primary"
+            )}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="overflow-y-auto">
+              <SelectGroup>
+                <SelectLabel>Quick Filters</SelectLabel>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="7days">Last 7 Days</SelectItem>
+                <SelectItem value="30days">Last 30 Days</SelectItem>
+                <SelectItem value="90days">Last 90 Days</SelectItem>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+              </SelectGroup>
               {availableYears.length > 0 && (
-                <>
-                  <Separator className="my-[10px]" />
-                  <p className="text-xs text-muted-foreground px-2 mb-[6px]">By Year</p>
-                  <div className="flex flex-wrap gap-1 px-2">
-                    {availableYears.map((year) => (
-                      <button
-                        key={year}
-                        onClick={() => { setDateFilter(`year:${year}`); setDatePopoverOpen(false); }}
-                        className={cn(
-                          "px-2 py-1 text-sm rounded hover:bg-accent",
-                          dateFilter === `year:${year}` && "bg-primary text-primary-foreground hover:bg-primary/90"
-                        )}
-                      >
-                        {year}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <SelectGroup>
+                  <SelectLabel>By Year</SelectLabel>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={`year:${year}`}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               )}
               {availableMonths.length > 0 && (
-                <>
-                  <Separator className="my-[10px]" />
-                  <p className="text-xs text-muted-foreground px-2 mb-[6px]">By Month</p>
-                  <div className="flex flex-col">
-                    {availableMonths.map((m) => (
-                      <button
-                        key={`${m.year}-${m.month}`}
-                        onClick={() => { setDateFilter(`month:${m.year}-${m.month}`); setDatePopoverOpen(false); }}
-                        className={cn(
-                          "w-full flex items-center justify-between px-2 py-1.5 text-sm hover:bg-accent text-left",
-                          dateFilter === `month:${m.year}-${m.month}` && "bg-accent"
-                        )}
-                      >
-                        {m.label}
-                        {dateFilter === `month:${m.year}-${m.month}` && <Check className="h-3.5 w-3.5" />}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <SelectGroup>
+                  <SelectLabel>By Month</SelectLabel>
+                  {availableMonths.map((m) => (
+                    <SelectItem key={`${m.year}-${m.month}`} value={`month:${m.year}-${m.month}`}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               )}
-            </PopoverContent>
-          </Popover>
+            </SelectContent>
+          </Select>
 
           {/* Category Filter */}
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -613,16 +578,18 @@ export function TransactionDataTable({
           {/* Source Filter */}
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className={cn(
-              "w-[140px]",
+              "w-[160px]",
               sourceFilter !== "all" && "border-primary"
             )}>
               <SelectValue placeholder="Source" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="CIBC">CIBC</SelectItem>
-              <SelectItem value="AMEX">AMEX</SelectItem>
-              <SelectItem value="Manual">Manual</SelectItem>
+              {availableSources.map((source) => (
+                <SelectItem key={source} value={source}>
+                  {source}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

@@ -34,10 +34,12 @@ export async function POST(request: NextRequest) {
     let insertedCount = 0;
 
     // Build signatures for duplicate checking
+    // Include source to avoid false positives across different banks
     // Use normalized date (local YYYY-MM-DD) to avoid timezone issues
     const signatures = transactions.map((t) => {
       const dateStr = normalizeDate(new Date(t.date));
-      return `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+      const source = t.source || "Manual";
+      return `${source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
     });
 
     // Check for existing duplicates if skipDuplicates is true (only for this user)
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
       existingSignatures = new Set(
         existingTransactions.map((t) => {
           const dateStr = normalizeDate(t.date);
-          return `${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
+          return `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         })
       );
     }
@@ -76,6 +78,8 @@ export async function POST(request: NextRequest) {
         amountIn: t.amountIn ?? 0,
         netAmount: t.netAmount ?? (t.amountIn - t.amountOut),
         source: t.source || "Manual",
+        sourceMethod: t.sourceMethod || null,
+        sourceAccountName: t.sourceAccountName || null,
         categoryId: t.categoryId || null,
         importId: t.importId || null,
         userId,

@@ -253,7 +253,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                             <p className="truncate">{transaction.description}</p>
                           </TableCell>
                           <TableCell className="w-[100px]">
-                            <BankSourceBadge source={transaction.source} size="sm" />
+                            <BankSourceBadge source={transaction.source} sourceMethod={transaction.sourceMethod} sourceAccountName={transaction.sourceAccountName} size="sm" />
                           </TableCell>
                           <TableCell className="w-[140px] text-right whitespace-nowrap">
                             {transaction.amountOut > 0 ? (
@@ -312,7 +312,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                             <p className="truncate">{transaction.description}</p>
                           </TableCell>
                           <TableCell className="w-[100px]">
-                            <BankSourceBadge source={transaction.source} size="sm" />
+                            <BankSourceBadge source={transaction.source} sourceMethod={transaction.sourceMethod} sourceAccountName={transaction.sourceAccountName} size="sm" />
                           </TableCell>
                           <TableCell className="w-[140px] text-right whitespace-nowrap">
                             {transaction.amountOut > 0 ? (
@@ -376,7 +376,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                             <p className="truncate">{transaction.description}</p>
                           </TableCell>
                           <TableCell className="w-[100px]">
-                            <BankSourceBadge source={transaction.source} size="sm" />
+                            <BankSourceBadge source={transaction.source} sourceMethod={transaction.sourceMethod} sourceAccountName={transaction.sourceAccountName} size="sm" />
                           </TableCell>
                           <TableCell className="w-[140px] text-right whitespace-nowrap">
                             {transaction.amountOut > 0 ? (

@@ -3,7 +3,7 @@
 export interface ImportRecord {
   id: string;
   date: Date;
-  source: "CIBC" | "AMEX";
+  source: string;
   fileName: string;
   transactionCount: number;
   totalAmount: number;
@@ -34,15 +34,15 @@ export const dummyImports: ImportRecord[] = [
   {
     id: "1",
     date: new Date("2025-12-15"),
-    source: "CIBC",
-    fileName: "cibc-december-2025.csv",
+    source: "My Bank",
+    fileName: "december-2025.csv",
     transactionCount: 45,
     totalAmount: 3250.75,
   },
   {
     id: "2",
     date: new Date("2025-12-01"),
-    source: "AMEX",
+    source: "Credit Card",
     fileName: "Summary-Nov-2025.xlsx",
     transactionCount: 32,
     totalAmount: 2180.50,
@@ -50,15 +50,15 @@ export const dummyImports: ImportRecord[] = [
   {
     id: "3",
     date: new Date("2025-11-15"),
-    source: "CIBC",
-    fileName: "cibc-november-2025.csv",
+    source: "My Bank",
+    fileName: "november-2025.csv",
     transactionCount: 52,
     totalAmount: 4125.00,
   },
   {
     id: "4",
     date: new Date("2025-11-01"),
-    source: "AMEX",
+    source: "Credit Card",
     fileName: "Summary-Oct-2025.xlsx",
     transactionCount: 28,
     totalAmount: 1890.25,
@@ -66,8 +66,8 @@ export const dummyImports: ImportRecord[] = [
   {
     id: "5",
     date: new Date("2025-10-15"),
-    source: "CIBC",
-    fileName: "cibc-october-2025.csv",
+    source: "My Bank",
+    fileName: "october-2025.csv",
     transactionCount: 61,
     totalAmount: 5200.00,
   },

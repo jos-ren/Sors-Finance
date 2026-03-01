@@ -28,8 +28,7 @@ import type { ColumnMapping } from "@/lib/parsers/types";
 
 // Bank logos mapping (add new banks here as they are added)
 const BANK_LOGOS: Record<string, string> = {
-  CIBC: "/logos/cibc.png",
-  AMEX: "/logos/amex.png",
+  // Add custom bank logos here
 };
 
 // Maximum file size: 10MB
@@ -164,6 +163,7 @@ export function FileUpload({
                 detectionReason: `Using template: ${template.name}`,
                 columnMapping: template.mapping,
                 mappingConfigured: true,
+                templateName: template.name, // Store template name for use as source
                 validationErrors: [],
                 validationWarnings: [],
               }
@@ -265,7 +265,7 @@ export function FileUpload({
     }
   };
 
-  const handleMappingConfirm = (mapping: ColumnMapping) => {
+  const handleMappingConfirm = (mapping: ColumnMapping, templateName?: string) => {
     if (mappingFileIndex === null) return;
 
     const updated = files.map((f, i) =>
@@ -278,6 +278,7 @@ export function FileUpload({
             detectionReason: "Custom mapping configured",
             validationErrors: [],
             validationWarnings: [],
+            templateName: templateName, // Store template name for use as source
           }
         : f
     );
@@ -399,27 +400,6 @@ export function FileUpload({
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Built-in parsers */}
-                          <SelectGroup>
-                            <SelectLabel>Supported Banks</SelectLabel>
-                            {bankOptions
-                              .filter(b => !b.isTemplate && b.id !== "CUSTOM")
-                              .map((bank) => (
-                                <SelectItem key={bank.id} value={bank.id}>
-                                  <div className="flex items-center gap-2">
-                                    {bank.logo && (
-                                      <img
-                                        src={bank.logo}
-                                        alt={bank.name}
-                                        className="h-4 w-auto object-contain"
-                                      />
-                                    )}
-                                    <span>{bank.name}</span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                          </SelectGroup>
-
                           {/* Saved templates */}
                           {savedTemplates.length > 0 && (
                             <SelectGroup>
