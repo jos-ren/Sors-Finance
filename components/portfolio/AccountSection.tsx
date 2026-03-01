@@ -167,13 +167,15 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
         </div>
       </Collapsible>
 
-      <AddItemDialog
-        open={showAddItem}
-        onOpenChange={setShowAddItem}
-        accountId={account.id!}
-        accountName={account.name}
-        bucket={account.bucket}
-      />
+      {showAddItem && (
+        <AddItemDialog
+          open={showAddItem}
+          onOpenChange={setShowAddItem}
+          accountId={account.id!}
+          accountName={account.name}
+          bucket={account.bucket}
+        />
+      )}
 
       <ConfirmDialog
         open={showDeleteConfirm}

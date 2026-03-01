@@ -129,11 +129,13 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
         )}
       </div>
 
-      <AddAccountDialog
-        open={showAddAccount}
-        onOpenChange={setShowAddAccount}
-        bucket={bucket}
-      />
+      {showAddAccount && (
+        <AddAccountDialog
+          open={showAddAccount}
+          onOpenChange={setShowAddAccount}
+          bucket={bucket}
+        />
+      )}
     </div>
   );
 }

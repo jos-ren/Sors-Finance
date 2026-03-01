@@ -212,6 +212,7 @@ export default function SettingsPage() {
   const [snapshotEnabled, setSnapshotEnabled] = useState(true);
   const [snapshotTime, setSnapshotTime] = useState("03:00");
   const [plaidSyncEnabled, setPlaidSyncEnabled] = useState(false); // Opt-in for Plaid sync with snapshot
+  const [priceRefreshEnabled, setPriceRefreshEnabled] = useState(true); // Opt-in for price refresh with snapshot
   const [isLoadingSnapshotConfig, setIsLoadingSnapshotConfig] = useState(true);
 
   // Snapshot import/export state
@@ -361,6 +362,7 @@ export default function SettingsPage() {
         setSnapshotEnabled(data?.enabled ?? true);
         setSnapshotTime(data?.time || "03:00");
         setPlaidSyncEnabled(data?.plaidSync ?? false); // Load Plaid sync setting
+        setPriceRefreshEnabled(data?.priceRefresh ?? true); // Load price refresh setting
       })
       .catch(err => {
         console.error("Failed to load scheduler config:", err);
@@ -470,6 +472,22 @@ export default function SettingsPage() {
       toast.success(checked ? "Plaid sync enabled with snapshots" : "Plaid sync disabled");
     } catch (err) {
       console.error("Failed to update Plaid sync setting:", err);
+      toast.error("Failed to update setting");
+    }
+  };
+
+  const handlePriceRefreshChange = async (checked: boolean) => {
+    try {
+      const res = await fetch("/api/scheduler/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceRefresh: checked }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setPriceRefreshEnabled(checked);
+      toast.success(checked ? "Price refresh enabled with snapshots" : "Price refresh disabled");
+    } catch (err) {
+      console.error("Failed to update price refresh setting:", err);
       toast.error("Failed to update setting");
     }
   };
@@ -1160,11 +1178,27 @@ export default function SettingsPage() {
                     </div>
                   )}
 
+                  {/* Price Refresh Toggle */}
+                  <div className="flex items-center justify-between gap-4 pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label htmlFor="price-refresh-enabled">Refresh ticker prices with snapshot</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically refresh stock/crypto/metal prices when taking scheduled portfolio snapshots
+                      </p>
+                    </div>
+                    <Switch
+                      id="price-refresh-enabled"
+                      checked={priceRefreshEnabled}
+                      onCheckedChange={handlePriceRefreshChange}
+                      disabled={!snapshotEnabled}
+                    />
+                  </div>
+
                   <Alert>
                     <Info className="h-4 w-4" />
                     <AlertTitle>Important</AlertTitle>
                     <AlertDescription>
-                      For automatic snapshots to work, the application must be running:
+                      For automatic snapshots to work, the application must be running during the time of the snapshot. This means:
                       <ul className="list-disc list-inside mt-2 space-y-1">
                         <li>
                           <strong>Development:</strong> Keep <code className="bg-muted px-1 py-0.5 rounded text-xs">npm run dev</code> running in your terminal

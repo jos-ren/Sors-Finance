@@ -281,6 +281,25 @@ export const customImportTemplates = sqliteTable(
 );
 
 // ============================================
+// Currency Exchange Rates Table
+// ============================================
+
+export const currencyExchangeRates = sqliteTable(
+  "currency_exchange_rates",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    fromCurrency: text("from_currency").notNull(),
+    toCurrency: text("to_currency").notNull(),
+    rate: real("rate").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("currency_rates_pair_idx").on(table.fromCurrency, table.toCurrency),
+  ]
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
@@ -312,6 +331,9 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 export type Session = typeof sessions.$inferSelect;
+
+export type CurrencyExchangeRateRow = typeof currencyExchangeRates.$inferSelect;
+export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInsert;
 
 // ============================================
 // Plaid Items Table

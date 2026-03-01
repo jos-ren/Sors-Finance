@@ -5,6 +5,7 @@ import { Search, Loader2, CheckCircle2, X, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Popover,
   PopoverContent,
@@ -103,6 +104,11 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
       clearTimeout(debounceRef.current);
     }
 
+    // Only search if popover is open
+    if (!open) {
+      return;
+    }
+
     // For crypto and metals, show results even without search query
     if ((searchMode === "crypto" || searchMode === "metals") && !search.trim()) {
       debounceRef.current = setTimeout(() => {
@@ -113,7 +119,11 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
         searchSymbols(search, searchMode);
       }, 1000);
     } else {
-      setResults([]);
+      // For stocks with no search, clear results after a brief delay
+      // This prevents flickering when opening the popover
+      debounceRef.current = setTimeout(() => {
+        setResults([]);
+      }, 50);
     }
 
     return () => {
@@ -121,18 +131,13 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [search, searchMode, searchSymbols]);
+  }, [search, searchMode, searchSymbols, open]);
 
-  // Re-search when mode changes
+  // Trigger immediate search when switching to crypto/metals mode
   useEffect(() => {
-    if (open) {
-      if (searchMode === "crypto" || searchMode === "metals") {
-        searchSymbols(search, searchMode);
-      } else if (search.trim()) {
-        searchSymbols(search, searchMode);
-      } else {
-        setResults([]);
-      }
+    if (open && (searchMode === "crypto" || searchMode === "metals") && !search.trim()) {
+      // Immediately search for crypto/metals when switching modes (bypass debounce)
+      searchSymbols("", searchMode);
     }
   }, [searchMode, open, search, searchSymbols]);
 
@@ -249,11 +254,11 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
   // If we have a selected value, show the confirmation card
   if (value) {
     return (
-      <div className="flex items-center gap-2 p-2 rounded-md bg-green-500/10 border border-green-500/30">
-        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+        <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{value.name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {value.symbol} · {value.currency} {value.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
@@ -261,12 +266,12 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-6 w-6 flex-shrink-0"
+          className="h-8 w-8 flex-shrink-0"
           onClick={handleClear}
           title="Clear and search again"
           disabled={disabled}
         >
-          <X className="h-3 w-3" />
+          <X className="h-4 w-4" />
         </Button>
       </div>
     );
@@ -275,8 +280,8 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
   // Show loading state while fetching price
   if (isLoadingPrice) {
     return (
-      <div className="flex items-center gap-2 p-2 rounded-md bg-muted border">
-        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted border">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         <p className="text-sm text-muted-foreground">Loading price...</p>
       </div>
     );
@@ -285,69 +290,36 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
   // Show error state if price fetch failed
   if (error && !open) {
     return (
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/30">
-          <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0" />
-          <p className="text-sm text-destructive flex-1">{error}</p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setError(null)}
-          >
-            Try again
-          </Button>
-        </div>
+      <div className="flex items-center gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+        <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
+        <p className="text-sm text-destructive flex-1">{error}</p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setError(null)}
+        >
+          Try again
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       {/* Mode toggle */}
-      <div className="flex rounded-md border p-0.5 gap-0.5 w-fit">
-        <button
-          type="button"
-          onClick={() => handleModeChange("stocks")}
-          className={cn(
-            "px-2 py-1 text-xs font-medium rounded transition-colors",
-            searchMode === "stocks"
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted text-muted-foreground"
-          )}
-        >
-          Stocks
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeChange("crypto")}
-          className={cn(
-            "px-2 py-1 text-xs font-medium rounded transition-colors",
-            searchMode === "crypto"
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted text-muted-foreground"
-          )}
-        >
-          Crypto
-        </button>
-        <button
-          type="button"
-          onClick={() => handleModeChange("metals")}
-          className={cn(
-            "px-2 py-1 text-xs font-medium rounded transition-colors",
-            searchMode === "metals"
-              ? "bg-primary text-primary-foreground"
-              : "hover:bg-muted text-muted-foreground"
-          )}
-        >
-          Metals
-        </button>
-      </div>
+      <Tabs value={searchMode} onValueChange={(value) => handleModeChange(value as SearchMode)}>
+        <TabsList className="w-fit">
+          <TabsTrigger value="stocks">Stocks</TabsTrigger>
+          <TabsTrigger value="crypto">Crypto</TabsTrigger>
+          <TabsTrigger value="metals">Metals</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* API key warning for stocks mode */}
       {!hasApiKey && searchMode === "stocks" && (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-yellow-500/10 border border-yellow-500/30">
-          <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+          <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
           <p className="text-sm text-muted-foreground">
             Finnhub API key required for stock search.{" "}
             <Link href="/settings?tab=integrations" className="text-primary underline underline-offset-2 hover:text-primary/80">
@@ -358,92 +330,94 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
       )}
 
       {/* Search input */}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={inputRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                searchMode === "crypto"
-                  ? "Search crypto..."
-                  : searchMode === "metals"
-                    ? "Search metals..."
-                    : "Search stocks..."
-              }
-              className="pl-9"
-              disabled={disabled || (!hasApiKey && searchMode === "stocks")}
-              onFocus={() => setOpen(true)}
-            />
-            {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-            )}
-          </div>
-        </PopoverTrigger>
-        <PopoverContent
-          className="w-[var(--radix-popover-trigger-width)] p-0"
-          align="start"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          <div ref={listRef} className="max-h-[300px] overflow-y-auto">
-            {error && (
-              <div className="p-3 text-sm text-destructive">{error}</div>
-            )}
-            {!error && results.length === 0 && search.trim() && !isSearching && (
-              <div className="p-3 text-sm text-muted-foreground">
-                No results found for &quot;{search}&quot;
-              </div>
-            )}
-            {!error && results.length === 0 && !search.trim() && !isSearching && searchMode === "stocks" && (
-              <div className="p-3 text-sm text-muted-foreground">
-                Type to search for stocks and ETFs...
-              </div>
-            )}
-            {!error && results.length === 0 && !isSearching && searchMode === "metals" && (
-              <div className="p-3 text-sm text-muted-foreground">
-                Loading metals...
-              </div>
-            )}
-            {results.map((result, index) => (
-              <div
-                key={result.symbol}
-                data-result-item
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2 cursor-pointer",
-                  index === highlightedIndex && "bg-accent",
-                  "hover:bg-accent"
-                )}
-                onClick={() => handleSelect(result)}
-                onMouseEnter={() => setHighlightedIndex(index)}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">
-                      {searchMode === "crypto" ? result.displaySymbol : result.symbol}
-                    </span>
-                    <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
-                      {result.type}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground truncate">{result.name}</p>
+      <div className="space-y-2">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={inputRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  searchMode === "crypto"
+                    ? "Search crypto..."
+                    : searchMode === "metals"
+                      ? "Search metals..."
+                      : "Search stocks..."
+                }
+                className="pl-9"
+                disabled={disabled || (!hasApiKey && searchMode === "stocks")}
+                onFocus={() => setOpen(true)}
+              />
+              {isSearching && (
+                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-[var(--radix-popover-trigger-width)] p-0"
+            align="start"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <div ref={listRef} className="max-h-[300px] overflow-y-auto">
+              {error && (
+                <div className="p-4 text-sm text-destructive">{error}</div>
+              )}
+              {!error && results.length === 0 && search.trim() && !isSearching && (
+                <div className="p-4 text-sm text-muted-foreground">
+                  No results found for &quot;{search}&quot;
                 </div>
-              </div>
-            ))}
-          </div>
-        </PopoverContent>
-      </Popover>
+              )}
+              {!error && results.length === 0 && !search.trim() && !isSearching && searchMode === "stocks" && (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Type to search for stocks and ETFs...
+                </div>
+              )}
+              {!error && results.length === 0 && !isSearching && searchMode === "metals" && (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Loading metals...
+                </div>
+              )}
+              {results.map((result, index) => (
+                <div
+                  key={result.symbol}
+                  data-result-item
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors",
+                    index === highlightedIndex && "bg-accent",
+                    "hover:bg-accent"
+                  )}
+                  onClick={() => handleSelect(result)}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="font-medium">
+                        {searchMode === "crypto" ? result.displaySymbol : result.symbol}
+                      </span>
+                      <span className="text-xs text-muted-foreground px-1.5 py-0.5 bg-muted rounded">
+                        {result.type}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground truncate">{result.name}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
 
-      <p className="text-xs text-muted-foreground">
-        {searchMode === "crypto"
-          ? "Prices from CoinGecko · e.g. Bitcoin, Ethereum, Solana"
-          : searchMode === "metals"
-            ? "Prices from Gold API · Gold, Silver, Platinum, Palladium"
-            : "Prices from Finnhub · e.g. AAPL, MSFT, VTI, SPY"
-        }
-      </p>
+        <p className="text-xs text-muted-foreground">
+          {searchMode === "crypto"
+            ? "Prices from CoinGecko · e.g. Bitcoin, Ethereum, Solana"
+            : searchMode === "metals"
+              ? "Prices from Gold API · Gold, Silver, Platinum, Palladium"
+              : "Prices from Finnhub · e.g. AAPL, MSFT, VTI, SPY"
+          }
+        </p>
+      </div>
     </div>
   );
 }

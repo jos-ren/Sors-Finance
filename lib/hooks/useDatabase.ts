@@ -517,6 +517,13 @@ export function usePortfolioItem(id: number | undefined): DbPortfolioItem | unde
   return data ?? undefined;
 }
 
+/**
+ * Get all portfolio items across all accounts
+ */
+export function useAllPortfolioItems(includeInactive = false): DbPortfolioItem[] | undefined {
+  return usePortfolioItems(undefined, includeInactive);
+}
+
 export function usePortfolioItemsByBucket(bucket: BucketType): DbPortfolioItem[] | undefined {
   const accounts = usePortfolioAccounts(bucket);
   const items = usePortfolioItems();

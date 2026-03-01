@@ -16,7 +16,7 @@ import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType }
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
-import { lookupTicker, getExchangeRate } from "@/lib/hooks/useStockPrice";
+import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
 import { formatCurrency as formatCurrencyUtil } from "@/lib/formatters";
 
@@ -95,9 +95,10 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
         // Use item's existing currency if user manually set it, otherwise use quote's currency
         const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
 
-        // Get exchange rate based on the effective currency
+        // Get exchange rate
         let exchangeRate = 1;
         if (effectiveCurrency !== userCurrency) {
+          const { getExchangeRate } = await import("@/lib/hooks/useStockPrice");
           exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
         }
 
@@ -211,12 +212,14 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           </DropdownMenu>
         </div>
       </div>
-      <EditItemDialog
-        item={item}
-        open={showEdit}
-        onOpenChange={setShowEdit}
-        bucket={bucket}
-      />
+      {showEdit && (
+        <EditItemDialog
+          item={item}
+          open={showEdit}
+          onOpenChange={setShowEdit}
+          bucket={bucket}
+        />
+      )}
     </>
   );
 }

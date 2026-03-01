@@ -14,21 +14,277 @@ import { eq, and } from "drizzle-orm";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
 import { PLAID_SETTINGS_KEYS } from "@/lib/plaid/types";
 
+/**
+ * Build a comprehensive sync message
+ */
+function buildSyncMessage(result: {
+  accountsUpdated: number;
+  accountsFailed: number;
+  pricesUpdated: number;
+  pricesFailed: number;
+}): string {
+  const messages: string[] = [];
+  
+  if (result.accountsUpdated > 0) {
+    messages.push(`${result.accountsUpdated} account${result.accountsUpdated !== 1 ? 's' : ''}`);
+  }
+  if (result.pricesUpdated > 0) {
+    messages.push(`${result.pricesUpdated} price${result.pricesUpdated !== 1 ? 's' : ''}`);
+  }
+  
+  if (messages.length === 0) {
+    return "Nothing to sync";
+  }
+  
+  let message = `Synced ${messages.join(' and ')}`;
+  
+  const failures: string[] = [];
+  if (result.accountsFailed > 0) {
+    failures.push(`${result.accountsFailed} account${result.accountsFailed !== 1 ? 's' : ''} failed`);
+  }
+  if (result.pricesFailed > 0) {
+    failures.push(`${result.pricesFailed} price${result.pricesFailed !== 1 ? 's' : ''} failed`);
+  }
+  
+  if (failures.length > 0) {
+    message += `, but ${failures.join(' and ')}`;
+  }
+  
+  return message;
+}
+
+/**
+ * Refresh ticker prices for a specific user
+ */
+async function refreshTickerPricesForUser(
+  userId: number,
+  userCurrency: string,
+  authCookies: string
+): Promise<{
+  success: boolean;
+  updated: number;
+  failed: Array<{ ticker: string; itemName: string; error: string }>;
+  synced: Array<{ ticker: string; itemName: string; price: number; currency: string }>;
+}> {
+  // Get ticker items for this user
+  const items = await db
+    .select()
+    .from(portfolioItems)
+    .where(
+      and(
+        eq(portfolioItems.userId, userId),
+        eq(portfolioItems.isActive, true),
+        eq(portfolioItems.priceMode, "ticker")
+      )
+    );
+
+  if (items.length === 0) {
+    return { success: true, updated: 0, failed: [], synced: [] };
+  }
+
+  // Get unique tickers to avoid duplicate API calls, but preserve tickerType
+  const tickerMap = new Map<string, string>(); // ticker -> tickerType
+  for (const item of items) {
+    if (item.ticker) {
+      const upperTicker = item.ticker.toUpperCase();
+      if (!tickerMap.has(upperTicker)) {
+        tickerMap.set(upperTicker, item.tickerType || "stock");
+      }
+    }
+  }
+  const uniqueTickers = Array.from(tickerMap.keys());
+
+  // Helper to get exchange rate
+  const getExchangeRate = async (from: string, to: string): Promise<number> => {
+    if (from.toUpperCase() === to.toUpperCase()) return 1;
+    try {
+      const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+      const response = await fetch(
+        `${baseUrl}/api/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { headers: { cookie: authCookies } }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        return data.rate;
+      }
+    } catch {
+      // Silent fail
+    }
+    return 1; // Fallback
+  };
+
+  // First pass: fetch unique ticker prices
+  const tickerQuotes = new Map<
+    string,
+    {
+      quote: { price: number; currency: string; name?: string } | null;
+      exchangeRate: number;
+      error?: string;
+    }
+  >();
+
+  for (const ticker of uniqueTickers) {
+    const tickerType = tickerMap.get(ticker) || "stock";
+
+    try {
+      let quote = null;
+      let errorDetail = null;
+      const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
+
+      // Clean crypto ticker (remove exchange prefix like "BINANCE:")
+      let cleanTicker = ticker;
+      if (tickerType === "crypto" && ticker.includes(":")) {
+        cleanTicker = ticker.split(":")[1] || ticker;
+      }
+
+      if (tickerType === "metal") {
+        const response = await fetch(`${baseUrl}/api/metals/${encodeURIComponent(cleanTicker)}`, {
+          headers: { cookie: authCookies }
+        });
+        if (response.ok) {
+          quote = await response.json();
+        } else {
+          const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+          errorDetail = errorData.error || `HTTP ${response.status}`;
+          console.error(`[Price Refresh] Metal ${cleanTicker} failed:`, errorDetail);
+        }
+      } else if (tickerType === "crypto") {
+        const response = await fetch(`${baseUrl}/api/crypto/${encodeURIComponent(cleanTicker)}`, {
+          headers: { cookie: authCookies }
+        });
+        if (response.ok) {
+          quote = await response.json();
+        } else {
+          const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+          errorDetail = errorData.error || `HTTP ${response.status}`;
+          console.error(`[Price Refresh] Crypto ${cleanTicker} failed:`, errorDetail);
+        }
+      } else {
+        // Stock lookup
+        const response = await fetch(`${baseUrl}/api/stock/${encodeURIComponent(cleanTicker)}`, {
+          headers: { cookie: authCookies }
+        });
+        if (response.ok) {
+          quote = await response.json();
+        } else {
+          const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+          errorDetail = errorData.error || `HTTP ${response.status}`;
+          console.error(`[Price Refresh] Stock ${cleanTicker} failed:`, errorDetail);
+        }
+      }
+
+      if (!quote) {
+        tickerQuotes.set(ticker, { 
+          quote: null, 
+          exchangeRate: 1, 
+          error: errorDetail || "Ticker not found" 
+        });
+      } else {
+        // Get exchange rate if currency differs
+        let exchangeRate = 1;
+        if (quote.currency !== userCurrency) {
+          exchangeRate = await getExchangeRate(quote.currency, userCurrency);
+        }
+        tickerQuotes.set(ticker, { quote, exchangeRate });
+      }
+    } catch (error) {
+      tickerQuotes.set(ticker, {
+        quote: null,
+        exchangeRate: 1,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  // Second pass: update all items using cached quotes
+  const failed: Array<{ ticker: string; itemName: string; error: string }> = [];
+  const synced: Array<{ ticker: string; itemName: string; price: number; currency: string }> = [];
+  let updated = 0;
+
+  for (const item of items) {
+    if (!item.ticker) continue;
+
+    const upperTicker = item.ticker.toUpperCase();
+    const cached = tickerQuotes.get(upperTicker);
+
+    if (!cached || !cached.quote) {
+      failed.push({
+        ticker: item.ticker,
+        itemName: item.name,
+        error: cached?.error || "Ticker not found",
+      });
+      continue;
+    }
+
+    const { quote } = cached;
+
+    // Use item's existing currency if user manually set it, otherwise use quote's currency
+    const effectiveCurrency = item.currency && item.currency.trim() ? item.currency : quote.currency;
+
+    // Get exchange rate based on the effective currency
+    let exchangeRate = 1;
+    if (effectiveCurrency !== userCurrency) {
+      exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
+    }
+
+    // Calculate new value using the correct exchange rate
+    const newValue = (item.quantity || 0) * quote.price * exchangeRate;
+
+    // Update the item
+    await db
+      .update(portfolioItems)
+      .set({
+        pricePerUnit: quote.price,
+        currency: effectiveCurrency,
+        currentValue: newValue,
+        lastPriceUpdate: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(portfolioItems.id, item.id!));
+
+    updated++;
+    synced.push({
+      ticker: item.ticker,
+      itemName: item.name,
+      price: quote.price,
+      currency: effectiveCurrency,
+    });
+  }
+
+  return { success: failed.length === 0, updated, failed, synced };
+}
+
 interface SyncResult {
   success: boolean;
   accountsUpdated: number;
   accountsFailed: number;
+  pricesUpdated: number;
+  pricesFailed: number;
   errors: string[];
+  priceErrors: Array<{
+    ticker: string;
+    itemName: string;
+    error: string;
+  }>;
   syncedAccounts: Array<{
     accountId: string;
     name: string;
     balance: number;
+  }>;
+  syncedPrices: Array<{
+    ticker: string;
+    itemName: string;
+    price: number;
+    currency: string;
   }>;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
+    
+    // Get auth cookies to forward to internal API calls
+    const cookies = request.headers.get('cookie') || '';
 
     // Check if Plaid is configured
     if (!isPlaidConfigured()) {
@@ -72,8 +328,12 @@ export async function POST(request: NextRequest) {
       success: true,
       accountsUpdated: 0,
       accountsFailed: 0,
+      pricesUpdated: 0,
+      pricesFailed: 0,
       errors: [],
+      priceErrors: [],
       syncedAccounts: [],
+      syncedPrices: [],
     };
 
     // Process each Plaid item
@@ -212,15 +472,49 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // After Plaid sync, refresh ticker prices
+    // Get user currency from settings
+    const userCurrencySetting = await db
+      .select()
+      .from(settings)
+      .where(and(eq(settings.userId, userId), eq(settings.key, "currency")))
+      .limit(1);
+
+    const userCurrency = userCurrencySetting[0]?.value || "CAD";
+
+    // Pre-warm currency cache before price refresh
+    try {
+      const { warmCurrencyCache } = await import('@/lib/currency-cache');
+      const cacheResult = await warmCurrencyCache(userId, cookies);
+      console.log(`[Sync All] Currency cache warmed: ${cacheResult.refreshed} rates refreshed, ${cacheResult.failed} failed`);
+    } catch (error) {
+      console.error("Error warming currency cache:", error);
+      // Continue even if cache warming fails
+    }
+
+    // Refresh ticker prices for all user's investment items
+    try {
+      const priceRefreshResult = await refreshTickerPricesForUser(userId, userCurrency, cookies);
+      result.pricesUpdated = priceRefreshResult.updated;
+      result.pricesFailed = priceRefreshResult.failed.length;
+      result.priceErrors = priceRefreshResult.failed;
+      result.syncedPrices = priceRefreshResult.synced;
+    } catch (error) {
+      console.error("Error refreshing ticker prices during sync:", error);
+      // Continue even if price refresh fails
+    }
+
     return NextResponse.json({
-      success: result.errors.length === 0,
+      success: result.errors.length === 0 && result.priceErrors.length === 0,
       accountsUpdated: result.accountsUpdated,
       accountsFailed: result.accountsFailed,
+      pricesUpdated: result.pricesUpdated,
+      pricesFailed: result.pricesFailed,
       errors: result.errors,
+      priceErrors: result.priceErrors,
       syncedAccounts: result.syncedAccounts,
-      message: result.accountsUpdated > 0 
-        ? `Successfully synced ${result.accountsUpdated} account${result.accountsUpdated !== 1 ? 's' : ''}`
-        : "No accounts to sync",
+      syncedPrices: result.syncedPrices,
+      message: buildSyncMessage(result),
     });
   } catch (error: unknown) {
     console.error("Error syncing Plaid balances:", error);

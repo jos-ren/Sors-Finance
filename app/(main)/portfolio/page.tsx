@@ -59,7 +59,6 @@ import {
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
-import { useSnapshot } from "@/lib/snapshot-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
@@ -128,17 +127,33 @@ export default function PortfolioPage() {
   const summary = useNetWorthSummary();
   const change = useNetWorthChange();
   const allSnapshots = usePortfolioSnapshots();
-  const { startBackgroundSnapshot } = useSnapshot();
 
   // Snapshot state
-  const autoSnapshotAttempted = useRef(false);
   const [editingSnapshot, setEditingSnapshot] = useState<DbPortfolioSnapshot | null>(null);
 
   // Plaid sync banner state
   const [syncResult, setSyncResult] = useState<{
     accountsUpdated: number;
     accountsFailed: number;
+    pricesUpdated: number;
+    pricesFailed: number;
     errors: string[];
+    priceErrors: Array<{
+      ticker: string;
+      itemName: string;
+      error: string;
+    }>;
+    syncedAccounts: Array<{
+      accountId: string;
+      name: string;
+      balance: number;
+    }>;
+    syncedPrices: Array<{
+      ticker: string;
+      itemName: string;
+      price: number;
+      currency: string;
+    }>;
   } | null>(null);
 
   // Trend chart period state
@@ -151,39 +166,6 @@ export default function PortfolioPage() {
     if (!allSnapshots || allSnapshots.length === 0) return null;
     return allSnapshots[0]; // Already sorted by date desc
   }, [allSnapshots]);
-
-  // Auto-snapshot on page load (once per session)
-  // If current net worth differs from latest snapshot, update today's snapshot
-  useEffect(() => {
-    if (autoSnapshotAttempted.current) return;
-    if (summary === undefined) return; // Wait for summary to load
-    if (allSnapshots === undefined) return; // Wait for snapshots to load
-
-    autoSnapshotAttempted.current = true;
-
-    const currentNetWorth = summary?.netWorth ?? 0;
-    const latestSnapshotNetWorth = latestSnapshot?.netWorth ?? 0;
-
-    // Check if latest snapshot is from today
-    const today = new Date();
-    const isSnapshotFromToday = latestSnapshot &&
-      latestSnapshot.date.getFullYear() === today.getFullYear() &&
-      latestSnapshot.date.getMonth() === today.getMonth() &&
-      latestSnapshot.date.getDate() === today.getDate();
-
-    // Check if net worth has changed (use small epsilon for float comparison)
-    const hasChanged = Math.abs(currentNetWorth - latestSnapshotNetWorth) > 0.01;
-
-    // If today's snapshot exists but net worth changed, update it
-    if (isSnapshotFromToday && hasChanged) {
-      startBackgroundSnapshot({ forceUpdate: true });
-    }
-    // If no snapshot today, create one (normal behavior)
-    else if (!isSnapshotFromToday) {
-      startBackgroundSnapshot();
-    }
-    // If today's snapshot exists and net worth matches, do nothing
-  }, [summary, allSnapshots, latestSnapshot, startBackgroundSnapshot]);
 
   const handleDeleteSnapshot = useCallback(async (id: number) => {
     try {
@@ -315,7 +297,12 @@ export default function PortfolioPage() {
         <PlaidSyncBanner
           accountsUpdated={syncResult.accountsUpdated}
           accountsFailed={syncResult.accountsFailed}
+          pricesUpdated={syncResult.pricesUpdated}
+          pricesFailed={syncResult.pricesFailed}
           errors={syncResult.errors}
+          priceErrors={syncResult.priceErrors}
+          syncedAccounts={syncResult.syncedAccounts}
+          syncedPrices={syncResult.syncedPrices}
           onDismiss={() => setSyncResult(null)}
         />
       )}

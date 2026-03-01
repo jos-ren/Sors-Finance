@@ -16,6 +16,7 @@ let currentJob: ScheduledTask | null = null;
 const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
 const PLAID_SYNC_WITH_SNAPSHOT_KEY = "PLAID_SYNC_WITH_SNAPSHOT";
+const PRICE_REFRESH_WITH_SNAPSHOT_KEY = "PRICE_REFRESH_WITH_SNAPSHOT";
 
 /**
  * Get the configured snapshot time from the database (uses first found or default)
@@ -67,6 +68,26 @@ async function isPlaidSyncEnabledForUser(userId: number): Promise<boolean> {
 
   // Default to false if no setting exists (opt-in model)
   return result[0]?.value === "true";
+}
+
+/**
+ * Check if price refresh is enabled for a specific user
+ * When enabled, ticker prices will refresh before creating portfolio snapshots
+ */
+async function isPriceRefreshEnabledForUser(userId: number): Promise<boolean> {
+  const result = await db
+    .select()
+    .from(schema.settings)
+    .where(
+      and(
+        eq(schema.settings.key, PRICE_REFRESH_WITH_SNAPSHOT_KEY),
+        eq(schema.settings.userId, userId)
+      )
+    )
+    .limit(1);
+
+  // Default to true if no setting exists (opt-in model)
+  return result[0]?.value !== "false";
 }
 
 /**
@@ -184,6 +205,185 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
     console.error(`[Scheduler] Plaid sync error for user #${userId}:`, error);
     const err = error as { message?: string };
     return { success: false, accountsUpdated: 0, errors: [err.message || "Unknown error"] };
+  }
+}
+
+/**
+ * Refresh ticker prices for a specific user
+ */
+async function refreshTickerPricesForUser(userId: number, userCurrency: string): Promise<{ success: boolean; updated: number; failed: Array<{ ticker: string; itemName: string; error: string }> }> {
+  try {
+    // Import dependencies
+    const { db: dbInstance, schema } = await import("./db/connection");
+    const { eq, and } = await import("drizzle-orm");
+
+    // Get ticker items for this user
+    const items = await dbInstance
+      .select()
+      .from(schema.portfolioItems)
+      .where(
+        and(
+          eq(schema.portfolioItems.userId, userId),
+          eq(schema.portfolioItems.isActive, true),
+          eq(schema.portfolioItems.priceMode, "ticker")
+        )
+      );
+
+    if (items.length === 0) {
+      return { success: true, updated: 0, failed: [] };
+    }
+
+    // Get unique tickers to avoid duplicate API calls, but preserve tickerType
+    const tickerMap = new Map<string, string>(); // ticker -> tickerType
+    for (const item of items) {
+      if (item.ticker) {
+        const upperTicker = item.ticker.toUpperCase();
+        // Use the first tickerType we find for each unique ticker
+        if (!tickerMap.has(upperTicker)) {
+          tickerMap.set(upperTicker, item.tickerType || "stock");
+        }
+      }
+    }
+    const uniqueTickers = Array.from(tickerMap.keys());
+
+    // Helper to get exchange rate
+    const getExchangeRate = async (from: string, to: string): Promise<number> => {
+      if (from.toUpperCase() === to.toUpperCase()) return 1;
+      
+      try {
+        // Use the API endpoint internally
+        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (response.ok) {
+          const data = await response.json();
+          return data.rate;
+        }
+      } catch {
+        // Silent fail
+      }
+      return 1; // Fallback
+    };
+
+    // Helper to lookup stock ticker
+    const lookupStock = async (ticker: string): Promise<{ price: number; currency: string; name?: string } | null> => {
+      try {
+        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+        const response = await fetch(`${baseUrl}/api/stock/${encodeURIComponent(ticker)}`);
+        if (response.ok) {
+          return await response.json();
+        }
+      } catch {
+        // Silent fail
+      }
+      return null;
+    };
+
+    // First pass: fetch unique ticker prices
+    const tickerQuotes = new Map<string, { quote: { price: number; currency: string; name?: string } | null; exchangeRate: number; error?: string }>();
+    const failedTickers: string[] = [];
+
+    for (const ticker of uniqueTickers) {
+      const tickerType = tickerMap.get(ticker) || "stock";
+      
+      try {
+        let quote = null;
+
+        // Fetch from the appropriate API based on tickerType
+        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+        
+        if (tickerType === "metal") {
+          const response = await fetch(`${baseUrl}/api/metals/${encodeURIComponent(ticker)}`);
+          if (response.ok) {
+            quote = await response.json();
+          }
+        } else if (tickerType === "crypto") {
+          const response = await fetch(`${baseUrl}/api/crypto/${encodeURIComponent(ticker)}`);
+          if (response.ok) {
+            quote = await response.json();
+          }
+        } else {
+          // Default to stock lookup (requires API key)
+          quote = await lookupStock(ticker);
+        }
+
+        if (!quote) {
+          failedTickers.push(ticker);
+          tickerQuotes.set(ticker, { quote: null, exchangeRate: 1, error: 'Ticker not found' });
+        } else {
+          // Get exchange rate if currency differs
+          let exchangeRate = 1;
+          if (quote.currency !== userCurrency) {
+            exchangeRate = await getExchangeRate(quote.currency, userCurrency);
+          }
+          tickerQuotes.set(ticker, { quote, exchangeRate });
+        }
+      } catch (error) {
+        failedTickers.push(ticker);
+        tickerQuotes.set(ticker, {
+          quote: null,
+          exchangeRate: 1,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    // Second pass: update all items using cached quotes
+    const failed: Array<{ ticker: string; itemName: string; error: string }> = [];
+    let updated = 0;
+
+    for (const item of items) {
+      if (!item.ticker) continue;
+
+      const upperTicker = item.ticker.toUpperCase();
+      const cached = tickerQuotes.get(upperTicker);
+
+      if (!cached || !cached.quote) {
+        failed.push({
+          ticker: item.ticker,
+          itemName: item.name,
+          error: cached?.error || 'Ticker not found'
+        });
+        continue;
+      }
+
+      const { quote } = cached;
+
+      // Use item's existing currency if user manually set it, otherwise use quote's currency
+      const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
+
+      // Get exchange rate based on the effective currency (user's or API's)
+      let exchangeRate = 1;
+      if (effectiveCurrency !== userCurrency) {
+        exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
+      }
+
+      // Calculate new value using the correct exchange rate
+      const newValue = (item.quantity || 0) * quote.price * exchangeRate;
+
+      // Update the item - preserve user-set currency
+      await dbInstance
+        .update(schema.portfolioItems)
+        .set({
+          pricePerUnit: quote.price,
+          currency: effectiveCurrency,
+          currentValue: newValue,
+          lastPriceUpdate: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.portfolioItems.id, item.id!));
+
+      updated++;
+    }
+
+    return {
+      success: failed.length === 0,
+      updated,
+      failed
+    };
+  } catch (error: unknown) {
+    console.error(`[Scheduler] Price refresh error for user #${userId}:`, error);
+    const err = error as { message?: string };
+    return { success: false, updated: 0, failed: [{ ticker: "N/A", itemName: "N/A", error: err.message || "Unknown error" }] };
   }
 }
 
@@ -320,6 +520,31 @@ async function runSnapshotTask() {
     // Process each user
     for (const user of allUsers) {
       try {
+        // Get user's currency setting
+        const userCurrencyResult = await db
+          .select()
+          .from(schema.settings)
+          .where(
+            and(
+              eq(schema.settings.key, "currency"),
+              eq(schema.settings.userId, user.id)
+            )
+          )
+          .limit(1);
+        const userCurrency = userCurrencyResult[0]?.value || "CAD";
+
+        // Pre-warm currency cache before any syncing
+        if (await isPlaidSyncEnabledForUser(user.id) || await isPriceRefreshEnabledForUser(user.id)) {
+          try {
+            const { warmCurrencyCache } = await import("./currency-cache");
+            const cacheResult = await warmCurrencyCache(user.id);
+            console.log(`[Scheduler] Currency cache warmed for user #${user.id}: ${cacheResult.refreshed} rates refreshed`);
+          } catch (error) {
+            console.error(`[Scheduler] Error warming currency cache for user #${user.id}:`, error);
+            // Continue anyway
+          }
+        }
+
         // Step 1: Sync Plaid balances if enabled
         const plaidSyncEnabled = await isPlaidSyncEnabledForUser(user.id);
         if (plaidSyncEnabled) {
@@ -335,7 +560,22 @@ async function runSnapshotTask() {
           console.log(`[Scheduler] Plaid sync disabled for user #${user.id} (${user.username}), skipping.`);
         }
 
-        // Step 2: Create portfolio snapshot if enabled
+        // Step 2: Refresh ticker prices if enabled
+        const priceRefreshEnabled = await isPriceRefreshEnabledForUser(user.id);
+        if (priceRefreshEnabled) {
+          console.log(`[Scheduler] Refreshing ticker prices for user #${user.id} (${user.username})...`);
+          const refreshResult = await refreshTickerPricesForUser(user.id, userCurrency);
+          if (refreshResult.updated > 0) {
+            console.log(`[Scheduler] Refreshed ${refreshResult.updated} ticker(s) for user #${user.id}`);
+          }
+          if (refreshResult.failed.length > 0) {
+            console.error(`[Scheduler] Price refresh errors for user #${user.id}:`, refreshResult.failed);
+          }
+        } else {
+          console.log(`[Scheduler] Price refresh disabled for user #${user.id} (${user.username}), skipping.`);
+        }
+
+        // Step 3: Create portfolio snapshot if enabled
         const snapshotEnabled = await isSnapshotEnabledForUser(user.id);
         if (!snapshotEnabled) {
           console.log(`[Scheduler] Snapshots disabled for user #${user.id} (${user.username}), skipping.`);
