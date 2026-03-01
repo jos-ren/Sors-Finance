@@ -39,6 +39,8 @@ export interface DbTransaction {
   amountIn: number;
   netAmount: number;
   source: string;
+  sourceMethod?: string | null; // "Plaid", "CSV", or "Manual"
+  sourceAccountName?: string | null; // Specific account name for tooltip
   categoryId: number | null;
   importId: number | null;
   createdAt: Date;
@@ -90,6 +92,7 @@ export const BUCKET_TYPES = ["Savings", "Investments", "Assets", "Debt"] as cons
 export type BucketType = (typeof BUCKET_TYPES)[number];
 
 export type PriceMode = "manual" | "ticker";
+export type TickerType = "stock" | "crypto" | "metal";
 
 export interface DbPortfolioAccount {
   id?: number;
@@ -118,6 +121,7 @@ export interface DbPortfolioItem {
   currency?: string;
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
+  tickerType?: TickerType;
   isInternational?: boolean;
   plaidAccountId?: number; // Links to Plaid account for auto-sync
 }
@@ -167,5 +171,6 @@ export interface AddPortfolioItemData {
   currency?: string;
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
+  tickerType?: TickerType;
   isInternational?: boolean;
 }

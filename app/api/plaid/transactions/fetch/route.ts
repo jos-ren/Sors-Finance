@@ -127,11 +127,13 @@ export async function POST(request: NextRequest) {
         id: generateId(),
         date: new Date(t.date),
         description,
-        matchField: description.toLowerCase(), // For keyword matching
+        matchField: description, // Preserve original casing
         amountOut,
         amountIn,
         netAmount: amountIn - amountOut,
-        source: `Plaid - ${plaidItem.institutionName} (${accountName})`,
+        source: plaidItem.institutionName, // Just the bank name
+        sourceMethod: "Plaid" as const,
+        sourceAccountName: accountName,
         categoryId: null,
         isConflict: false,
         plaidTransactionId: t.transaction_id,

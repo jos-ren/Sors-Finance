@@ -11,8 +11,7 @@ lib/parsers/
 ├── utils.ts       # Shared parsing utilities
 ├── README.md      # This file
 └── banks/         # Individual bank parsers
-    ├── cibc.ts    # CIBC parser
-    ├── amex.ts    # AMEX parser
+    ├── custom.ts     # Custom import with user-defined column mapping
     └── _template.ts  # Template for new banks
 ```
 
@@ -55,8 +54,7 @@ Add your parser to `lib/parsers/index.ts`:
 import { yourbankParser } from "./banks/yourbank";
 
 const PARSERS: BankParser[] = [
-  cibcParser,
-  amexParser,
+  customParser,
   yourbankParser,  // Add here
 ];
 ```
@@ -67,7 +65,6 @@ If your bank's files have a predictable filename, add a pattern:
 
 ```typescript
 const FILENAME_PATTERNS: FilenamePattern[] = [
-  { bankId: "CIBC", pattern: /cibc/i },
   { bankId: "YOURBANK", pattern: /yourbank/i },
 ];
 ```
@@ -78,7 +75,6 @@ Add your bank's logo to `public/logos/yourbank.png` and update `FileUpload.tsx`:
 
 ```typescript
 const BANK_LOGOS: Record<string, string> = {
-  CIBC: "/logos/cibc.png",
   YOURBANK: "/logos/yourbank.png",
 };
 ```

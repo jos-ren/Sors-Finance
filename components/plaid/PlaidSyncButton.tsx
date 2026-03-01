@@ -14,7 +14,25 @@ interface PlaidSyncButtonProps {
   onSyncComplete?: (result: {
     accountsUpdated: number;
     accountsFailed: number;
+    pricesUpdated: number;
+    pricesFailed: number;
     errors: string[];
+    priceErrors: Array<{
+      ticker: string;
+      itemName: string;
+      error: string;
+    }>;
+    syncedAccounts: Array<{
+      accountId: string;
+      name: string;
+      balance: number;
+    }>;
+    syncedPrices: Array<{
+      ticker: string;
+      itemName: string;
+      price: number;
+      currency: string;
+    }>;
   }) => void;
 }
 
@@ -44,37 +62,78 @@ export function PlaidSyncButton({
       const data = await response.json();
 
       // Show success with details
-      const updated = data.accountsUpdated || 0;
-      const failed = data.accountsFailed || 0;
+      const accountsUpdated = data.accountsUpdated || 0;
+      const accountsFailed = data.accountsFailed || 0;
+      const pricesUpdated = data.pricesUpdated || 0;
+      const pricesFailed = data.pricesFailed || 0;
+      const syncedAccounts = data.syncedAccounts || [];
+      const syncedPrices = data.syncedPrices || [];
+      const errors = data.errors || [];
+      const priceErrors = data.priceErrors || [];
 
-      // Invalidate portfolio cache to refresh UI with new balances
-      if (updated > 0) {
+      // Invalidate portfolio cache to refresh UI with new balances and prices
+      if (accountsUpdated > 0 || pricesUpdated > 0) {
         invalidatePortfolio();
       }
 
       // Pass results to parent component if callback provided
       if (onSyncComplete) {
         onSyncComplete({
-          accountsUpdated: updated,
-          accountsFailed: failed,
-          errors: data.errors || [],
+          accountsUpdated,
+          accountsFailed,
+          pricesUpdated,
+          pricesFailed,
+          errors,
+          priceErrors,
+          syncedAccounts,
+          syncedPrices,
         });
       }
 
-      if (updated > 0 && failed === 0) {
-        toast.success(`Synced ${updated} account${updated === 1 ? '' : 's'} successfully with Plaid`);
-      } else if (updated > 0 && failed > 0) {
-        toast.warning(`Synced ${updated} account${updated === 1 ? '' : 's'}, ${failed} failed`);
-        if (data.errors && data.errors.length > 0) {
-          console.error('Sync errors:', data.errors);
-        }
-      } else if (failed > 0) {
-        toast.error(`Failed to sync ${failed} account${failed === 1 ? '' : 's'}`);
-        if (data.errors && data.errors.length > 0) {
-          console.error('Sync errors:', data.errors);
-        }
+      // Build comprehensive success/error message
+      const totalUpdated = accountsUpdated + pricesUpdated;
+      const totalFailed = accountsFailed + pricesFailed;
+
+      if (totalUpdated > 0 && totalFailed === 0) {
+        const parts: string[] = [];
+        if (accountsUpdated > 0) parts.push(`${accountsUpdated} account${accountsUpdated === 1 ? '' : 's'}`);
+        if (pricesUpdated > 0) parts.push(`${pricesUpdated} price${pricesUpdated === 1 ? '' : 's'}`);
+        toast.success(`Synced ${parts.join(' and ')} successfully`);
+      } else if (totalUpdated > 0 && totalFailed > 0) {
+        const successParts: string[] = [];
+        if (accountsUpdated > 0) successParts.push(`${accountsUpdated} account${accountsUpdated === 1 ? '' : 's'}`);
+        if (pricesUpdated > 0) successParts.push(`${pricesUpdated} price${pricesUpdated === 1 ? '' : 's'}`);
+        const failParts: string[] = [];
+        if (accountsFailed > 0) failParts.push(`${accountsFailed} account${accountsFailed === 1 ? '' : 's'}`);
+        if (pricesFailed > 0) failParts.push(`${pricesFailed} price${pricesFailed === 1 ? '' : 's'}`);
+        toast.warning(`Synced ${successParts.join(' and ')}, but ${failParts.join(' and ')} failed`);
+      } else if (totalFailed > 0) {
+        const failParts: string[] = [];
+        if (accountsFailed > 0) failParts.push(`${accountsFailed} account${accountsFailed === 1 ? '' : 's'}`);
+        if (pricesFailed > 0) failParts.push(`${pricesFailed} price${pricesFailed === 1 ? '' : 's'}`);
+        toast.error(`Failed to sync ${failParts.join(' and ')}`);
       } else {
-        toast.info("No Plaid accounts to sync");
+        toast.info("Nothing to sync");
+      }
+
+      // After successful sync, create/update today's snapshot
+      if (totalUpdated > 0) {
+        try {
+          const snapshotResponse = await fetch("/api/portfolio/snapshots/today", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ skipSync: true }), // Sync already happened
+          });
+
+          if (snapshotResponse.ok) {
+            console.log("Snapshot created/updated after sync");
+          } else {
+            console.error("Failed to create snapshot after sync");
+          }
+        } catch (snapshotError) {
+          console.error("Error creating snapshot after sync:", snapshotError);
+          // Don't show error to user - snapshot is secondary to sync
+        }
       }
     } catch (error) {
       console.error("Error syncing balances:", error);
@@ -93,7 +152,7 @@ export function PlaidSyncButton({
       className={className}
     >
       <RefreshCw className={`h-4 w-4 ${size === "icon" ? "" : "mr-2 "}${isSyncing ? 'animate-spin' : ''}`} />
-      {size !== "icon" && "Sync Balances"}
+      {size !== "icon" && "Sync All"}
     </Button>
   );
 }

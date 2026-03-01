@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
       amountIn: row.amountIn,
       netAmount: row.netAmount,
       source: row.source,
+      sourceMethod: row.sourceMethod,
+      sourceAccountName: row.sourceAccountName,
       categoryId: row.categoryId,
       importId: row.importId,
       createdAt: row.createdAt,

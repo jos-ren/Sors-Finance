@@ -10,6 +10,8 @@ import {
   useBucketTotal,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
+import { formatCurrency } from "@/lib/formatters";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
@@ -30,18 +32,10 @@ const BUCKET_CONFIG: Record<BucketType, {
   Debt: { icon: CreditCard, color: "text-red-500" },
 };
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 export function BucketPage({ bucket, description }: BucketPageProps) {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
   const accounts = usePortfolioAccounts(bucket);
   const total = useBucketTotal(bucket);
   const config = BUCKET_CONFIG[bucket];
@@ -110,7 +104,7 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
 
       {/* Total */}
       <div className="text-lg">
-        Total: <span className="font-bold text-2xl">{formatAmount(total ?? 0, formatCurrency)}</span>
+        Total: <span className="font-bold text-2xl">{formatAmount(total ?? 0, userCurrency)}</span>
       </div>
 
       {/* API Key Banner for Investments */}
@@ -135,11 +129,13 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
         )}
       </div>
 
-      <AddAccountDialog
-        open={showAddAccount}
-        onOpenChange={setShowAddAccount}
-        bucket={bucket}
-      />
+      {showAddAccount && (
+        <AddAccountDialog
+          open={showAddAccount}
+          onOpenChange={setShowAddAccount}
+          bucket={bucket}
+        />
+      )}
     </div>
   );
 }

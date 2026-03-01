@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon, CloudSync } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,30 +16,13 @@ import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType }
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
-import { lookupTicker, getExchangeRate } from "@/lib/hooks/useStockPrice";
-import { useHasFinnhubApiKey, useFinnhubApiKey } from "@/lib/settings-context";
+import { lookupTicker } from "@/lib/hooks/useStockPrice";
+import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
+import { formatCurrency } from "@/lib/formatters";
 
 interface PortfolioItemProps {
   item: DbPortfolioItem;
   bucket?: BucketType;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatPrice(price: number, currency: string): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(price);
 }
 
 function getTimeAgo(date: Date): string {
@@ -63,8 +46,8 @@ function getTimeAgo(date: Date): string {
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const userCurrency = useCurrency();
   const apiKeyConfigured = useHasFinnhubApiKey();
-  const apiKey = useFinnhubApiKey();
   const { formatAmount } = usePrivacy();
 
   const hasTicker = Boolean(item.ticker);
@@ -82,22 +65,41 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const handleRefreshPrice = async () => {
     if (!item.ticker) return;
 
-    if (!apiKeyConfigured) {
+    // Only require API key for stocks (metals and crypto don't need it)
+    if (item.tickerType !== "metal" && item.tickerType !== "crypto" && !apiKeyConfigured) {
       toast.error("Finnhub API key not configured. Go to Settings to add your API key.");
       return;
     }
 
     setIsRefreshing(true);
     try {
-      const quote = await lookupTicker(item.ticker, apiKey);
+      let quote: { price: number; currency: string; name?: string } | null = null;
+
+      // Fetch from the appropriate API based on tickerType
+      if (item.tickerType === "metal") {
+        const response = await fetch(`/api/metals/${encodeURIComponent(item.ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else if (item.tickerType === "crypto") {
+        const response = await fetch(`/api/crypto/${encodeURIComponent(item.ticker)}`);
+        if (response.ok) {
+          quote = await response.json();
+        }
+      } else {
+        // Default to stock lookup
+        quote = await lookupTicker(item.ticker);
+      }
+
       if (quote) {
         // Use item's existing currency if user manually set it, otherwise use quote's currency
         const effectiveCurrency = (item.currency && item.currency.trim()) ? item.currency : quote.currency;
 
-        // Get exchange rate based on the effective currency
+        // Get exchange rate
         let exchangeRate = 1;
-        if (effectiveCurrency !== "CAD") {
-          exchangeRate = await getExchangeRate(effectiveCurrency, "CAD");
+        if (effectiveCurrency !== userCurrency) {
+          const { getExchangeRate } = await import("@/lib/hooks/useStockPrice");
+          exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
         }
 
         const newValue = (item.quantity || 0) * quote.price * exchangeRate;
@@ -111,7 +113,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
 
         toast.success("Price updated");
       } else {
-        toast.error("Failed to fetch price. Check your API key in Settings.");
+        toast.error("Failed to fetch price.");
       }
     } catch (error) {
       toast.error("Failed to refresh price");
@@ -126,7 +128,6 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       <div className="flex items-center justify-between py-2 px-3 hover:bg-muted/50 rounded-md group">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <p className="font-medium truncate">{item.name}</p>
             {item.plaidAccountId && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -141,12 +142,25 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
                 </TooltipContent>
               </Tooltip>
             )}
+            {!item.plaidAccountId && hasTicker && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <CloudSync className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  {item.tickerType === "crypto" && "Price synced via CoinGecko"}
+                  {item.tickerType === "metal" && "Price synced via Gold API"}
+                  {(!item.tickerType || item.tickerType === "stock") && "Price synced via Finnhub"}
+                </TooltipContent>
+              </Tooltip>
+            )}
+            <p className="font-medium truncate">{item.name}</p>
           </div>
           {hasTicker ? (
             <p className="text-xs text-muted-foreground truncate">
               {item.ticker}
               {item.quantity !== undefined && ` · ${item.quantity} ${item.quantity === 1 ? "share" : "shares"}`}
-              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatPrice(item.pricePerUnit, item.currency)}`}
+              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatCurrency(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
           ) : item.notes ? (
@@ -159,17 +173,21 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               variant="ghost"
               size="icon"
               className={`h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity ${
-                !apiKeyConfigured ? "text-muted-foreground" : ""
+                !apiKeyConfigured && item.tickerType !== "metal" && item.tickerType !== "crypto" ? "text-muted-foreground" : ""
               }`}
               onClick={handleRefreshPrice}
               disabled={isRefreshing}
-              title={apiKeyConfigured ? "Refresh price" : "API key not configured - Go to Settings"}
+              title={
+                item.tickerType === "metal" || item.tickerType === "crypto" || apiKeyConfigured
+                  ? "Refresh price"
+                  : "API key not configured - Go to Settings"
+              }
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
           )}
           <span className="font-semibold tabular-nums">
-            {formatAmount(item.currentValue, formatCurrency)}
+            {formatAmount(item.currentValue, userCurrency)}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -194,12 +212,14 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           </DropdownMenu>
         </div>
       </div>
-      <EditItemDialog
-        item={item}
-        open={showEdit}
-        onOpenChange={setShowEdit}
-        bucket={bucket}
-      />
+      {showEdit && (
+        <EditItemDialog
+          item={item}
+          open={showEdit}
+          onOpenChange={setShowEdit}
+          bucket={bucket}
+        />
+      )}
     </>
   );
 }

@@ -22,6 +22,8 @@ import {
   updatePortfolioAccount,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
+import { formatCurrency } from "@/lib/formatters";
 import { PortfolioItem } from "./PortfolioItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -31,15 +33,6 @@ import { Input } from "@/components/ui/input";
 interface AccountSectionProps {
   account: DbPortfolioAccount;
   defaultOpen?: boolean;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 export function AccountSection({ account, defaultOpen = true }: AccountSectionProps) {
@@ -52,6 +45,7 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
   const items = usePortfolioItems(account.id);
   const total = usePortfolioAccountTotal(account.id);
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
 
   const handleDelete = async () => {
     try {
@@ -119,7 +113,7 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
             </CollapsibleTrigger>
             <div className="flex items-center gap-2">
               <span className="font-semibold tabular-nums">
-                {formatAmount(total ?? 0, formatCurrency)}
+                {formatAmount(total ?? 0, userCurrency)}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -173,13 +167,15 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
         </div>
       </Collapsible>
 
-      <AddItemDialog
-        open={showAddItem}
-        onOpenChange={setShowAddItem}
-        accountId={account.id!}
-        accountName={account.name}
-        bucket={account.bucket}
-      />
+      {showAddItem && (
+        <AddItemDialog
+          open={showAddItem}
+          onOpenChange={setShowAddItem}
+          accountId={account.id!}
+          accountName={account.name}
+          bucket={account.bucket}
+        />
+      )}
 
       <ConfirmDialog
         open={showDeleteConfirm}

@@ -10,10 +10,21 @@ function generateId(): string {
   }
   return `temp-${Date.now()}-${++idCounter}`;
 }
+
+/**
+ * Normalize a date to YYYY-MM-DD format using local timezone
+ * This ensures consistent duplicate detection regardless of timezone
+ */
+function normalizeDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Link2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Link2, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
 import {
@@ -78,8 +89,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // Prevent double-submission
   const [errors, setErrors] = useState<string[]>([]);
   const [categoryInfoDismissed, setCategoryInfoDismissed] = useState(getCategoryInfoDismissed);
+  const [plaidEndDate, setPlaidEndDate] = useState<string | null>(null); // Track Plaid end date for saving
 
   const handleDismissCategoryInfo = () => {
     localStorage.setItem(CATEGORY_INFO_DISMISSED_KEY, "true");
@@ -166,6 +179,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
   // Update section open states - only open sections that need user action
   const updateSectionStates = (newTransactions: Transaction[]) => {
+    // Duplicates need action if any are unresolved (neither import nor skip)
+    const hasUnresolvedDuplicates = newTransactions.some(t => t.isDuplicate && !t.importDuplicate && !t.skipDuplicate);
+
     // Conflicts need action if any are unresolved (no category selected yet)
     const hasUnresolvedConflicts = newTransactions.some(t => t.isConflict && !t.categoryId);
 
@@ -175,9 +191,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
 
     setSectionsOpen({
+      duplicates: hasUnresolvedDuplicates, // Open if there are unresolved duplicates
       conflicts: hasUnresolvedConflicts,
       uncategorized: hasUncategorized,
-      duplicates: false, // Duplicates default to skip, no action needed
       categorized: false, // Just informational, no action needed
     });
   };
@@ -210,7 +226,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           allTransactions.push({
             id: generateId(),
             ...parsed,
-            source: result.bankId,
+            source: uploadedFile.templateName || result.bankId, // Use template name if available
+            sourceMethod: "CSV",
             categoryId: null,
             isConflict: false,
           });
@@ -228,7 +245,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       // Mark duplicates and categorize transactions (duplicates are skipped by default)
       const withDuplicates = allTransactions.map(t => {
-        const signature = `${t.date.toISOString()}|${t.description}|${t.amountOut}|${t.amountIn}`;
+        // Normalize date to local YYYY-MM-DD format to avoid timezone issues
+        // Include source to avoid false positives across different banks
+        const dateStr = normalizeDate(t.date);
+        const signature = `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         const isDuplicate = duplicateSignatures.has(signature);
         return {
           ...t,
@@ -260,40 +280,90 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     }
   };
 
-  const handlePlaidTransactionsFetch = async (itemId: number, accountIds: string[], startDate: string, endDate: string) => {
+  const handlePlaidTransactionsFetch = async (
+    accountsByItem: Map<number, { accountIds: string[]; institutionName: string }>,
+    startDate: string,
+    endDate: string
+  ) => {
     setIsProcessing(true);
     setErrors([]);
 
     try {
-      const response = await fetch("/api/plaid/transactions/fetch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemId, accountIds, startDate, endDate }),
-      });
+      // Accumulate transactions from all institutions
+      let allPlaidTransactions: Transaction[] = [];
+      const fetchResults: { institutionName: string; count: number }[] = [];
+      const fetchErrors: string[] = [];
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to fetch transactions");
+      for (const [itemId, { accountIds, institutionName }] of accountsByItem.entries()) {
+        try {
+          const response = await fetch("/api/plaid/transactions/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ itemId, accountIds, startDate, endDate }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            fetchErrors.push(`${institutionName}: ${error.error || "Failed to fetch"}`);
+            continue;
+          }
+
+          const data = await response.json();
+          // Convert date strings back to Date objects
+          const plaidTransactions = data.transactions.map((t: Transaction) => ({
+            ...t,
+            date: new Date(t.date),
+          }));
+
+          allPlaidTransactions = [...allPlaidTransactions, ...plaidTransactions];
+          fetchResults.push({ institutionName: data.institutionName, count: data.settledCount });
+        } catch (err) {
+          fetchErrors.push(`${institutionName}: ${err instanceof Error ? err.message : "Unknown error"}`);
+        }
       }
 
-      const data = await response.json();
-      // Convert date strings back to Date objects
-      const plaidTransactions = data.transactions.map((t: Transaction) => ({
-        ...t,
-        date: new Date(t.date),
-      }));
+      // DEBUG: Log full fetch results
+      console.log("=== PLAID FETCH DEBUG ===", {
+        request: {
+          accountsByItem: Object.fromEntries(
+            Array.from(accountsByItem.entries()).map(([itemId, data]) => [
+              itemId,
+              { accountIds: data.accountIds, institutionName: data.institutionName }
+            ])
+          ),
+          startDate,
+          endDate,
+        },
+        results: {
+          totalAccounts: Array.from(accountsByItem.values()).reduce((sum, item) => sum + item.accountIds.length, 0),
+          totalTransactions: allPlaidTransactions.length,
+          byInstitution: fetchResults,
+          errors: fetchErrors,
+        },
+        transactions: allPlaidTransactions,
+      });
 
-      if (plaidTransactions.length === 0) {
-        setErrors(["No transactions found for the selected date range and accounts."]);
+      // Report any fetch errors
+      if (fetchErrors.length > 0) {
+        setErrors(fetchErrors);
+      }
+
+      if (allPlaidTransactions.length === 0) {
+        if (fetchErrors.length === 0) {
+          setErrors(["No transactions found for the selected date range and accounts."]);
+        }
         return;
       }
 
-      // Check for duplicates
-      const duplicateSignatures = await findDuplicateSignatures(plaidTransactions);
+      // Check for duplicates across all fetched transactions
+      const duplicateSignatures = await findDuplicateSignatures(allPlaidTransactions);
 
       // Mark duplicates and categorize transactions (duplicates are skipped by default)
-      const withDuplicates = plaidTransactions.map((t: Transaction) => {
-        const signature = `${t.date.toISOString()}|${t.description}|${t.amountOut}|${t.amountIn}`;
+      const withDuplicates = allPlaidTransactions.map((t: Transaction) => {
+        // Normalize date to local YYYY-MM-DD format to avoid timezone issues
+        // Include source to avoid false positives across different banks
+        const dateStr = normalizeDate(t.date);
+        const signature = `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         const isDuplicate = duplicateSignatures.has(signature);
         return {
           ...t,
@@ -316,12 +386,20 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       setTransactions(withUncategorizedFlag);
       updateSectionStates(withUncategorizedFlag);
       setCurrentStep("resolve");
-      toast.success(`Fetched ${data.settledCount} transactions from ${data.institutionName}`);
+      setPlaidEndDate(endDate); // Save end date for later
+
+      // Show success message with breakdown
+      if (fetchResults.length === 1) {
+        toast.success(`Fetched ${fetchResults[0].count} transactions from ${fetchResults[0].institutionName}`);
+      } else {
+        const total = fetchResults.reduce((sum, r) => sum + r.count, 0);
+        const breakdown = fetchResults.map(r => `${r.count} from ${r.institutionName}`).join(", ");
+        toast.success(`Fetched ${total} transactions (${breakdown})`);
+      }
     } catch (error) {
       setErrors([
         `Error fetching Plaid transactions: ${error instanceof Error ? error.message : "Unknown error"}`,
       ]);
-      throw error; // Re-throw so PlaidAccountSelector can handle it
     } finally {
       setIsProcessing(false);
     }
@@ -408,6 +486,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   };
 
   const handleFinish = async () => {
+    // Prevent double-submission
+    if (isSaving) return;
+    setIsSaving(true);
+
     try {
       // Filter out skipped duplicates
       const transactionsToImport = transactions.filter(t => !t.skipDuplicate);
@@ -438,7 +520,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             amountOut: t.amountOut,
             amountIn: t.amountIn,
             netAmount: t.netAmount,
-            source: t.source as 'CIBC' | 'AMEX' | 'Manual',
+            source: t.source,
+            sourceMethod: t.sourceMethod,
+            sourceAccountName: t.sourceAccountName,
             categoryId: category?.id ?? null,
             importId: null as number | null,
           };
@@ -489,6 +573,20 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         });
       }
 
+      // Save last Plaid import date if this was a Plaid import
+      if (importSource === "plaid" && plaidEndDate && totalAdded > 0) {
+        try {
+          await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: "LAST_PLAID_IMPORT_DATE", value: plaidEndDate }),
+          });
+        } catch {
+          // Non-critical - don't fail the import if we can't save the date
+          console.warn("Failed to save last Plaid import date");
+        }
+      }
+
       // Show appropriate message
       if (totalAdded === 0 && totalSkipped > 0) {
         toast.info(`All ${totalSkipped} transactions were already imported (duplicates skipped).`);
@@ -502,6 +600,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     } catch (error) {
       console.error('Failed to save transactions:', error);
       toast.error('Failed to save transactions. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -629,7 +729,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 </Button>
                 <Button
                   onClick={handleProcessFiles}
-                  disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankId === null || (f.validationErrors && f.validationErrors.length > 0))}
+                  disabled={
+                    uploadedFiles.length === 0 || 
+                    isProcessing || 
+                    uploadedFiles.some(f => 
+                      f.bankId === null || 
+                      (f.validationErrors && f.validationErrors.length > 0) ||
+                      (f.bankId === "CUSTOM" && !f.mappingConfigured)
+                    )
+                  }
                 >
                   {isProcessing ? "Processing..." : "Process Files"}
                 </Button>
@@ -672,6 +780,42 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
           {/* All sections in a single scrollable container */}
           <div className="min-h-0 max-h-full overflow-y-auto border rounded-lg">
+            {/* Duplicates Section - FIRST to identify duplicates before anything else */}
+            <ResolveSection
+              title="Duplicates"
+              icon={<Copy className="h-5 w-5" />}
+              count={duplicateTransactions.length}
+              status={unresolvedDuplicates === 0 ? "complete" : "pending"}
+              isBlocking={true}
+              isOpen={sectionsOpen.duplicates}
+              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, duplicates: open }))}
+              description="Transactions already exist. Choose to import anyway or skip them."
+              emptyMessage="No duplicates found"
+              completeMessage=""
+              customBadges={
+                duplicateTransactions.length > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
+                      {skippedDuplicates}
+                    </Badge>
+                    {importedDuplicates > 0 && (
+                      <Badge className="bg-green-200 text-green-800 dark:bg-green-900/50 dark:text-green-400">
+                        {importedDuplicates}
+                      </Badge>
+                    )}
+                  </div>
+                ) : (
+                  <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">0</Badge>
+                )
+              }
+            >
+              <DuplicateResolver
+                duplicateTransactions={duplicateTransactions}
+                onImport={handleImportDuplicate}
+                onSkip={handleSkipDuplicate}
+              />
+            </ResolveSection>
+
             {/* Conflicts Section */}
             <ResolveSection
               title="Conflicts"
@@ -725,42 +869,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 onCreateCategory={handleCreateCategory}
                 onChangeCategory={handleChangeUncategorizedCategory}
                 excludedCategoryId={excludedCategory?.uuid}
-              />
-            </ResolveSection>
-
-            {/* Duplicates Section */}
-            <ResolveSection
-              title="Duplicates"
-              icon={<Copy className="h-5 w-5" />}
-              count={duplicateTransactions.length}
-              status={unresolvedDuplicates === 0 ? "complete" : "pending"}
-              isBlocking={true}
-              isOpen={sectionsOpen.duplicates}
-              onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, duplicates: open }))}
-              description="Transactions already exist. Choose to import anyway or skip them."
-              emptyMessage="No duplicates found"
-              completeMessage=""
-              customBadges={
-                duplicateTransactions.length > 0 ? (
-                  <div className="flex items-center gap-1.5">
-                    <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-                      {skippedDuplicates}
-                    </Badge>
-                    {importedDuplicates > 0 && (
-                      <Badge className="bg-green-200 text-green-800 dark:bg-green-900/50 dark:text-green-400">
-                        {importedDuplicates}
-                      </Badge>
-                    )}
-                  </div>
-                ) : (
-                  <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">0</Badge>
-                )
-              }
-            >
-              <DuplicateResolver
-                duplicateTransactions={duplicateTransactions}
-                onImport={handleImportDuplicate}
-                onSkip={handleSkipDuplicate}
               />
             </ResolveSection>
 
@@ -886,8 +994,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               <RotateCcw className="h-4 w-4 mr-1" />
               Start Over
             </Button>
-            <Button onClick={handleFinish} disabled={hasBlockingIssues}>
-              Finish Import
+            <Button onClick={handleFinish} disabled={hasBlockingIssues || isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                "Finish Import"
+              )}
             </Button>
           </div>
         </TabsContent>

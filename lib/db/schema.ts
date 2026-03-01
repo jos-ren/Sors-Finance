@@ -84,6 +84,8 @@ export const transactions = sqliteTable(
     amountIn: real("amount_in").notNull().default(0),
     netAmount: real("net_amount").notNull().default(0),
     source: text("source").notNull(),
+    sourceMethod: text("source_method"), // "Plaid", "CSV", or "Manual"
+    sourceAccountName: text("source_account_name"), // Specific account name for tooltip
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     importId: integer("import_id").references(() => imports.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -210,6 +212,7 @@ export const portfolioItems = sqliteTable(
     currency: text("currency"),
     lastPriceUpdate: integer("last_price_update", { mode: "timestamp" }),
     priceMode: text("price_mode"), // 'manual' | 'ticker'
+    tickerType: text("ticker_type"), // 'stock' | 'crypto' | 'metal'
     isInternational: integer("is_international", { mode: "boolean" }),
     plaidAccountId: integer("plaid_account_id").references(() => plaidAccounts.id, { onDelete: "set null" }), // Link to Plaid account for syncing
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -280,6 +283,25 @@ export const customImportTemplates = sqliteTable(
 );
 
 // ============================================
+// Currency Exchange Rates Table
+// ============================================
+
+export const currencyExchangeRates = sqliteTable(
+  "currency_exchange_rates",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    fromCurrency: text("from_currency").notNull(),
+    toCurrency: text("to_currency").notNull(),
+    rate: real("rate").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("currency_rates_pair_idx").on(table.fromCurrency, table.toCurrency),
+  ]
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
@@ -311,6 +333,9 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 
 export type Session = typeof sessions.$inferSelect;
+
+export type CurrencyExchangeRateRow = typeof currencyExchangeRates.$inferSelect;
+export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInsert;
 
 // ============================================
 // Plaid Items Table

@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import {
   Tooltip,
@@ -17,7 +19,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Upload, FileSpreadsheet, X, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Info, Settings } from "lucide-react";
+import { Upload, FileSpreadsheet, X, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Info, Settings, FileText } from "lucide-react";
 import { UploadedFile } from "@/lib/types";
 import { detectBank, validateFile, getAllBankMeta } from "@/lib/parsers";
 import { readFileToRows } from "@/lib/parsers/utils";
@@ -26,9 +28,18 @@ import type { ColumnMapping } from "@/lib/parsers/types";
 
 // Bank logos mapping (add new banks here as they are added)
 const BANK_LOGOS: Record<string, string> = {
-  CIBC: "/logos/cibc.png",
-  AMEX: "/logos/amex.png",
+  // Add custom bank logos here
 };
+
+// Maximum file size: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+interface SavedTemplate {
+  id: number;
+  uuid: string;
+  name: string;
+  mapping: ColumnMapping;
+}
 
 interface FileUploadProps {
   onFilesSelected: (files: UploadedFile[]) => void;
@@ -43,16 +54,56 @@ export function FileUpload({
   const [mappingDialogOpen, setMappingDialogOpen] = useState(false);
   const [mappingFileIndex, setMappingFileIndex] = useState<number | null>(null);
   const [mappingRows, setMappingRows] = useState<unknown[][]>([]);
+  const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get all available bank options from the registry
-  const bankOptions = useMemo(() => {
-    return getAllBankMeta().map(meta => ({
-      id: meta.id,
-      name: meta.name,
-      logo: BANK_LOGOS[meta.id] || null,
-    }));
+  // Load saved templates on mount
+  useEffect(() => {
+    loadTemplates();
   }, []);
+
+  const loadTemplates = async () => {
+    try {
+      const response = await fetch("/api/custom-import-templates");
+      if (response.ok) {
+        const { data } = await response.json();
+        setSavedTemplates(data || []);
+      }
+    } catch {
+      console.warn("Failed to load templates");
+    }
+  };
+
+  // Get all available bank options from the registry + saved templates
+  const bankOptions = useMemo(() => {
+    const builtInOptions = getAllBankMeta()
+      .filter(meta => meta.id !== "CUSTOM") // Hide custom, templates replace it
+      .map(meta => ({
+        id: meta.id,
+        name: meta.name,
+        logo: BANK_LOGOS[meta.id] || null,
+        isTemplate: false,
+      }));
+    
+    const templateOptions = savedTemplates.map(t => ({
+      id: `TEMPLATE_${t.id}`,
+      name: t.name,
+      logo: null,
+      isTemplate: true,
+      templateId: t.id,
+      mapping: t.mapping,
+    }));
+
+    // Always add Custom Import at the end
+    const customOption = {
+      id: "CUSTOM",
+      name: "Custom Import",
+      logo: null,
+      isTemplate: false,
+    };
+
+    return [...builtInOptions, ...templateOptions, customOption];
+  }, [savedTemplates]);
 
   const handleFiles = async (fileList: FileList | null) => {
     if (!fileList) return;
@@ -62,6 +113,19 @@ export function FileUpload({
     const newFiles: UploadedFile[] = [];
 
     for (const file of Array.from(fileList)) {
+      // Check file size
+      if (file.size > MAX_FILE_SIZE) {
+        newFiles.push({
+          file,
+          bankId: null,
+          detectionConfidence: "none",
+          detectionReason: `File too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum size is 10MB.`,
+          isManuallySet: false,
+          validationErrors: [`File exceeds maximum size of 10MB`],
+        });
+        continue;
+      }
+
       // Detect bank using the registry
       const detection = await detectBank(file);
 
@@ -84,6 +148,33 @@ export function FileUpload({
   const updateFileBankType = async (index: number, bankId: string) => {
     const file = files[index];
 
+    // Check if this is a template selection
+    if (bankId.startsWith("TEMPLATE_")) {
+      const templateId = parseInt(bankId.replace("TEMPLATE_", ""));
+      const template = savedTemplates.find(t => t.id === templateId);
+      if (template) {
+        const updated = files.map((f, i) =>
+          i === index
+            ? {
+                ...f,
+                bankId: "CUSTOM",
+                isManuallySet: true,
+                detectionConfidence: "high" as const,
+                detectionReason: `Using template: ${template.name}`,
+                columnMapping: template.mapping,
+                mappingConfigured: true,
+                templateName: template.name, // Store template name for use as source
+                validationErrors: [],
+                validationWarnings: [],
+              }
+            : f
+        );
+        setFiles(updated);
+        onFilesSelected(updated);
+        return;
+      }
+    }
+
     // Validate the file for the selected bank type
     const validation = await validateFile(file.file, bankId);
 
@@ -97,6 +188,9 @@ export function FileUpload({
             detectionReason: validation.isValid ? "Manually selected" : "Validation failed",
             validationErrors: validation.errors,
             validationWarnings: validation.warnings,
+            // Clear mapping if switching away from custom/template
+            columnMapping: bankId === "CUSTOM" ? f.columnMapping : undefined,
+            mappingConfigured: bankId === "CUSTOM" ? f.mappingConfigured : undefined,
           }
         : f
     );
@@ -171,7 +265,7 @@ export function FileUpload({
     }
   };
 
-  const handleMappingConfirm = (mapping: ColumnMapping) => {
+  const handleMappingConfirm = (mapping: ColumnMapping, templateName?: string) => {
     if (mappingFileIndex === null) return;
 
     const updated = files.map((f, i) =>
@@ -184,6 +278,7 @@ export function FileUpload({
             detectionReason: "Custom mapping configured",
             validationErrors: [],
             validationWarnings: [],
+            templateName: templateName, // Store template name for use as source
           }
         : f
     );
@@ -305,20 +400,33 @@ export function FileUpload({
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          {bankOptions.map((bank) => (
-                            <SelectItem key={bank.id} value={bank.id}>
+                          {/* Saved templates */}
+                          {savedTemplates.length > 0 && (
+                            <SelectGroup>
+                              <SelectLabel>Saved Templates</SelectLabel>
+                              {bankOptions
+                                .filter(b => b.isTemplate)
+                                .map((bank) => (
+                                  <SelectItem key={bank.id} value={bank.id}>
+                                    <div className="flex items-center gap-2">
+                                      <FileText className="h-4 w-4 text-muted-foreground" />
+                                      <span>{bank.name}</span>
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                            </SelectGroup>
+                          )}
+
+                          {/* Custom import option */}
+                          <SelectGroup>
+                            <SelectLabel>Other</SelectLabel>
+                            <SelectItem value="CUSTOM">
                               <div className="flex items-center gap-2">
-                                {bank.logo && (
-                                  <img
-                                    src={bank.logo}
-                                    alt={bank.name}
-                                    className="h-4 w-auto object-contain"
-                                  />
-                                )}
-                                <span>{bank.name}</span>
+                                <Settings className="h-4 w-4 text-muted-foreground" />
+                                <span>Custom Import</span>
                               </div>
                             </SelectItem>
-                          ))}
+                          </SelectGroup>
                         </SelectContent>
                       </Select>
 

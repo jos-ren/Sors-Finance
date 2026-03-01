@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -21,18 +22,19 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import type { ColumnMapping, ColumnDetectionResult } from "@/lib/parsers/types";
 import { detectColumns } from "@/lib/parsers/column-detection";
 import { getCellString } from "@/lib/parsers/utils";
-import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { Info, Save } from "lucide-react";
 
 interface ColumnMappingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rows: unknown[][];
   fileName: string;
-  onConfirm: (mapping: ColumnMapping) => void;
+  onConfirm: (mapping: ColumnMapping, templateName?: string) => void;
 }
 
 const DATE_FORMATS = [
@@ -56,8 +58,11 @@ export function ColumnMappingDialog({
   const [descriptionColumn, setDescriptionColumn] = useState<number | null>(null);
   const [amountInColumn, setAmountInColumn] = useState<number | null>(null);
   const [amountOutColumn, setAmountOutColumn] = useState<number | null>(null);
-  const [matchFieldColumns, setMatchFieldColumns] = useState<number[]>([]);
   const [detection, setDetection] = useState<ColumnDetectionResult | null>(null);
+  
+  // Template saving
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
 
   // Auto-detect columns when dialog opens
   useEffect(() => {
@@ -75,8 +80,6 @@ export function ColumnMappingDialog({
 
       if (detected.descriptionColumn) {
         setDescriptionColumn(detected.descriptionColumn.index);
-        // Default match field to description column
-        setMatchFieldColumns([detected.descriptionColumn.index]);
       }
 
       if (detected.amountInColumn) {
@@ -102,10 +105,10 @@ export function ColumnMappingDialog({
     return `Column ${index + 1}`;
   };
 
-  // Get preview rows (first 5 data rows)
+  // Get preview rows (first 3 data rows)
   const getPreviewRows = (): unknown[][] => {
     const startRow = hasHeaders ? 1 : 0;
-    return rows.slice(startRow, startRow + 5);
+    return rows.slice(startRow, startRow + 3);
   };
 
   // Get confidence badge for detection
@@ -136,10 +139,15 @@ export function ColumnMappingDialog({
   };
 
   // Handle form submission
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const error = validateMapping();
     if (error) {
       toast.error(error);
+      return;
+    }
+
+    if (saveAsTemplate && !templateName.trim()) {
+      toast.error("Please enter a template name");
       return;
     }
 
@@ -149,24 +157,38 @@ export function ColumnMappingDialog({
       descriptionColumn: descriptionColumn!,
       amountInColumn: amountInColumn!,
       amountOutColumn: amountOutColumn!,
-      matchFieldColumns: matchFieldColumns.length > 0 ? matchFieldColumns : undefined,
+      matchFieldColumns: descriptionColumn !== null ? [descriptionColumn] : undefined,
       hasHeaders,
       useNegativeForOut: amountInColumn === amountOutColumn,
     };
 
-    onConfirm(mapping);
-    onOpenChange(false);
-  };
-
-  // Toggle match field column
-  const toggleMatchFieldColumn = (colIndex: number) => {
-    setMatchFieldColumns((prev) => {
-      if (prev.includes(colIndex)) {
-        return prev.filter((c) => c !== colIndex);
-      } else {
-        return [...prev, colIndex].sort((a, b) => a - b);
+    // Save as template if requested
+    if (saveAsTemplate && templateName.trim()) {
+      try {
+        const response = await fetch("/api/custom-import-templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: templateName.trim(), mapping }),
+        });
+        if (response.ok) {
+          toast.success(`Saved template: ${templateName.trim()}`);
+        } else {
+          toast.error("Failed to save template");
+        }
+      } catch {
+        toast.error("Failed to save template");
       }
-    });
+    }
+
+    // Determine which template name to use as source
+    let sourceTemplateName: string | undefined;
+    if (saveAsTemplate && templateName.trim()) {
+      // User is saving a new template
+      sourceTemplateName = templateName.trim();
+    }
+
+    onConfirm(mapping, sourceTemplateName);
+    onOpenChange(false);
   };
 
   return (
@@ -186,7 +208,7 @@ export function ColumnMappingDialog({
             <div className="space-y-0.5">
               <Label htmlFor="headers-toggle">First row contains headers</Label>
               <p className="text-sm text-muted-foreground">
-                Turn this off if your file doesn't have column headers
+                Turn this off if your file doesn&apos;t have column headers
               </p>
             </div>
             <Switch id="headers-toggle" checked={hasHeaders} onCheckedChange={setHasHeaders} />
@@ -194,13 +216,13 @@ export function ColumnMappingDialog({
 
           {/* CSV Preview */}
           <div className="space-y-2">
-            <Label>Data Preview (first 5 rows)</Label>
-            <div className="border rounded-lg overflow-auto max-h-60">
+            <Label>Data Preview (first 3 rows)</Label>
+            <div className="border rounded-lg overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     {Array.from({ length: columnCount }).map((_, i) => (
-                      <TableHead key={i} className="min-w-[120px]">
+                      <TableHead key={i} className="min-w-[120px] max-w-[200px]">
                         {getColumnLabel(i)}
                       </TableHead>
                     ))}
@@ -209,11 +231,29 @@ export function ColumnMappingDialog({
                 <TableBody>
                   {getPreviewRows().map((row, rowIndex) => (
                     <TableRow key={rowIndex}>
-                      {Array.from({ length: columnCount }).map((_, colIndex) => (
-                        <TableCell key={colIndex} className="font-mono text-sm">
-                          {getCellString(row, colIndex) || <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                      ))}
+                      {Array.from({ length: columnCount }).map((_, colIndex) => {
+                        const cellValue = getCellString(row, colIndex);
+                        return (
+                          <TableCell key={colIndex} className="font-mono text-sm max-w-[200px]">
+                            {cellValue ? (
+                              <TooltipProvider delayDuration={300}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="truncate cursor-default">
+                                      {cellValue}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-[400px] break-words">
+                                    {cellValue}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        );
+                      })}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -381,32 +421,28 @@ export function ColumnMappingDialog({
               </div>
             )}
 
-            {/* Match Field Columns */}
-            <div className="grid grid-cols-[1fr_2fr] gap-4 items-start pt-4 border-t">
-              <div className="space-y-1">
-                <Label>Match Field Columns (Optional)</Label>
-                <p className="text-xs text-muted-foreground">
-                  Used for keyword categorization. Defaults to description if not set. Select multiple columns to
-                  concatenate them.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {Array.from({ length: columnCount }).map((_, i) => {
-                  const isSelected = matchFieldColumns.includes(i);
-                  return (
-                    <Button
-                      key={i}
-                      type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleMatchFieldColumn(i)}
-                      className={isSelected ? "bg-primary" : ""}
-                    >
-                      {isSelected && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                      {getColumnLabel(i)}
-                    </Button>
-                  );
-                })}
+            {/* Save as Template */}
+            <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30 mt-4">
+              <Save className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="save-template"
+                    checked={saveAsTemplate}
+                    onCheckedChange={setSaveAsTemplate}
+                  />
+                  <Label htmlFor="save-template" className="text-sm font-medium cursor-pointer">
+                    Save as template for future imports
+                  </Label>
+                </div>
+                {saveAsTemplate && (
+                  <Input
+                    className="mt-2 max-w-xs"
+                    placeholder="Template name (e.g., My Bank)"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                  />
+                )}
               </div>
             </div>
           </div>

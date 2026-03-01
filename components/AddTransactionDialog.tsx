@@ -77,7 +77,7 @@ export function AddTransactionDialog({
       await addTransaction({
         date: transactionDate,
         description: description.trim(),
-        matchField: description.trim().toUpperCase(),
+        matchField: description.trim(),
         amountOut: transactionType === "expense" ? amountNum : 0,
         amountIn: transactionType === "income" ? amountNum : 0,
         netAmount: transactionType === "income" ? amountNum : -amountNum,

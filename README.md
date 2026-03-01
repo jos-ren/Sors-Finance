@@ -129,14 +129,15 @@ Open http://localhost:3000
 
 Data is stored in `./data/sors.db`.
 
-## Supported Banks
+## CSV Import
 
-Sors auto-detects your bank from the exported file:
+Sors Finance supports flexible CSV import through custom column mapping:
 
-- CIBC
-- American Express
+- **Custom Import** - Map any CSV format to transaction fields
+- **Saved Templates** - Save your column mappings for reuse
+- **Auto-Detection** - Column headers and types are detected automatically
 
-Don't see your bank? [Add a parser](#adding-bank-support) or open an issue!
+Don't see your specific format? Use the custom import wizard with auto-detected column mapping!
 
 ## Adding Bank Support
 

@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { updatePortfolioItem, DbPortfolioItem, BucketType, PriceMode } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
 import { useSettings } from "@/lib/settings-context";
+import { formatCurrencyShort } from "@/lib/formatters";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -39,7 +40,8 @@ interface EditItemDialogProps {
 
 export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDialogProps) {
   const isInvestment = bucket === "Investments";
-  const { hasFinnhubApiKey, isLoading: settingsLoading } = useSettings();
+  const { hasFinnhubApiKey, isLoading: settingsLoading, settings } = useSettings();
+  const userCurrency = settings.currency;
   // Only show warning after settings have loaded and there's no key
   const showApiKeyWarning = !settingsLoading && !hasFinnhubApiKey;
 
@@ -58,13 +60,14 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       name: item.name,
       price: item.pricePerUnit || 0,
       currency: item.currency || "USD",
+      tickerType: item.tickerType || "stock",
     } : null
   );
 
   // Investment-specific fields
   const [quantity, setQuantity] = useState(item.quantity?.toString() || "");
   const [pricePerUnit, setPricePerUnit] = useState(item.pricePerUnit != null ? item.pricePerUnit.toFixed(2) : "");
-  const [currency, setCurrency] = useState(item.currency || "CAD");
+  const [currency, setCurrency] = useState<string>(item.currency || userCurrency);
   const [exchangeRate, setExchangeRate] = useState(1);
 
   // For non-investment items
@@ -81,20 +84,21 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
         name: item.name,
         price: item.pricePerUnit || 0,
         currency: item.currency || "USD",
+        tickerType: item.tickerType || "stock",
       } : null
     );
     setQuantity(item.quantity?.toString() || "");
     setPricePerUnit(item.pricePerUnit != null ? item.pricePerUnit.toFixed(2) : "");
-    setCurrency(item.currency || "CAD");
+    setCurrency(item.currency || userCurrency);
     setValue(item.currentValue.toString());
 
-    // Fetch exchange rate if currency is not CAD
-    if (item.currency && item.currency !== "CAD") {
-      getExchangeRate(item.currency, "CAD").then(setExchangeRate);
+    // Fetch exchange rate if currency is not user's currency
+    if (item.currency && item.currency !== userCurrency) {
+      getExchangeRate(item.currency, userCurrency).then(setExchangeRate);
     } else {
       setExchangeRate(1);
     }
-  }, [item]);
+  }, [item, userCurrency]);
 
   // When ticker is selected, populate fields
   useEffect(() => {
@@ -103,17 +107,17 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       setPricePerUnit(selectedTicker.price.toFixed(2));
       setCurrency(selectedTicker.currency);
 
-      // Fetch exchange rate if not CAD
-      if (selectedTicker.currency !== "CAD") {
-        getExchangeRate(selectedTicker.currency, "CAD").then(setExchangeRate);
+      // Fetch exchange rate if not user's currency
+      if (selectedTicker.currency !== userCurrency) {
+        getExchangeRate(selectedTicker.currency, userCurrency).then(setExchangeRate);
       } else {
         setExchangeRate(1);
       }
     }
-  }, [selectedTicker]);
+  }, [selectedTicker, userCurrency]);
 
-  // Calculate total value in CAD
-  const calculateTotalCAD = useCallback(() => {
+  // Calculate total value in user's currency
+  const calculateTotal = useCallback(() => {
     if (isInvestment) {
       const qty = parseFloat(quantity) || 0;
       const price = parseFloat(pricePerUnit) || 0;
@@ -122,7 +126,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
     return parseFloat(value) || 0;
   }, [isInvestment, quantity, pricePerUnit, exchangeRate, value]);
 
-  const totalCAD = calculateTotalCAD();
+  const totalValue = calculateTotal();
 
   // Handle ticker selection from search
   const handleTickerSelect = (ticker: SelectedTicker | null) => {
@@ -131,7 +135,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       // Clear fields when ticker is deselected
       setName("");
       setPricePerUnit("");
-      setCurrency("CAD");
+      setCurrency(userCurrency);
       setExchangeRate(1);
     }
   };
@@ -146,7 +150,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       if (isInvestment) {
         await updatePortfolioItem(item.id!, {
           name: name.trim(),
-          currentValue: totalCAD,
+          currentValue: totalValue,
           notes: notes.trim() || undefined,
           ticker: priceMode === "ticker" && selectedTicker ? selectedTicker.symbol : undefined,
           quantity: parseFloat(quantity) || 0,
@@ -177,15 +181,6 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   return (
@@ -258,7 +253,6 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 <TickerSearch
                   value={selectedTicker}
                   onSelect={handleTickerSelect}
-                  hasApiKey={hasFinnhubApiKey}
                 />
               </div>
             )}
@@ -328,8 +322,8 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                         onChange={(e) => setCurrency(e.target.value.toUpperCase())}
                         onBlur={async () => {
                           // Fetch exchange rate when user is done typing
-                          if (currency && currency !== "CAD") {
-                            const rate = await getExchangeRate(currency, "CAD");
+                          if (currency && currency !== userCurrency) {
+                            const rate = await getExchangeRate(currency, userCurrency);
                             setExchangeRate(rate);
                           } else {
                             setExchangeRate(1);
@@ -338,13 +332,13 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                         placeholder="USD"
                         className="flex-1"
                       />
-                      {currency !== "CAD" && (
+                      {currency !== userCurrency && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           onClick={async () => {
-                            const rate = await getExchangeRate(currency, "CAD");
+                            const rate = await getExchangeRate(currency, userCurrency);
                             setExchangeRate(rate);
                           }}
                           title="Refresh exchange rate"
@@ -357,17 +351,17 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 </div>
 
                 {/* Exchange rate info */}
-                {currency !== "CAD" && exchangeRate !== 1 && (
+                {currency !== userCurrency && exchangeRate !== 1 && (
                   <p className="text-xs text-muted-foreground">
-                    Exchange rate: 1 {currency} = {exchangeRate.toFixed(4)} CAD
+                    Exchange rate: 1 {currency} = {exchangeRate.toFixed(4)} {userCurrency}
                   </p>
                 )}
 
                 {/* Total value */}
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Total Value (CAD)</span>
-                    <span className="text-lg font-semibold">{formatCurrency(totalCAD)}</span>
+                    <span className="text-sm text-muted-foreground">Total Value ({userCurrency})</span>
+                    <span className="text-lg font-semibold">{formatCurrencyShort(totalValue, userCurrency)}</span>
                   </div>
                 </div>
               </>

@@ -86,9 +86,109 @@ Uses SQLite with Drizzle ORM. Data flows: Client → API Routes → SQLite.
 - Cache invalidation helpers
 - ~30 hooks for all data operations
 
+### Sync and Snapshot Logic
+
+The app has two separate but related concepts: **syncing** (updating current data) and **snapshots** (recording historical data).
+
+#### Currency Exchange Rate Caching
+
+To minimize API calls, exchange rates are cached in the database with a 24-hour lifetime:
+
+**3-Layer Cache System:**
+1. **In-Memory Cache** - 1 hour (fastest, but resets on server restart)
+2. **Database Cache** - 24 hours (persistent across restarts)
+3. **API Fallback** - Frankfurter API (free, no key required)
+
+**Pre-warming Strategy:**
+- During "Sync All", first-load snapshot, and scheduled snapshot
+- System identifies all currency pairs needed for user's portfolio (e.g., USD→CAD, EUR→CAD)
+- Fetches fresh rates for all pairs in parallel (batch of 5 at a time)
+- Stores in database for 24 hours
+- Dramatically reduces redundant API calls during portfolio rendering
+
+**Key Files:**
+- `lib/currency-cache.ts` - Cache warming utilities
+- `app/api/exchange-rate/route.ts` - Exchange rate endpoint with 3-layer cache
+
+#### Syncing ("Sync All" Button)
+
+**What it does:**
+1. Pre-warms currency cache with all needed exchange rates
+2. Updates Plaid account balances from your bank (if Plaid is connected)
+3. Refreshes current prices for all investments (stocks, crypto, metals)
+4. Automatically creates/updates today's snapshot after syncing
+
+**How it works:**
+- User clicks "Sync All" button → calls `/api/plaid/balances`
+- Syncs all connected Plaid accounts and captures any errors
+- Refreshes prices for all portfolio items (stocks, crypto, metals) by routing to correct API:
+  - Stocks → Finnhub API (with Yahoo fallback)
+  - Crypto → CoinGecko API (no key required)
+  - Metals → Metals API (no key required)
+- Returns detailed results with accounts synced/failed and prices updated/failed
+- After successful sync, automatically calls `/api/portfolio/snapshots/today` to create/update today's snapshot
+- Shows expandable banner at top of portfolio page with detailed sync results
+
+**Error handling:**
+- Continues even if some accounts or items fail
+- Collects all errors and shows them to user in expandable details
+- Requires Finnhub API key only if stocks are present
+
+#### Snapshots (Historical Records)
+
+**What they are:**
+- Point-in-time records of your portfolio (total savings, investments, assets, debt, net worth)
+- Used to build net worth charts and track changes over time
+- One snapshot per day (creates new or updates existing)
+
+**When they're created:**
+
+1. **After "Sync All" button** (always)
+   - After syncing accounts and refreshing prices, automatically creates/updates today's snapshot
+   - Uses fresh data from the sync that just completed
+
+2. **First app load of each day** (once per day)
+   - App checks localStorage for last snapshot date
+   - If it's a new day, triggers snapshot creation
+   - Respects scheduler settings (can optionally sync Plaid and refresh prices first)
+   - Runs silently in background 2 seconds after app loads
+
+3. **Scheduled (cron job)** (optional, production only)
+   - Runs at configured time (default: 3 AM daily)
+   - Only runs in production mode (`NODE_ENV=production`)
+   - Respects scheduler settings (can optionally sync Plaid and refresh prices first)
+   - Enabled/disabled via Settings page
+
+**Snapshot Settings (in Settings page):**
+- `SNAPSHOT_ENABLED` - Whether scheduled snapshots run (true/false)
+- `SNAPSHOT_SCHEDULE_TIME` - What time scheduled snapshots run (default: "03:00")
+- `PLAID_SYNC_WITH_SNAPSHOT` - Sync Plaid accounts before creating snapshot (true/false)
+- `PRICE_REFRESH_WITH_SNAPSHOT` - Refresh investment prices before creating snapshot (true/false)
+
+**Important:** The "Sync All" button always creates a snapshot after syncing (ignores settings), but first-load and scheduled snapshots respect the settings.
+
+#### Key Files
+
+**Sync:**
+- `components/plaid/PlaidSyncButton.tsx` - "Sync All" button and snapshot trigger
+- `components/plaid/PlaidSyncBanner.tsx` - Expandable results banner
+- `app/api/plaid/balances/route.ts` - Main sync endpoint (currency cache → accounts → prices)
+
+**Snapshots:**
+- `app/(main)/layout.tsx` - First-load detection (checks localStorage)
+- `app/api/portfolio/snapshots/first-load/route.ts` - First-load snapshot handler (includes cache warming)
+- `app/api/portfolio/snapshots/today/route.ts` - Creates/updates today's snapshot
+- `lib/scheduler.ts` - Scheduled snapshot task (cron job with cache warming)
+- `instrumentation.ts` - Initializes scheduler on app startup
+
+**Currency Caching:**
+- `lib/currency-cache.ts` - Cache warming utilities, identifies needed pairs
+- `app/api/exchange-rate/route.ts` - 3-layer cache (memory → database → API)
+- `lib/db/schema.ts` - `currencyExchangeRates` table definition
+
 ### Scheduler
 
-Portfolio snapshots can run on a schedule (default: 3 AM daily).
+Scheduled tasks run via node-cron (production only).
 
 - `lib/scheduler.ts` - node-cron scheduler
 - `instrumentation.ts` - Next.js startup hook

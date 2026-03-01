@@ -92,7 +92,7 @@ export function EditTransactionDialog({
       await updateTransaction(transaction.id!, {
         date: transactionDate,
         description: description.trim(),
-        matchField: description.trim().toUpperCase(),
+        matchField: description.trim(),
         amountOut: transactionType === "expense" ? amountNum : 0,
         amountIn: transactionType === "income" ? amountNum : 0,
         netAmount: transactionType === "income" ? amountNum : -amountNum,
@@ -200,16 +200,12 @@ export function EditTransactionDialog({
           {/* Source */}
           <div className="space-y-2">
             <Label htmlFor="edit-source">Source</Label>
-            <Select value={source} onValueChange={(value) => setSource(value as "CIBC" | "AMEX" | "Manual")}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CIBC">CIBC</SelectItem>
-                <SelectItem value="AMEX">AMEX</SelectItem>
-                <SelectItem value="Manual">Manual</SelectItem>
-              </SelectContent>
-            </Select>
+            <Input
+              id="edit-source"
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="e.g., My Bank, CSV Import, Plaid"
+            />
           </div>
         </div>
 

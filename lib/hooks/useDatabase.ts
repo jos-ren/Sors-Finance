@@ -133,7 +133,7 @@ export function useTransactions(options?: {
   startDate?: Date;
   endDate?: Date;
   categoryId?: number;
-  source?: "CIBC" | "AMEX" | "Manual";
+  source?: string;
   limit?: number;
 }): DbTransaction[] | undefined {
   const key = options
@@ -517,6 +517,13 @@ export function usePortfolioItem(id: number | undefined): DbPortfolioItem | unde
   return data ?? undefined;
 }
 
+/**
+ * Get all portfolio items across all accounts
+ */
+export function useAllPortfolioItems(includeInactive = false): DbPortfolioItem[] | undefined {
+  return usePortfolioItems(undefined, includeInactive);
+}
+
 export function usePortfolioItemsByBucket(bucket: BucketType): DbPortfolioItem[] | undefined {
   const accounts = usePortfolioAccounts(bucket);
   const items = usePortfolioItems();
@@ -853,7 +860,7 @@ export async function deleteImport(id: number): Promise<void> {
 }
 
 export async function findDuplicateSignatures(
-  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number }>
+  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number; source: string }>
 ): Promise<Set<string>> {
   return api.findDuplicateSignatures(transactions);
 }

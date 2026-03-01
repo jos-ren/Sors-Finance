@@ -4,6 +4,17 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 
+/**
+ * Normalize a date to YYYY-MM-DD format using local timezone
+ * This ensures consistent duplicate detection regardless of timezone
+ */
+function normalizeDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // POST /api/transactions/bulk
 export async function POST(request: NextRequest) {
   try {
@@ -23,9 +34,12 @@ export async function POST(request: NextRequest) {
     let insertedCount = 0;
 
     // Build signatures for duplicate checking
+    // Include source to avoid false positives across different banks
+    // Use normalized date (local YYYY-MM-DD) to avoid timezone issues
     const signatures = transactions.map((t) => {
-      const date = new Date(t.date).toISOString().split("T")[0];
-      return `${date}|${t.description}|${t.amountOut}|${t.amountIn}`;
+      const dateStr = normalizeDate(new Date(t.date));
+      const source = t.source || "Manual";
+      return `${source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
     });
 
     // Check for existing duplicates if skipDuplicates is true (only for this user)
@@ -38,8 +52,8 @@ export async function POST(request: NextRequest) {
 
       existingSignatures = new Set(
         existingTransactions.map((t) => {
-          const date = t.date.toISOString().split("T")[0];
-          return `${date}|${t.description}|${t.amountOut}|${t.amountIn}`;
+          const dateStr = normalizeDate(t.date);
+          return `${t.source}|${dateStr}|${t.description}|${t.amountOut}|${t.amountIn}`;
         })
       );
     }
@@ -64,6 +78,8 @@ export async function POST(request: NextRequest) {
         amountIn: t.amountIn ?? 0,
         netAmount: t.netAmount ?? (t.amountIn - t.amountOut),
         source: t.source || "Manual",
+        sourceMethod: t.sourceMethod || null,
+        sourceAccountName: t.sourceAccountName || null,
         categoryId: t.categoryId || null,
         importId: t.importId || null,
         userId,

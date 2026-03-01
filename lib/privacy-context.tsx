@@ -1,11 +1,13 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useSyncExternalStore } from "react";
+import { formatCurrency, formatCurrencyShort } from "@/lib/formatters";
+import { DEFAULT_CURRENCY } from "@/lib/constants";
 
 interface PrivacyContextType {
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
-  formatAmount: (amount: number, formatter?: (n: number) => string) => string;
+  formatAmount: (amount: number, currency?: string, showCode?: boolean) => string;
 }
 
 const PrivacyContext = createContext<PrivacyContextType | undefined>(undefined);
@@ -46,20 +48,11 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const formatAmount = useCallback((amount: number, formatter?: (n: number) => string) => {
-    const defaultFormatter = (n: number) =>
-      new Intl.NumberFormat("en-CA", {
-        style: "currency",
-        currency: "CAD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(n);
-
-    const fmt = formatter || defaultFormatter;
+  const formatAmount = useCallback((amount: number, currency: string = DEFAULT_CURRENCY, showCode: boolean = true) => {
     if (isPrivacyMode) {
       return "******";
     }
-    return fmt(amount);
+    return showCode ? formatCurrency(amount, currency) : formatCurrencyShort(amount, currency);
   }, [isPrivacyMode]);
 
   const contextValue = useMemo(

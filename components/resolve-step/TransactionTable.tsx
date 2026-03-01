@@ -16,17 +16,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
-
-// Shared formatters
-export const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-};
 
 export const formatDate = (date: Date) => {
   return new Intl.DateTimeFormat("en-CA", {
@@ -89,16 +80,17 @@ interface AmountCellProps {
 
 export function AmountCell({ amountOut, amountIn, className }: AmountCellProps) {
   const { formatAmount, isPrivacyMode } = usePrivacy();
+  const userCurrency = useCurrency();
 
   return (
     <TableCell className={cn("whitespace-nowrap", className)}>
       {amountOut > 0 ? (
         <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-          {formatAmount(amountOut, formatCurrency)}
+          {formatAmount(amountOut, userCurrency)}
         </span>
       ) : (
         <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-600"}>
-          {formatAmount(amountIn, formatCurrency)}
+          {formatAmount(amountIn, userCurrency)}
         </span>
       )}
     </TableCell>

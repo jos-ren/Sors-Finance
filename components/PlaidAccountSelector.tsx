@@ -8,7 +8,7 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
@@ -18,8 +18,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CalendarIcon, Loader2, AlertCircle, Building2, CreditCard, ChevronDown, ChevronUp } from "lucide-react";
-import { format, subMonths, startOfMonth } from "date-fns";
+import { CalendarIcon, Loader2, AlertCircle, Building2, ChevronDown, Info, CreditCard, PiggyBank, TrendingUp, Home } from "lucide-react";
+import { format, subMonths, startOfMonth, addDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   Collapsible,
@@ -43,8 +43,16 @@ interface PlaidInstitutionWithAccounts {
     subtype: string;
     mask?: string | null;
     portfolioAccountId?: number | null;
+    portfolioBucket?: string | null;
   }>;
 }
+
+const BUCKET_ICONS: Record<string, { icon: typeof PiggyBank; color: string; bgColor: string }> = {
+  Savings: { icon: PiggyBank, color: "text-emerald-500", bgColor: "bg-emerald-500/20" },
+  Investments: { icon: TrendingUp, color: "text-blue-500", bgColor: "bg-blue-500/20" },
+  Assets: { icon: Home, color: "text-amber-500", bgColor: "bg-amber-500/20" },
+  Debt: { icon: CreditCard, color: "text-red-500", bgColor: "bg-red-500/20" },
+};
 
 interface SelectedAccount {
   itemId: number;
@@ -54,7 +62,7 @@ interface SelectedAccount {
 }
 
 interface PlaidAccountSelectorProps {
-  onFetchTransactions: (itemId: number, accountIds: string[], startDate: string, endDate: string) => Promise<void>;
+  onFetchTransactions: (accountsByItem: Map<number, { accountIds: string[]; institutionName: string }>, startDate: string, endDate: string) => Promise<void>;
   onBack: () => void;
 }
 
@@ -62,35 +70,41 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
   const [plaidItems, setPlaidItems] = useState<PlaidInstitutionWithAccounts[]>([]);
   const [selectedAccounts, setSelectedAccounts] = useState<Map<string, SelectedAccount>>(new Map());
   const [expandedInstitutions, setExpandedInstitutions] = useState<Set<number>>(new Set());
-  const [startDate, setStartDate] = useState<Date | undefined>(startOfMonth(subMonths(new Date(), 1)));
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastImportDate, setLastImportDate] = useState<Date | null>(null);
 
   useEffect(() => {
     loadPlaidItems();
+    loadLastImportDate();
   }, []);
 
-  // Auto-expand first institution and select all its accounts
-  useEffect(() => {
-    if (plaidItems.length > 0 && expandedInstitutions.size === 0) {
-      const firstItem = plaidItems[0];
-      setExpandedInstitutions(new Set([firstItem.id]));
-      
-      const newSelected = new Map<string, SelectedAccount>();
-      firstItem.accounts.forEach(account => {
-        const key = `${firstItem.id}-${account.accountId}`;
-        newSelected.set(key, {
-          itemId: firstItem.id,
-          accountId: account.accountId,
-          institutionName: firstItem.institutionName,
-          accountName: account.name,
-        });
-      });
-      setSelectedAccounts(newSelected);
+  const loadLastImportDate = async () => {
+    try {
+      const response = await fetch("/api/settings?key=LAST_PLAID_IMPORT_DATE");
+      if (response.ok) {
+        const { data } = await response.json();
+        if (data) {
+          const lastDate = parseISO(data);
+          setLastImportDate(lastDate);
+          // Set default start date to day after last import
+          setStartDate(addDays(lastDate, 1));
+        } else {
+          // No last import - default to first of last month
+          setStartDate(startOfMonth(subMonths(new Date(), 1)));
+        }
+      } else {
+        setStartDate(startOfMonth(subMonths(new Date(), 1)));
+      }
+    } catch {
+      // Default to first of last month on error
+      setStartDate(startOfMonth(subMonths(new Date(), 1)));
     }
-  }, [plaidItems, expandedInstitutions.size]);
+  };
+
 
   const loadPlaidItems = async () => {
     try {
@@ -118,7 +132,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
     });
   };
 
-  const toggleAccount = (itemId: number, accountId: string, institutionName: string, accountName: string) => {
+  const toggleAccount = (itemId: number, accountId: string, institutionName: string, accountName: string, displayName?: string) => {
     setSelectedAccounts(prev => {
       const key = `${itemId}-${accountId}`;
       const newMap = new Map(prev);
@@ -126,7 +140,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
       if (newMap.has(key)) {
         newMap.delete(key);
       } else {
-        newMap.set(key, { itemId, accountId, institutionName, accountName });
+        newMap.set(key, { itemId, accountId, institutionName, accountName: displayName || accountName });
       }
       
       return newMap;
@@ -144,7 +158,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
             itemId: item.id,
             accountId: account.accountId,
             institutionName: item.institutionName,
-            accountName: account.name,
+            accountName: account.officialName || account.name,
           });
         } else {
           newMap.delete(key);
@@ -170,9 +184,28 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
     return selectedCount > 0 && selectedCount < item.accounts.length;
   };
 
+  // Date validation
+  const dateError = (() => {
+    if (!startDate || !endDate) return null;
+    if (startDate > endDate) return "Start date must be before end date";
+    if (endDate > new Date()) return "End date cannot be in the future";
+    return null;
+  })();
+
   const handleFetch = async () => {
     if (selectedAccounts.size === 0 || !startDate || !endDate) {
       setError("Please select at least one account and date range");
+      return;
+    }
+
+    // Validate date range
+    if (startDate > endDate) {
+      setError("Start date must be before end date");
+      return;
+    }
+
+    if (endDate > new Date()) {
+      setError("End date cannot be in the future");
       return;
     }
 
@@ -183,22 +216,19 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
       const startDateStr = format(startDate, "yyyy-MM-dd");
       const endDateStr = format(endDate, "yyyy-MM-dd");
       
-      // Group selected accounts by itemId
-      const accountsByItem = new Map<number, string[]>();
-      selectedAccounts.forEach(({ itemId, accountId }) => {
+      // Group selected accounts by itemId with institution name
+      const accountsByItem = new Map<number, { accountIds: string[]; institutionName: string }>();
+      selectedAccounts.forEach(({ itemId, accountId, institutionName }) => {
         if (!accountsByItem.has(itemId)) {
-          accountsByItem.set(itemId, []);
+          accountsByItem.set(itemId, { accountIds: [], institutionName });
         }
-        accountsByItem.get(itemId)!.push(accountId);
+        accountsByItem.get(itemId)!.accountIds.push(accountId);
       });
 
-      // Fetch from each institution sequentially
-      for (const [itemId, accountIds] of accountsByItem.entries()) {
-        await onFetchTransactions(itemId, accountIds, startDateStr, endDateStr);
-      }
+      // Pass all selections to parent at once (parent handles sequential fetching)
+      await onFetchTransactions(accountsByItem, startDateStr, endDateStr);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch transactions");
-      throw err;
     } finally {
       setFetching(false);
     }
@@ -206,8 +236,30 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <div className="h-5 w-32 bg-muted animate-pulse rounded" />
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="border rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 w-5 bg-muted animate-pulse rounded" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-20 bg-muted animate-pulse rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          <div className="h-5 w-24 bg-muted animate-pulse rounded" />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="h-10 bg-muted animate-pulse rounded" />
+            <div className="h-10 bg-muted animate-pulse rounded" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -241,153 +293,191 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
 
       {/* Institution & Account Selection */}
       <div className="space-y-3">
-        <Label className="text-base font-semibold">
-          Select Accounts ({selectedAccounts.size} selected)
-        </Label>
-        <div className="space-y-2">
-          {plaidItems.map((item) => (
-            <Collapsible
-              key={item.id}
-              open={expandedInstitutions.has(item.id)}
-              onOpenChange={() => toggleInstitution(item.id)}
-            >
-              <Card>
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Select Accounts</Label>
+          <span className="text-sm text-muted-foreground">
+            {selectedAccounts.size} selected
+          </span>
+        </div>
+        <Card className="overflow-hidden p-0 gap-0">
+          {plaidItems.map((item, index) => {
+            const isExpanded = expandedInstitutions.has(item.id);
+            const accountsSelected = item.accounts.filter(acc =>
+              selectedAccounts.has(`${item.id}-${acc.accountId}`)
+            ).length;
+
+            return (
+              <Collapsible
+                key={item.id}
+                open={isExpanded}
+                onOpenChange={() => toggleInstitution(item.id)}
+                className="m-0"
+              >
                 <CollapsibleTrigger asChild>
-                  <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                    <Building2 className="h-5 w-5 text-muted-foreground" />
-                    <div className="flex-1">
-                      <p className="font-medium">{item.institutionName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.accounts.length} account{item.accounts.length !== 1 ? 's' : ''}
-                      </p>
+                  <div className={cn(index > 0 && "border-t")}>
+                    <div className="flex items-center gap-3 p-[20px] cursor-pointer hover:bg-accent/50 transition-colors">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-md bg-muted">
+                        <Building2 className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{item.institutionName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {accountsSelected > 0
+                            ? `${accountsSelected} of ${item.accounts.length} accounts selected`
+                            : `${item.accounts.length} account${item.accounts.length !== 1 ? 's' : ''} available`
+                          }
+                        </p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">Select All</span>
+                      <Checkbox
+                        checked={isInstitutionFullySelected(item)}
+                        onCheckedChange={(checked) => {
+                          toggleAllAccountsForInstitution(item, checked as boolean);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn(
+                          "h-5 w-5",
+                          isInstitutionPartiallySelected(item) && "data-[state=checked]:bg-primary/50"
+                        )}
+                      />
+                      <ChevronDown className={cn(
+                        "h-4 w-4 text-muted-foreground transition-transform",
+                        isExpanded && "rotate-180"
+                      )} />
                     </div>
-                    <Checkbox
-                      checked={isInstitutionFullySelected(item)}
-                      onCheckedChange={(checked) => {
-                        toggleAllAccountsForInstitution(item, checked as boolean);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className={cn(
-                        isInstitutionPartiallySelected(item) && "data-[state=checked]:bg-primary/50"
-                      )}
-                    />
-                    {expandedInstitutions.has(item.id) ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
                   </div>
                 </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <div className="px-4 pb-4 space-y-2 border-t pt-3">
-                    {item.accounts.map((account) => {
-                      const key = `${item.id}-${account.accountId}`;
-                      const isSelected = selectedAccounts.has(key);
-                      
-                      return (
-                        <div
-                          key={account.id}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors",
-                            isSelected && "bg-accent/30 border-primary"
-                          )}
-                          onClick={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name)}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onClick={(e) => e.stopPropagation()}
-                            onCheckedChange={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name)}
-                          />
-                          <CreditCard className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">{account.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {account.type} • {account.subtype}
-                              {account.mask && ` • ••${account.mask}`}
-                            </p>
-                          </div>
+                <CollapsibleContent className="border-t bg-muted/30">
+                  {item.accounts.map((account) => {
+                    const key = `${item.id}-${account.accountId}`;
+                    const isSelected = selectedAccounts.has(key);
+                    const displayName = account.officialName || account.name;
+                    const bucketConfig = account.portfolioBucket ? BUCKET_ICONS[account.portfolioBucket] : null;
+                    const Icon = bucketConfig?.icon || CreditCard;
+                    const iconColor = bucketConfig?.color || "text-muted-foreground";
+                    const bgColor = bucketConfig?.bgColor || "bg-muted";
+
+                    return (
+                      <div
+                        key={account.id}
+                        className={cn(
+                          "flex items-center gap-3 pl-[40px] pr-[48px] py-[10px] cursor-pointer transition-colors",
+                          isSelected
+                            ? "bg-primary/10 hover:bg-primary/15"
+                            : "hover:bg-accent/50"
+                        )}
+                        onClick={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name, displayName)}
+                      >
+                        <div className={cn("flex items-center justify-center h-6 w-6 flex-shrink-0 -ml-[14px] mr-[6px] rounded-[6px]", bgColor)}>
+                          <Icon className={cn("h-3.5 w-3.5", iconColor)} />
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{displayName}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {account.subtype}{account.mask && ` ••${account.mask}`}
+                          </p>
+                        </div>
+                        <Checkbox
+                          checked={isSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onCheckedChange={() => toggleAccount(item.id, account.accountId, item.institutionName, account.name, displayName)}
+                          className="h-5 w-5"
+                        />
+                      </div>
+                    );
+                  })}
                 </CollapsibleContent>
-              </Card>
-            </Collapsible>
-          ))}
-        </div>
+              </Collapsible>
+            );
+          })}
+        </Card>
       </div>
 
       {/* Date Range Selection */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Date Range</Label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Start Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !startDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {startDate ? format(startDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={startDate}
-                  onSelect={setStartDate}
-                  disabled={(date) => date > new Date()}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
+        <Card className="p-4 space-y-4">
+          {lastImportDate && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+              <Info className="h-4 w-4 flex-shrink-0" />
+              <span>Last Plaid import: {format(lastImportDate, "PPP")}</span>
+            </div>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Start Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    disabled={(date) => date > new Date()}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
 
-          <div className="space-y-2">
-            <Label>End Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !endDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {endDate ? format(endDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={endDate}
-                  onSelect={setEndDate}
-                  disabled={(date) => date > new Date() || (startDate ? date < startDate : false)}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">End Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    disabled={(date) => date > new Date() || (startDate ? date < startDate : false)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Plaid typically provides up to 2 years of transaction history
-        </p>
+          {dateError && (
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>{dateError}</span>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Plaid typically provides up to 2 years of transaction history
+          </p>
+        </Card>
       </div>
 
       {/* Action Buttons */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between pt-2">
         <Button variant="outline" onClick={onBack} disabled={fetching}>
           Back
         </Button>
         <Button
           onClick={handleFetch}
-          disabled={selectedAccounts.size === 0 || !startDate || !endDate || fetching}
+          disabled={selectedAccounts.size === 0 || !startDate || !endDate || fetching || !!dateError}
         >
           {fetching ? (
             <>

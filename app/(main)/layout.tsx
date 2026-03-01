@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Separator } from "@/components/ui/separator";
@@ -65,6 +66,45 @@ function HeaderContent() {
 }
 
 function ScrollableContent({ children }: { children: React.ReactNode }) {
+  const hasRunToday = useRef(false);
+
+  useEffect(() => {
+    // First load snapshot check - run once per day
+    const checkFirstLoadSnapshot = async () => {
+      // Check localStorage for last snapshot check date
+      const lastCheckDate = localStorage.getItem("lastSnapshotCheck");
+      const today = new Date().toDateString();
+
+      if (lastCheckDate === today || hasRunToday.current) {
+        return; // Already checked today
+      }
+
+      hasRunToday.current = true;
+      localStorage.setItem("lastSnapshotCheck", today);
+
+      console.log("[First Load] Triggering snapshot check for today");
+
+      // Call the snapshot endpoint with settings check
+      try {
+        const response = await fetch("/api/portfolio/snapshots/first-load", {
+          method: "POST",
+        });
+
+        if (response.ok) {
+          console.log("[First Load] Snapshot check completed");
+        } else {
+          console.error("[First Load] Snapshot check failed:", await response.text());
+        }
+      } catch (error) {
+        console.error("[First Load] Error during snapshot check:", error);
+      }
+    };
+
+    // Run after a short delay to ensure everything is loaded
+    const timer = setTimeout(checkFirstLoadSnapshot, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div className="flex-1 overflow-auto">
       {children}

@@ -58,8 +58,8 @@ import {
   type DbPortfolioSnapshot,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
-import { useSnapshot } from "@/lib/snapshot-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
@@ -102,43 +102,41 @@ const bucketChartConfig = {
   Debt: { label: "Debt", color: "var(--alt-red)" },
 } satisfies ChartConfig;
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatCompact(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    notation: "compact",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 type TrendPeriod = "all" | "year";
 
 export default function PortfolioPage() {
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
   const summary = useNetWorthSummary();
   const change = useNetWorthChange();
   const allSnapshots = usePortfolioSnapshots();
-  const { startBackgroundSnapshot } = useSnapshot();
 
   // Snapshot state
-  const autoSnapshotAttempted = useRef(false);
   const [editingSnapshot, setEditingSnapshot] = useState<DbPortfolioSnapshot | null>(null);
 
   // Plaid sync banner state
   const [syncResult, setSyncResult] = useState<{
     accountsUpdated: number;
     accountsFailed: number;
+    pricesUpdated: number;
+    pricesFailed: number;
     errors: string[];
+    priceErrors: Array<{
+      ticker: string;
+      itemName: string;
+      error: string;
+    }>;
+    syncedAccounts: Array<{
+      accountId: string;
+      name: string;
+      balance: number;
+    }>;
+    syncedPrices: Array<{
+      ticker: string;
+      itemName: string;
+      price: number;
+      currency: string;
+    }>;
   } | null>(null);
 
   // Trend chart period state
@@ -151,39 +149,6 @@ export default function PortfolioPage() {
     if (!allSnapshots || allSnapshots.length === 0) return null;
     return allSnapshots[0]; // Already sorted by date desc
   }, [allSnapshots]);
-
-  // Auto-snapshot on page load (once per session)
-  // If current net worth differs from latest snapshot, update today's snapshot
-  useEffect(() => {
-    if (autoSnapshotAttempted.current) return;
-    if (summary === undefined) return; // Wait for summary to load
-    if (allSnapshots === undefined) return; // Wait for snapshots to load
-
-    autoSnapshotAttempted.current = true;
-
-    const currentNetWorth = summary?.netWorth ?? 0;
-    const latestSnapshotNetWorth = latestSnapshot?.netWorth ?? 0;
-
-    // Check if latest snapshot is from today
-    const today = new Date();
-    const isSnapshotFromToday = latestSnapshot &&
-      latestSnapshot.date.getFullYear() === today.getFullYear() &&
-      latestSnapshot.date.getMonth() === today.getMonth() &&
-      latestSnapshot.date.getDate() === today.getDate();
-
-    // Check if net worth has changed (use small epsilon for float comparison)
-    const hasChanged = Math.abs(currentNetWorth - latestSnapshotNetWorth) > 0.01;
-
-    // If today's snapshot exists but net worth changed, update it
-    if (isSnapshotFromToday && hasChanged) {
-      startBackgroundSnapshot({ forceUpdate: true });
-    }
-    // If no snapshot today, create one (normal behavior)
-    else if (!isSnapshotFromToday) {
-      startBackgroundSnapshot();
-    }
-    // If today's snapshot exists and net worth matches, do nothing
-  }, [summary, allSnapshots, latestSnapshot, startBackgroundSnapshot]);
 
   const handleDeleteSnapshot = useCallback(async (id: number) => {
     try {
@@ -315,7 +280,12 @@ export default function PortfolioPage() {
         <PlaidSyncBanner
           accountsUpdated={syncResult.accountsUpdated}
           accountsFailed={syncResult.accountsFailed}
+          pricesUpdated={syncResult.pricesUpdated}
+          pricesFailed={syncResult.pricesFailed}
           errors={syncResult.errors}
+          priceErrors={syncResult.priceErrors}
+          syncedAccounts={syncResult.syncedAccounts}
+          syncedPrices={syncResult.syncedPrices}
           onDismiss={() => setSyncResult(null)}
         />
       )}
@@ -329,7 +299,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(netWorth, formatCurrency)}
+              {formatAmount(netWorth, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {changeAmount >= 0 ? (
@@ -337,7 +307,7 @@ export default function PortfolioPage() {
               ) : (
                 <TrendingDown className="h-3 w-3 text-red-500" />
               )}
-              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, formatCurrency)} ({changePercent.toFixed(1)}%)
+              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, userCurrency)} ({changePercent.toFixed(1)}%)
             </p>
           </CardContent>
         </Card>
@@ -349,7 +319,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(totalAssets, formatCurrency)}
+              {formatAmount(totalAssets, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               Savings + Investments + Assets
@@ -364,7 +334,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(totalDebt, formatCurrency)}
+              {formatAmount(totalDebt, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               All liabilities
@@ -426,7 +396,7 @@ export default function PortfolioPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => formatAmount(value, formatCompact)}
+                  tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                 />
                 <ChartTooltip
                   content={
@@ -442,7 +412,7 @@ export default function PortfolioPage() {
                               {netWorthChartConfig[name as keyof typeof netWorthChartConfig]?.label || name}
                             </span>
                             <span className="font-mono font-medium tabular-nums">
-                              {formatAmount(Number(value), formatCurrency)}
+                              {formatAmount(Number(value), userCurrency)}
                             </span>
                           </div>
                         </div>
@@ -570,7 +540,7 @@ export default function PortfolioPage() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    tickFormatter={(value) => formatCompact(value)}
+                    tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                   />
                   <ChartTooltip
                     cursor={false}
@@ -649,21 +619,21 @@ export default function PortfolioPage() {
                             })}
                           </span>
                           <span className="text-lg font-semibold">
-                            {formatAmount(snapshot.netWorth, formatCurrency)}
+                            {formatAmount(snapshot.netWorth, userCurrency)}
                           </span>
                         </div>
                         <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
                           <span className="text-emerald-500">
-                            Savings: {formatAmount(snapshot.totalSavings, formatCompact)}
+                            Savings: {formatAmount(snapshot.totalSavings, userCurrency, false)}
                           </span>
                           <span className="text-blue-500">
-                            Investments: {formatAmount(snapshot.totalInvestments, formatCompact)}
+                            Investments: {formatAmount(snapshot.totalInvestments, userCurrency, false)}
                           </span>
                           <span className="text-amber-500">
-                            Assets: {formatAmount(snapshot.totalAssets, formatCompact)}
+                            Assets: {formatAmount(snapshot.totalAssets, userCurrency, false)}
                           </span>
                           <span className="text-red-500">
-                            Debt: {formatAmount(snapshot.totalDebt, formatCompact)}
+                            Debt: {formatAmount(snapshot.totalDebt, userCurrency, false)}
                           </span>
                         </div>
                       </div>

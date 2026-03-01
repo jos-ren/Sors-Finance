@@ -28,7 +28,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -40,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
@@ -51,25 +54,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 
 interface TransactionDataTableProps {
   transactions: DbTransaction[];
   categories: DbCategory[];
   onDeleteTransaction?: (id: number) => void;
   onBulkDeleteTransactions?: (ids: number[]) => void;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 function formatDate(date: Date): string {
@@ -98,13 +99,15 @@ export function TransactionDataTable({
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
-  const [dateRangeFilter, setDateRangeFilter] = useState<string>("all");
+  // Unified date filter: "all", "7days", "30days", "90days", "thisMonth", "lastMonth", "thisYear", "year:2024", "month:2024-0"
+  const [dateFilter, setDateFilter] = useState<string>("all");
 
   // Edit state
   const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
 
-  // Privacy mode
+  // Privacy mode and user currency
   const { formatAmount, isPrivacyMode } = usePrivacy();
+  const userCurrency = useCurrency();
 
   // Get category name by ID
   const getCategoryName = (categoryId: number | null): string => {
@@ -112,6 +115,43 @@ export function TransactionDataTable({
     const category = categories.find((c) => c.id === categoryId);
     return category?.name || "Unknown";
   };
+
+  // Get available years and months from transactions
+  const { availableYears, availableMonths } = useMemo(() => {
+    const years = new Set<number>();
+    const months = new Map<string, { year: number; month: number; label: string }>();
+
+    transactions.forEach((t) => {
+      const year = t.date.getFullYear();
+      const month = t.date.getMonth();
+      years.add(year);
+
+      const key = `${year}-${month}`;
+      if (!months.has(key)) {
+        const monthLabel = new Intl.DateTimeFormat("en-US", { month: "long" }).format(t.date);
+        months.set(key, { year, month, label: `${monthLabel} ${year}` });
+      }
+    });
+
+    return {
+      availableYears: Array.from(years).sort((a, b) => b - a),
+      availableMonths: Array.from(months.values()).sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      }),
+    };
+  }, [transactions]);
+
+  // Get available sources from transactions
+  const availableSources = useMemo(() => {
+    const sources = new Set<string>();
+    transactions.forEach((t) => {
+      if (t.source) {
+        sources.add(t.source);
+      }
+    });
+    return Array.from(sources).sort((a, b) => a.localeCompare(b));
+  }, [transactions]);
 
   // Column definitions
   const columns: ColumnDef<DbTransaction>[] = useMemo(
@@ -170,9 +210,18 @@ export function TransactionDataTable({
           </Button>
         ),
         cell: ({ row }) => (
-          <div className="max-w-[300px] truncate" title={row.getValue("description")}>
-            {row.getValue("description")}
-          </div>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="max-w-[300px] truncate cursor-default">
+                  {row.getValue("description")}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[400px] break-words">
+                {row.getValue("description")}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         ),
       },
       {
@@ -192,13 +241,13 @@ export function TransactionDataTable({
           if (transaction.amountOut > 0) {
             return (
               <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>
-                {isPrivacyMode ? "" : "-"}{formatAmount(transaction.amountOut, formatCurrency)}
+                {isPrivacyMode ? "" : "-"}{formatAmount(transaction.amountOut, userCurrency)}
               </span>
             );
           }
           return (
             <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>
-              {isPrivacyMode ? "" : "+"}{formatAmount(transaction.amountIn, formatCurrency)}
+              {isPrivacyMode ? "" : "+"}{formatAmount(transaction.amountIn, userCurrency)}
             </span>
           );
         },
@@ -226,7 +275,12 @@ export function TransactionDataTable({
         header: "Source",
         enableSorting: false,
         cell: ({ row }) => (
-          <BankSourceBadge source={row.getValue("source")} size="sm" />
+          <BankSourceBadge
+            source={row.getValue("source")}
+            sourceMethod={row.original.sourceMethod as "Plaid" | "CSV" | "Manual" | undefined}
+            sourceAccountName={row.original.sourceAccountName as string | undefined}
+            size="sm"
+          />
         ),
       },
       {
@@ -259,7 +313,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [categories, formatAmount, isPrivacyMode, onDeleteTransaction]
+    [categories, formatAmount, isPrivacyMode, onDeleteTransaction, userCurrency]
   );
 
   // Apply filters to transactions
@@ -281,40 +335,54 @@ export function TransactionDataTable({
       filtered = filtered.filter((t) => t.source === sourceFilter);
     }
 
-    // Date range filter
-    if (dateRangeFilter !== "all") {
+    // Unified date filter
+    if (dateFilter !== "all") {
       const now = new Date();
-      let startDate: Date;
 
-      switch (dateRangeFilter) {
-        case "7days":
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case "30days":
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          break;
-        case "90days":
-          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          break;
-        case "thisMonth":
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case "lastMonth":
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-          filtered = filtered.filter(
-            (t) => t.date >= startDate && t.date <= endOfLastMonth
-          );
-          break;
-        case "thisYear":
-          startDate = new Date(now.getFullYear(), 0, 1);
-          break;
-        default:
-          startDate = new Date(0);
-      }
+      if (dateFilter.startsWith("year:")) {
+        // Year filter: "year:2024"
+        const year = parseInt(dateFilter.replace("year:", ""));
+        filtered = filtered.filter((t) => t.date.getFullYear() === year);
+      } else if (dateFilter.startsWith("month:")) {
+        // Month filter: "month:2024-0" (year-monthIndex)
+        const [year, month] = dateFilter.replace("month:", "").split("-").map(Number);
+        filtered = filtered.filter(
+          (t) => t.date.getFullYear() === year && t.date.getMonth() === month
+        );
+      } else {
+        // Quick date ranges
+        let startDate: Date;
+        let endDate: Date | null = null;
 
-      if (dateRangeFilter !== "lastMonth") {
-        filtered = filtered.filter((t) => t.date >= startDate);
+        switch (dateFilter) {
+          case "7days":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "30days":
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            break;
+          case "90days":
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+            break;
+          case "thisMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+          case "lastMonth":
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+          case "thisYear":
+            startDate = new Date(now.getFullYear(), 0, 1);
+            break;
+          default:
+            startDate = new Date(0);
+        }
+
+        if (endDate) {
+          filtered = filtered.filter((t) => t.date >= startDate && t.date <= endDate);
+        } else {
+          filtered = filtered.filter((t) => t.date >= startDate);
+        }
       }
     }
 
@@ -330,7 +398,7 @@ export function TransactionDataTable({
     }
 
     return filtered;
-  }, [transactions, categoryFilter, sourceFilter, dateRangeFilter, globalFilter, categories]);
+  }, [transactions, categoryFilter, sourceFilter, dateFilter, globalFilter, categories]);
 
   const table = useReactTable({
     data: filteredTransactions,
@@ -376,13 +444,13 @@ export function TransactionDataTable({
   const hasActiveFilters =
     categoryFilter !== "all" ||
     sourceFilter !== "all" ||
-    dateRangeFilter !== "all" ||
+    dateFilter !== "all" ||
     globalFilter !== "";
 
   const clearAllFilters = () => {
     setCategoryFilter("all");
     setSourceFilter("all");
-    setDateRangeFilter("all");
+    setDateFilter("all");
     setGlobalFilter("");
   };
 
@@ -415,16 +483,16 @@ export function TransactionDataTable({
           <div className="flex items-center gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">Income:</span>{" "}
-              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>{formatAmount(totals.income, formatCurrency)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>{formatAmount(totals.income, userCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Expenses:</span>{" "}
-              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>{formatAmount(totals.expenses, formatCurrency)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>{formatAmount(totals.expenses, userCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Net:</span>{" "}
               <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : totals.net >= 0 ? "text-green-600" : "text-destructive"}`}>
-                {formatAmount(totals.net, formatCurrency)}
+                {formatAmount(totals.net, userCurrency)}
               </span>
             </div>
           </div>
@@ -444,25 +512,54 @@ export function TransactionDataTable({
             />
           </div>
 
-          {/* Date Range Filter */}
-          <Select value={dateRangeFilter} onValueChange={setDateRangeFilter}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Date range" />
+          {/* Unified Date Filter Select */}
+          <Select value={dateFilter} onValueChange={setDateFilter}>
+            <SelectTrigger className={cn(
+              "w-[160px]",
+              dateFilter !== "all" && "border-primary"
+            )}>
+              <SelectValue />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Time</SelectItem>
-              <SelectItem value="7days">Last 7 Days</SelectItem>
-              <SelectItem value="30days">Last 30 Days</SelectItem>
-              <SelectItem value="90days">Last 90 Days</SelectItem>
-              <SelectItem value="thisMonth">This Month</SelectItem>
-              <SelectItem value="lastMonth">Last Month</SelectItem>
-              <SelectItem value="thisYear">This Year</SelectItem>
+            <SelectContent className="overflow-y-auto">
+              <SelectGroup>
+                <SelectLabel>Quick Filters</SelectLabel>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="7days">Last 7 Days</SelectItem>
+                <SelectItem value="30days">Last 30 Days</SelectItem>
+                <SelectItem value="90days">Last 90 Days</SelectItem>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+              </SelectGroup>
+              {availableYears.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>By Year</SelectLabel>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={`year:${year}`}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {availableMonths.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>By Month</SelectLabel>
+                  {availableMonths.map((m) => (
+                    <SelectItem key={`${m.year}-${m.month}`} value={`month:${m.year}-${m.month}`}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
             </SelectContent>
           </Select>
 
           {/* Category Filter */}
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className={cn(
+              "w-[180px]",
+              categoryFilter !== "all" && "border-primary"
+            )}>
               <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
@@ -480,14 +577,19 @@ export function TransactionDataTable({
 
           {/* Source Filter */}
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className={cn(
+              "w-[160px]",
+              sourceFilter !== "all" && "border-primary"
+            )}>
               <SelectValue placeholder="Source" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Sources</SelectItem>
-              <SelectItem value="CIBC">CIBC</SelectItem>
-              <SelectItem value="AMEX">AMEX</SelectItem>
-              <SelectItem value="Manual">Manual</SelectItem>
+              {availableSources.map((source) => (
+                <SelectItem key={source} value={source}>
+                  {source}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
 

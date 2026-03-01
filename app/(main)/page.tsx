@@ -62,6 +62,7 @@ import {
   useAllTimeMonthlyTrend,
 } from "@/lib/hooks";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { cn } from "@/lib/utils";
 
@@ -100,15 +101,6 @@ const PIE_COLORS = [
   "var(--alt-pink)",
   "var(--alt-green)",
 ];
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 function StatCard({
   title,
@@ -356,8 +348,9 @@ export default function DashboardPage() {
     }
   }, [viewMode, selectedYearValue, selectedMonthValue]);
 
-  // Privacy mode
+  // Privacy mode and user currency
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
 
   // Handler for month selection
   const handleMonthSelect = useCallback((year: number, month: number) => {
@@ -526,21 +519,21 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Income"
-          value={formatAmount(totalIncome, formatCurrency)}
+          value={formatAmount(totalIncome, userCurrency)}
           description={periodDescription}
           icon={DollarSign}
           trend={totalIncome > 0 ? "up" : undefined}
         />
         <StatCard
           title="Total Expenses"
-          value={formatAmount(totalExpenses, formatCurrency)}
+          value={formatAmount(totalExpenses, userCurrency)}
           description={periodDescription}
           icon={Receipt}
           trend={totalExpenses > 0 ? "up" : undefined}
         />
         <StatCard
           title="Net Savings"
-          value={formatAmount(netSavings, formatCurrency)}
+          value={formatAmount(netSavings, userCurrency)}
           description={`${savingsRate}% savings rate`}
           icon={PiggyBank}
           trend={netSavings > 0 ? "up" : netSavings < 0 ? "down" : undefined}
@@ -585,11 +578,11 @@ export default function DashboardPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => formatAmount(value, (v) => `$${v}`)}
+                  tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                 />
                 <ChartTooltip
                   cursor={false}
-                  content={<ChartTooltipContent indicator="dot" formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
+                  content={<ChartTooltipContent indicator="dot" formatter={(value) => formatAmount(Number(value), userCurrency)} />}
                 />
                 <ChartLegend content={<ChartLegendContent />} />
                 <Area
@@ -646,11 +639,11 @@ export default function DashboardPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => formatAmount(value, (v) => `$${v}`)}
+                  tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                 />
                 <ChartTooltip
                   cursor={false}
-                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
+                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), userCurrency)} />}
                 />
                 <Bar
                   dataKey="amount"
@@ -764,7 +757,7 @@ export default function DashboardPage() {
                   <PieChart>
                     <ChartTooltip
                       cursor={false}
-                      content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), formatCurrency)} />}
+                      content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), userCurrency)} />}
                     />
                     <Pie
                       data={categorySpendingData}
@@ -793,7 +786,7 @@ export default function DashboardPage() {
                   </PieChart>
                 </ChartContainer>
                 <div className="mt-4 text-center">
-                  <p className="text-2xl font-bold">{formatAmount(totalCategorySpending, formatCurrency)}</p>
+                  <p className="text-2xl font-bold">{formatAmount(totalCategorySpending, userCurrency)}</p>
                   <p className="text-sm text-muted-foreground">Total spending in {periodName}</p>
                 </div>
               </>
@@ -801,6 +794,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
     </div>
   );
 }

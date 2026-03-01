@@ -9,7 +9,9 @@ export interface Transaction {
   amountOut: number; // Money leaving account (positive)
   amountIn: number; // Money entering account (positive)
   netAmount: number; // amountIn - amountOut
-  source: string; // Bank ID (e.g., "CIBC", "AMEX") - extensible for new banks
+  source: string; // Bank/institution name (e.g., "My Bank", "Template Name")
+  sourceMethod?: "Plaid" | "CSV" | "Manual"; // How the transaction was imported
+  sourceAccountName?: string; // Specific account name (e.g., "Smart Checking Account")
   categoryId: string | null; // null if uncategorized
   isConflict: boolean; // true if matched multiple categories
   conflictingCategories?: string[]; // Category IDs if conflict
@@ -56,6 +58,7 @@ export interface UploadedFile {
   validationWarnings?: string[];
   columnMapping?: any; // ColumnMapping for CUSTOM bank type (imported from parsers/types)
   mappingConfigured?: boolean; // true if column mapping has been configured
+  templateName?: string; // Template name to use as source for transactions
 }
 
 /**

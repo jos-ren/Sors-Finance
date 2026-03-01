@@ -6,6 +6,7 @@ import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
 const PLAID_SYNC_WITH_SNAPSHOT_KEY = "PLAID_SYNC_WITH_SNAPSHOT";
+const PRICE_REFRESH_WITH_SNAPSHOT_KEY = "PRICE_REFRESH_WITH_SNAPSHOT";
 
 // GET /api/scheduler/config
 export async function GET(request: NextRequest) {
@@ -45,11 +46,23 @@ export async function GET(request: NextRequest) {
       )
       .limit(1);
 
+    const priceRefreshResult = await db
+      .select()
+      .from(schema.settings)
+      .where(
+        and(
+          eq(schema.settings.key, PRICE_REFRESH_WITH_SNAPSHOT_KEY),
+          eq(schema.settings.userId, userId)
+        )
+      )
+      .limit(1);
+
     return NextResponse.json({
       data: {
         time: timeResult[0]?.value || "03:00",
         enabled: enabledResult[0]?.value !== "false",
         plaidSync: plaidSyncResult[0]?.value === "true", // Opt-in: default false
+        priceRefresh: priceRefreshResult[0]?.value !== "false", // Opt-out: default true
       },
       success: true,
     });
@@ -73,7 +86,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
 
-    const { time, enabled, plaidSync } = await request.json();
+    const { time, enabled, plaidSync, priceRefresh } = await request.json();
 
     // Update time if provided
     if (time !== undefined) {
@@ -175,6 +188,38 @@ export async function PUT(request: NextRequest) {
         await db.insert(schema.settings).values({
           key: PLAID_SYNC_WITH_SNAPSHOT_KEY,
           value: String(plaidSync),
+          userId,
+        });
+      }
+    }
+
+    // Update priceRefresh if provided
+    if (priceRefresh !== undefined) {
+      const existing = await db
+        .select()
+        .from(schema.settings)
+        .where(
+          and(
+            eq(schema.settings.key, PRICE_REFRESH_WITH_SNAPSHOT_KEY),
+            eq(schema.settings.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db
+          .update(schema.settings)
+          .set({ value: String(priceRefresh) })
+          .where(
+            and(
+              eq(schema.settings.key, PRICE_REFRESH_WITH_SNAPSHOT_KEY),
+              eq(schema.settings.userId, userId)
+            )
+          );
+      } else {
+        await db.insert(schema.settings).values({
+          key: PRICE_REFRESH_WITH_SNAPSHOT_KEY,
+          value: String(priceRefresh),
           userId,
         });
       }
