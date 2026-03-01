@@ -96,14 +96,16 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
         const categoryTransactions = getTransactionsByCategory(
           filteredTransactions,
           category.uuid
-        );
+        )
+        // Exclude duplicates from categorized view (they show in duplicates section)
+        .filter(t => !t.isDuplicate);
 
         // Sort by date (newest first)
         categoryTransactions.sort(
           (a, b) => b.date.getTime() - a.date.getTime()
         );
 
-        const total = getCategoryTotal(filteredTransactions, category.uuid);
+        const total = categoryTransactions.reduce((sum, t) => sum + t.netAmount, 0);
 
         return {
           category,
@@ -116,7 +118,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
 
   // Get uncategorized transactions
   const uncategorizedTransactions = useMemo(() => {
-    const uncategorized = filteredTransactions.filter(t => !t.categoryId);
+    const uncategorized = filteredTransactions.filter(t => !t.categoryId && !t.isDuplicate);
     // Sort by date (newest first)
     uncategorized.sort((a, b) => b.date.getTime() - a.date.getTime());
     return uncategorized;
@@ -125,6 +127,18 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
   const uncategorizedTotal = useMemo(() => {
     return uncategorizedTransactions.reduce((sum, t) => sum + t.netAmount, 0);
   }, [uncategorizedTransactions]);
+
+  // Get duplicate transactions (only those marked for import)
+  const duplicateTransactions = useMemo(() => {
+    const duplicates = filteredTransactions.filter(t => t.isDuplicate && t.importDuplicate);
+    // Sort by date (newest first)
+    duplicates.sort((a, b) => b.date.getTime() - a.date.getTime());
+    return duplicates;
+  }, [filteredTransactions]);
+
+  const duplicateTotal = useMemo(() => {
+    return duplicateTransactions.reduce((sum, t) => sum + t.netAmount, 0);
+  }, [duplicateTransactions]);
 
   const handleFilterChange = (value: string) => {
     if (value === "all") {
@@ -191,12 +205,75 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
         </div>
       </CardHeader>
       <CardContent>
-        {categoryResults.length === 0 && uncategorizedTransactions.length === 0 ? (
+        {categoryResults.length === 0 && uncategorizedTransactions.length === 0 && duplicateTransactions.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No transactions found for the selected date range.
           </p>
         ) : (
           <Accordion type="multiple" className="w-full">
+            {/* Duplicates accordion - show first */}
+            {duplicateTransactions.length > 0 && (
+              <AccordionItem
+                value="duplicates"
+              >
+                <AccordionTrigger>
+                  <div className="flex items-center justify-between w-full pr-4">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Duplicates (Importing)</span>
+                      <Badge variant="secondary" className="text-xs bg-yellow-200 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-400">
+                        {duplicateTransactions.length}
+                      </Badge>
+                    </div>
+                    <span
+                      className={`font-semibold ${
+                        isPrivacyMode ? "text-muted-foreground" : duplicateTotal >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {formatAmount(Math.abs(duplicateTotal), userCurrency)}
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[120px]">Date</TableHead>
+                        <TableHead className="min-w-[300px]">Description</TableHead>
+                        <TableHead className="w-[100px]">Source</TableHead>
+                        <TableHead className="w-[140px] text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {duplicateTransactions.map((transaction) => (
+                        <TableRow key={transaction.id}>
+                          <TableCell className="w-[120px] whitespace-nowrap">
+                            {formatDate(transaction.date)}
+                          </TableCell>
+                          <TableCell className="min-w-[300px]">
+                            <p className="truncate">{transaction.description}</p>
+                          </TableCell>
+                          <TableCell className="w-[100px]">
+                            <BankSourceBadge source={transaction.source} size="sm" />
+                          </TableCell>
+                          <TableCell className="w-[140px] text-right whitespace-nowrap">
+                            {transaction.amountOut > 0 ? (
+                              <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
+                                {formatAmount(transaction.amountOut, userCurrency)}
+                              </span>
+                            ) : (
+                              <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
+                                {formatAmount(transaction.amountIn, userCurrency)}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
             {categoryResults.map(({ category, transactions, total }, index) => (
               <AccordionItem
                 key={category.uuid}

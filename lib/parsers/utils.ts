@@ -229,3 +229,24 @@ export function isEmptyRow(row: unknown[]): boolean {
 export function createPatternMatcher(patterns: RegExp[]): (text: string) => boolean {
   return (text: string) => patterns.some(pattern => pattern.test(text));
 }
+
+/**
+ * Normalize a Date to YYYY-MM-DD format using local timezone
+ * This ensures consistent date comparison regardless of timezone or time component
+ *
+ * IMPORTANT: Use this for all duplicate detection and date comparison logic
+ * to avoid timezone-related issues where dates can shift by a day.
+ *
+ * @param date - Date object to normalize
+ * @returns Date string in YYYY-MM-DD format using local date values
+ *
+ * @example
+ * const date = new Date(2024, 0, 15); // Jan 15, 2024
+ * normalizeDate(date); // "2024-01-15" (always, regardless of timezone)
+ */
+export function normalizeDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}

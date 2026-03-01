@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
         id: generateId(),
         date: new Date(t.date),
         description,
-        matchField: description.toLowerCase(), // For keyword matching
+        matchField: description, // Preserve original casing
         amountOut,
         amountIn,
         netAmount: amountIn - amountOut,

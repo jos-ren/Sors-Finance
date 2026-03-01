@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,14 +28,65 @@ import { toast } from "sonner";
 import type { ColumnMapping, ColumnDetectionResult } from "@/lib/parsers/types";
 import { detectColumns } from "@/lib/parsers/column-detection";
 import { getCellString } from "@/lib/parsers/utils";
-import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, Save, FolderOpen, Sparkles } from "lucide-react";
+
+// Suggested templates based on common bank formats
+// These are starting points users can customize
+const SUGGESTED_TEMPLATES: { name: string; description: string; mapping: ColumnMapping }[] = [
+  {
+    name: "CIBC-style (4 columns)",
+    description: "Date, Description, Money Out, Money In - no headers",
+    mapping: {
+      dateColumn: 0,
+      dateFormat: "MDY",
+      descriptionColumn: 1,
+      amountOutColumn: 2,
+      amountInColumn: 3,
+      hasHeaders: false,
+      useNegativeForOut: false,
+    },
+  },
+  {
+    name: "Standard CSV (with headers)",
+    description: "Date, Description, Amount - positive is income, negative is expense",
+    mapping: {
+      dateColumn: 0,
+      dateFormat: "ISO",
+      descriptionColumn: 1,
+      amountInColumn: 2,
+      amountOutColumn: 2,
+      hasHeaders: true,
+      useNegativeForOut: true,
+    },
+  },
+  {
+    name: "5-column format",
+    description: "Date, Description, Category, Debit, Credit - with headers",
+    mapping: {
+      dateColumn: 0,
+      dateFormat: "ISO",
+      descriptionColumn: 1,
+      amountOutColumn: 3,
+      amountInColumn: 4,
+      hasHeaders: true,
+      useNegativeForOut: false,
+    },
+  },
+];
+
+interface SavedTemplate {
+  id: number;
+  uuid: string;
+  name: string;
+  mapping: ColumnMapping;
+}
 
 interface ColumnMappingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   rows: unknown[][];
   fileName: string;
-  onConfirm: (mapping: ColumnMapping) => void;
+  onConfirm: (mapping: ColumnMapping, templateName?: string) => void;
 }
 
 const DATE_FORMATS = [
@@ -58,6 +112,76 @@ export function ColumnMappingDialog({
   const [amountOutColumn, setAmountOutColumn] = useState<number | null>(null);
   const [matchFieldColumns, setMatchFieldColumns] = useState<number[]>([]);
   const [detection, setDetection] = useState<ColumnDetectionResult | null>(null);
+  
+  // Template saving
+  const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Load saved templates when dialog opens
+  useEffect(() => {
+    if (open) {
+      loadTemplates();
+    }
+  }, [open]);
+
+  const loadTemplates = async () => {
+    try {
+      const response = await fetch("/api/custom-import-templates");
+      if (response.ok) {
+        const { data } = await response.json();
+        setSavedTemplates(data || []);
+      }
+    } catch {
+      console.warn("Failed to load templates");
+    }
+  };
+
+  const applyTemplate = (template: SavedTemplate) => {
+    const mapping = template.mapping;
+    setHasHeaders(mapping.hasHeaders ?? true);
+    setDateColumn(mapping.dateColumn);
+    setDateFormat(mapping.dateFormat);
+    setDescriptionColumn(mapping.descriptionColumn);
+    setAmountInColumn(mapping.amountInColumn);
+    setAmountOutColumn(mapping.amountOutColumn);
+    setMatchFieldColumns(mapping.matchFieldColumns || []);
+    setSelectedTemplateId(template.id.toString());
+    toast.success(`Loaded template: ${template.name}`);
+  };
+
+  const handleTemplateSelect = (value: string) => {
+    if (value === "none") {
+      setSelectedTemplateId(null);
+      return;
+    }
+
+    // Handle suggested templates
+    if (value.startsWith("suggested-")) {
+      const index = parseInt(value.replace("suggested-", ""));
+      const suggested = SUGGESTED_TEMPLATES[index];
+      if (suggested) {
+        const mapping = suggested.mapping;
+        setHasHeaders(mapping.hasHeaders ?? true);
+        setDateColumn(mapping.dateColumn);
+        setDateFormat(mapping.dateFormat);
+        setDescriptionColumn(mapping.descriptionColumn);
+        setAmountInColumn(mapping.amountInColumn);
+        setAmountOutColumn(mapping.amountOutColumn);
+        setMatchFieldColumns(mapping.matchFieldColumns || []);
+        setSelectedTemplateId(value);
+        toast.success(`Loaded suggested template: ${suggested.name}`);
+      }
+      return;
+    }
+
+    // Handle user-saved templates
+    const template = savedTemplates.find(t => t.id.toString() === value);
+    if (template) {
+      applyTemplate(template);
+    }
+  };
 
   // Auto-detect columns when dialog opens
   useEffect(() => {
@@ -136,10 +260,15 @@ export function ColumnMappingDialog({
   };
 
   // Handle form submission
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const error = validateMapping();
     if (error) {
       toast.error(error);
+      return;
+    }
+
+    if (saveAsTemplate && !templateName.trim()) {
+      toast.error("Please enter a template name");
       return;
     }
 
@@ -154,7 +283,25 @@ export function ColumnMappingDialog({
       useNegativeForOut: amountInColumn === amountOutColumn,
     };
 
-    onConfirm(mapping);
+    // Save as template if requested
+    if (saveAsTemplate && templateName.trim()) {
+      try {
+        const response = await fetch("/api/custom-import-templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: templateName.trim(), mapping }),
+        });
+        if (response.ok) {
+          toast.success(`Saved template: ${templateName.trim()}`);
+        } else {
+          toast.error("Failed to save template");
+        }
+      } catch {
+        toast.error("Failed to save template");
+      }
+    }
+
+    onConfirm(mapping, saveAsTemplate ? templateName.trim() : undefined);
     onOpenChange(false);
   };
 
@@ -181,6 +328,48 @@ export function ColumnMappingDialog({
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Load Template */}
+          <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30">
+            <FolderOpen className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <Label className="text-sm font-medium">Load Template</Label>
+              <p className="text-xs text-muted-foreground">Start from a template or previously saved mapping</p>
+            </div>
+            <Select value={selectedTemplateId || "none"} onValueChange={handleTemplateSelect}>
+              <SelectTrigger className="w-[220px]">
+                <SelectValue placeholder="Select template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Start fresh</SelectItem>
+
+                {/* Suggested templates */}
+                <SelectGroup>
+                  <SelectLabel className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    Suggested Templates
+                  </SelectLabel>
+                  {SUGGESTED_TEMPLATES.map((template, index) => (
+                    <SelectItem key={`suggested-${index}`} value={`suggested-${index}`}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+
+                {/* User-saved templates */}
+                {savedTemplates.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Your Saved Templates</SelectLabel>
+                    {savedTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id.toString()}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Headers Toggle */}
           <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="space-y-0.5">
@@ -407,6 +596,31 @@ export function ColumnMappingDialog({
                     </Button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Save as Template */}
+            <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30 mt-4">
+              <Save className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="save-template"
+                    checked={saveAsTemplate}
+                    onCheckedChange={setSaveAsTemplate}
+                  />
+                  <Label htmlFor="save-template" className="text-sm font-medium cursor-pointer">
+                    Save as template for future imports
+                  </Label>
+                </div>
+                {saveAsTemplate && (
+                  <Input
+                    className="mt-2 max-w-xs"
+                    placeholder="Template name (e.g., TD Bank CSV)"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                  />
+                )}
               </div>
             </div>
           </div>
