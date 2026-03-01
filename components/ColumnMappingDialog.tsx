@@ -19,67 +19,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  SelectGroup,
-  SelectLabel,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import type { ColumnMapping, ColumnDetectionResult } from "@/lib/parsers/types";
 import { detectColumns } from "@/lib/parsers/column-detection";
 import { getCellString } from "@/lib/parsers/utils";
-import { AlertCircle, CheckCircle2, Info, Save, FolderOpen, Sparkles } from "lucide-react";
-
-// Suggested templates based on common bank formats
-// These are starting points users can customize
-const SUGGESTED_TEMPLATES: { name: string; description: string; mapping: ColumnMapping }[] = [
-  {
-    name: "4-column format",
-    description: "Date, Description, Money Out, Money In - no headers",
-    mapping: {
-      dateColumn: 0,
-      dateFormat: "MDY",
-      descriptionColumn: 1,
-      amountOutColumn: 2,
-      amountInColumn: 3,
-      hasHeaders: false,
-      useNegativeForOut: false,
-    },
-  },
-  {
-    name: "Standard CSV (with headers)",
-    description: "Date, Description, Amount - positive is income, negative is expense",
-    mapping: {
-      dateColumn: 0,
-      dateFormat: "ISO",
-      descriptionColumn: 1,
-      amountInColumn: 2,
-      amountOutColumn: 2,
-      hasHeaders: true,
-      useNegativeForOut: true,
-    },
-  },
-  {
-    name: "5-column format",
-    description: "Date, Description, Category, Debit, Credit - with headers",
-    mapping: {
-      dateColumn: 0,
-      dateFormat: "ISO",
-      descriptionColumn: 1,
-      amountOutColumn: 3,
-      amountInColumn: 4,
-      hasHeaders: true,
-      useNegativeForOut: false,
-    },
-  },
-];
-
-interface SavedTemplate {
-  id: number;
-  uuid: string;
-  name: string;
-  mapping: ColumnMapping;
-}
+import { Info, Save } from "lucide-react";
 
 interface ColumnMappingDialogProps {
   open: boolean;
@@ -110,78 +58,11 @@ export function ColumnMappingDialog({
   const [descriptionColumn, setDescriptionColumn] = useState<number | null>(null);
   const [amountInColumn, setAmountInColumn] = useState<number | null>(null);
   const [amountOutColumn, setAmountOutColumn] = useState<number | null>(null);
-  const [matchFieldColumns, setMatchFieldColumns] = useState<number[]>([]);
   const [detection, setDetection] = useState<ColumnDetectionResult | null>(null);
   
   // Template saving
-  const [savedTemplates, setSavedTemplates] = useState<SavedTemplate[]>([]);
   const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-
-  // Load saved templates when dialog opens
-  useEffect(() => {
-    if (open) {
-      loadTemplates();
-    }
-  }, [open]);
-
-  const loadTemplates = async () => {
-    try {
-      const response = await fetch("/api/custom-import-templates");
-      if (response.ok) {
-        const { data } = await response.json();
-        setSavedTemplates(data || []);
-      }
-    } catch {
-      console.warn("Failed to load templates");
-    }
-  };
-
-  const applyTemplate = (template: SavedTemplate) => {
-    const mapping = template.mapping;
-    setHasHeaders(mapping.hasHeaders ?? true);
-    setDateColumn(mapping.dateColumn);
-    setDateFormat(mapping.dateFormat);
-    setDescriptionColumn(mapping.descriptionColumn);
-    setAmountInColumn(mapping.amountInColumn);
-    setAmountOutColumn(mapping.amountOutColumn);
-    setMatchFieldColumns(mapping.matchFieldColumns || []);
-    setSelectedTemplateId(template.id.toString());
-    toast.success(`Loaded template: ${template.name}`);
-  };
-
-  const handleTemplateSelect = (value: string) => {
-    if (value === "none") {
-      setSelectedTemplateId(null);
-      return;
-    }
-
-    // Handle suggested templates
-    if (value.startsWith("suggested-")) {
-      const index = parseInt(value.replace("suggested-", ""));
-      const suggested = SUGGESTED_TEMPLATES[index];
-      if (suggested) {
-        const mapping = suggested.mapping;
-        setHasHeaders(mapping.hasHeaders ?? true);
-        setDateColumn(mapping.dateColumn);
-        setDateFormat(mapping.dateFormat);
-        setDescriptionColumn(mapping.descriptionColumn);
-        setAmountInColumn(mapping.amountInColumn);
-        setAmountOutColumn(mapping.amountOutColumn);
-        setMatchFieldColumns(mapping.matchFieldColumns || []);
-        setSelectedTemplateId(value);
-        toast.success(`Loaded suggested template: ${suggested.name}`);
-      }
-      return;
-    }
-
-    // Handle user-saved templates
-    const template = savedTemplates.find(t => t.id.toString() === value);
-    if (template) {
-      applyTemplate(template);
-    }
-  };
 
   // Auto-detect columns when dialog opens
   useEffect(() => {
@@ -199,8 +80,6 @@ export function ColumnMappingDialog({
 
       if (detected.descriptionColumn) {
         setDescriptionColumn(detected.descriptionColumn.index);
-        // Default match field to description column
-        setMatchFieldColumns([detected.descriptionColumn.index]);
       }
 
       if (detected.amountInColumn) {
@@ -226,10 +105,10 @@ export function ColumnMappingDialog({
     return `Column ${index + 1}`;
   };
 
-  // Get preview rows (first 5 data rows)
+  // Get preview rows (first 3 data rows)
   const getPreviewRows = (): unknown[][] => {
     const startRow = hasHeaders ? 1 : 0;
-    return rows.slice(startRow, startRow + 5);
+    return rows.slice(startRow, startRow + 3);
   };
 
   // Get confidence badge for detection
@@ -278,7 +157,7 @@ export function ColumnMappingDialog({
       descriptionColumn: descriptionColumn!,
       amountInColumn: amountInColumn!,
       amountOutColumn: amountOutColumn!,
-      matchFieldColumns: matchFieldColumns.length > 0 ? matchFieldColumns : undefined,
+      matchFieldColumns: descriptionColumn !== null ? [descriptionColumn] : undefined,
       hasHeaders,
       useNegativeForOut: amountInColumn === amountOutColumn,
     };
@@ -306,25 +185,10 @@ export function ColumnMappingDialog({
     if (saveAsTemplate && templateName.trim()) {
       // User is saving a new template
       sourceTemplateName = templateName.trim();
-    } else if (selectedTemplateId && selectedTemplateId !== "none" && !selectedTemplateId.startsWith("suggested-")) {
-      // User selected an existing saved template - use its name
-      const selectedTemplate = savedTemplates.find(t => t.id.toString() === selectedTemplateId);
-      sourceTemplateName = selectedTemplate?.name;
     }
 
     onConfirm(mapping, sourceTemplateName);
     onOpenChange(false);
-  };
-
-  // Toggle match field column
-  const toggleMatchFieldColumn = (colIndex: number) => {
-    setMatchFieldColumns((prev) => {
-      if (prev.includes(colIndex)) {
-        return prev.filter((c) => c !== colIndex);
-      } else {
-        return [...prev, colIndex].sort((a, b) => a - b);
-      }
-    });
   };
 
   return (
@@ -339,54 +203,12 @@ export function ColumnMappingDialog({
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Load Template */}
-          <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30">
-            <FolderOpen className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <Label className="text-sm font-medium">Load Template</Label>
-              <p className="text-xs text-muted-foreground">Start from a template or previously saved mapping</p>
-            </div>
-            <Select value={selectedTemplateId || "none"} onValueChange={handleTemplateSelect}>
-              <SelectTrigger className="w-[220px]">
-                <SelectValue placeholder="Select template" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Start fresh</SelectItem>
-
-                {/* Suggested templates */}
-                <SelectGroup>
-                  <SelectLabel className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" />
-                    Suggested Templates
-                  </SelectLabel>
-                  {SUGGESTED_TEMPLATES.map((template, index) => (
-                    <SelectItem key={`suggested-${index}`} value={`suggested-${index}`}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-
-                {/* User-saved templates */}
-                {savedTemplates.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel>Your Saved Templates</SelectLabel>
-                    {savedTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id.toString()}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Headers Toggle */}
           <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="space-y-0.5">
               <Label htmlFor="headers-toggle">First row contains headers</Label>
               <p className="text-sm text-muted-foreground">
-                Turn this off if your file doesn't have column headers
+                Turn this off if your file doesn&apos;t have column headers
               </p>
             </div>
             <Switch id="headers-toggle" checked={hasHeaders} onCheckedChange={setHasHeaders} />
@@ -394,13 +216,13 @@ export function ColumnMappingDialog({
 
           {/* CSV Preview */}
           <div className="space-y-2">
-            <Label>Data Preview (first 5 rows)</Label>
-            <div className="border rounded-lg overflow-auto max-h-60">
+            <Label>Data Preview (first 3 rows)</Label>
+            <div className="border rounded-lg overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     {Array.from({ length: columnCount }).map((_, i) => (
-                      <TableHead key={i} className="min-w-[120px]">
+                      <TableHead key={i} className="min-w-[120px] max-w-[200px]">
                         {getColumnLabel(i)}
                       </TableHead>
                     ))}
@@ -409,11 +231,29 @@ export function ColumnMappingDialog({
                 <TableBody>
                   {getPreviewRows().map((row, rowIndex) => (
                     <TableRow key={rowIndex}>
-                      {Array.from({ length: columnCount }).map((_, colIndex) => (
-                        <TableCell key={colIndex} className="font-mono text-sm">
-                          {getCellString(row, colIndex) || <span className="text-muted-foreground">—</span>}
-                        </TableCell>
-                      ))}
+                      {Array.from({ length: columnCount }).map((_, colIndex) => {
+                        const cellValue = getCellString(row, colIndex);
+                        return (
+                          <TableCell key={colIndex} className="font-mono text-sm max-w-[200px]">
+                            {cellValue ? (
+                              <TooltipProvider delayDuration={300}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div className="truncate cursor-default">
+                                      {cellValue}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-[400px] break-words">
+                                    {cellValue}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        );
+                      })}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -580,35 +420,6 @@ export function ColumnMappingDialog({
                 </div>
               </div>
             )}
-
-            {/* Match Field Columns */}
-            <div className="grid grid-cols-[1fr_2fr] gap-4 items-start pt-4 border-t">
-              <div className="space-y-1">
-                <Label>Match Field Columns (Optional)</Label>
-                <p className="text-xs text-muted-foreground">
-                  Used for keyword categorization. Defaults to description if not set. Select multiple columns to
-                  concatenate them.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {Array.from({ length: columnCount }).map((_, i) => {
-                  const isSelected = matchFieldColumns.includes(i);
-                  return (
-                    <Button
-                      key={i}
-                      type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleMatchFieldColumn(i)}
-                      className={isSelected ? "bg-primary" : ""}
-                    >
-                      {isSelected && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                      {getColumnLabel(i)}
-                    </Button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Save as Template */}
             <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30 mt-4">

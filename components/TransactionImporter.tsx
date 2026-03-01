@@ -729,7 +729,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 </Button>
                 <Button
                   onClick={handleProcessFiles}
-                  disabled={uploadedFiles.length === 0 || isProcessing || uploadedFiles.some(f => f.bankId === null || (f.validationErrors && f.validationErrors.length > 0))}
+                  disabled={
+                    uploadedFiles.length === 0 || 
+                    isProcessing || 
+                    uploadedFiles.some(f => 
+                      f.bankId === null || 
+                      (f.validationErrors && f.validationErrors.length > 0) ||
+                      (f.bankId === "CUSTOM" && !f.mappingConfigured)
+                    )
+                  }
                 >
                   {isProcessing ? "Processing..." : "Process Files"}
                 </Button>
