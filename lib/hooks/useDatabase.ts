@@ -860,7 +860,7 @@ export async function deleteImport(id: number): Promise<void> {
 }
 
 export async function findDuplicateSignatures(
-  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number }>
+  transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number; source: string }>
 ): Promise<Set<string>> {
   return api.findDuplicateSignatures(transactions);
 }
