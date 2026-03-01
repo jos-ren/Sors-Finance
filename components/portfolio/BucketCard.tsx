@@ -65,7 +65,7 @@ export function BucketCard({ bucket }: BucketCardProps) {
         <div className="mt-3">
           <p className="text-sm text-muted-foreground">{bucket}</p>
           <p className="text-2xl font-bold tabular-nums mt-1">
-            {formatAmount(total ?? 0, (amount) => formatCurrency(amount, userCurrency))}
+            {formatAmount(total ?? 0, userCurrency)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
             {accountCount} {accountCount === 1 ? "account" : "accounts"}

@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { updatePortfolioItem, DbPortfolioItem, BucketType, PriceMode } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
 import { useSettings } from "@/lib/settings-context";
+import { formatCurrencyShort } from "@/lib/formatters";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -180,15 +181,6 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: userCurrency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   return (
@@ -369,7 +361,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total Value ({userCurrency})</span>
-                    <span className="text-lg font-semibold">{formatCurrency(totalValue)}</span>
+                    <span className="text-lg font-semibold">{formatCurrencyShort(totalValue, userCurrency)}</span>
                   </div>
                 </div>
               </>

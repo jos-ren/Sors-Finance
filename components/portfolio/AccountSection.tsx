@@ -113,7 +113,7 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
             </CollapsibleTrigger>
             <div className="flex items-center gap-2">
               <span className="font-semibold tabular-nums">
-                {formatAmount(total ?? 0, (amount) => formatCurrency(amount, userCurrency))}
+                {formatAmount(total ?? 0, userCurrency)}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

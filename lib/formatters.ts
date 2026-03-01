@@ -17,24 +17,51 @@ import { DEFAULT_CURRENCY, DEFAULT_LOCALE, MONTH_NAMES_SHORT } from "./constants
  * @param amount - The amount to format
  * @param currency - Currency code (default: CAD)
  * @param options - Additional Intl.NumberFormat options
- * @returns Formatted currency string
+ * @returns Formatted currency string with code
  *
  * @example
- * formatCurrency(1234.56) // "$1,234.56"
- * formatCurrency(-500, "USD") // "-$500.00"
- * formatCurrency(1000000, "EUR") // "€1,000,000.00"
+ * formatCurrency(1234.56, "CAD") // "$1,234.56 CAD"
+ * formatCurrency(-500, "USD") // "-$500.00 USD"
+ * formatCurrency(1000000, "EUR") // "€1,000,000.00 EUR"
  */
 export function formatCurrency(
   amount: number,
   currency: string = DEFAULT_CURRENCY,
   options?: Partial<Intl.NumberFormatOptions>
 ): string {
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, {
     style: "currency",
     currency,
+    currencyDisplay: "symbol", // Use simple symbol ($) not complex (US$)
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
     ...options,
+  }).format(amount);
+  return `${formatted} ${currency}`;
+}
+
+/**
+ * Format a number as currency without the currency code suffix
+ * Used for compact displays where space is limited
+ *
+ * @param amount - The amount to format
+ * @param currency - Currency code (default: CAD)
+ * @returns Formatted currency string without code
+ *
+ * @example
+ * formatCurrencyShort(1234.56, "CAD") // "$1,234.56"
+ * formatCurrencyShort(-500, "USD") // "-$500.00"
+ */
+export function formatCurrencyShort(
+  amount: number,
+  currency: string = DEFAULT_CURRENCY
+): string {
+  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+    style: "currency",
+    currency,
+    currencyDisplay: "symbol", // Use simple symbol ($) not complex (US$)
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
@@ -46,15 +73,22 @@ export function formatCurrency(
  * @returns Formatted currency string with sign
  *
  * @example
- * formatCurrencyWithSign(100) // "+$100.00"
- * formatCurrencyWithSign(-50) // "-$50.00"
+ * formatCurrencyWithSign(100, "CAD") // "+$100.00 CAD"
+ * formatCurrencyWithSign(-50, "USD") // "-$50.00 USD"
  */
 export function formatCurrencyWithSign(
   amount: number,
   currency: string = DEFAULT_CURRENCY
 ): string {
-  const formatted = formatCurrency(Math.abs(amount), currency);
-  return amount >= 0 ? `+${formatted}` : `-${formatted}`;
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, {
+    style: "currency",
+    currency,
+    currencyDisplay: "symbol", // Use simple symbol ($) not complex (US$)
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(amount));
+  const sign = amount >= 0 ? "+" : "-";
+  return `${sign}${formatted} ${currency}`;
 }
 
 /**
@@ -65,19 +99,21 @@ export function formatCurrencyWithSign(
  * @returns Compact formatted currency string
  *
  * @example
- * formatCurrencyCompact(1000) // "$1K"
- * formatCurrencyCompact(1500000) // "$1.5M"
+ * formatCurrencyCompact(1000, "CAD") // "$1K CAD"
+ * formatCurrencyCompact(1500000, "USD") // "$1.5M USD"
  */
 export function formatCurrencyCompact(
   amount: number,
   currency: string = DEFAULT_CURRENCY
 ): string {
-  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+  const formatted = new Intl.NumberFormat(DEFAULT_LOCALE, {
     style: "currency",
     currency,
+    currencyDisplay: "symbol", // Use simple symbol ($) not complex (US$)
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(amount);
+  return `${formatted} ${currency}`;
 }
 
 // ============================================

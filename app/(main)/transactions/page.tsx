@@ -25,6 +25,7 @@ import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
 import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import type { DbImport } from "@/lib/db";
 
 function formatDate(date: Date): string {
@@ -35,16 +36,7 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function ImportCard({ record, formatAmount }: { record: DbImport; formatAmount: (amount: number, formatter?: (n: number) => string) => string }) {
+function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-md border">
       <div className="flex items-center gap-3">
@@ -62,7 +54,7 @@ function ImportCard({ record, formatAmount }: { record: DbImport; formatAmount: 
             </span>
             <span className="flex items-center gap-1">
               <DollarSign className="h-3 w-3" />
-              {formatAmount(record.totalAmount, formatCurrency)}
+              {formatAmount(record.totalAmount, userCurrency)}
             </span>
           </div>
         </div>
@@ -78,6 +70,7 @@ export default function TransactionsPage() {
   const imports = useImports();
   const transactions = useTransactions();
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
   const categories = useCategories();
 
   const handleImportComplete = () => {
@@ -181,7 +174,7 @@ export default function TransactionsPage() {
                 ) : (
                   <div className="space-y-2">
                     {sortedImports.map((record) => (
-                      <ImportCard key={record.id} record={record} formatAmount={formatAmount} />
+                      <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
                     ))}
                   </div>
                 )}

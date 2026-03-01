@@ -5,7 +5,6 @@ export {
   DateCell,
   DescriptionCell,
   AmountCell,
-  formatCurrency,
   formatDate,
   Table,
   TableBody,

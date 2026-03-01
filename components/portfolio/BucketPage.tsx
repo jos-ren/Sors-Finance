@@ -104,7 +104,7 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
 
       {/* Total */}
       <div className="text-lg">
-        Total: <span className="font-bold text-2xl">{formatAmount(total ?? 0, (amount) => formatCurrency(amount, userCurrency))}</span>
+        Total: <span className="font-bold text-2xl">{formatAmount(total ?? 0, userCurrency)}</span>
       </div>
 
       {/* API Key Banner for Investments */}

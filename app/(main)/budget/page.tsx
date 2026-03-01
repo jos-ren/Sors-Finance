@@ -58,6 +58,7 @@ import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { useUnsavedChanges } from "@/lib/unsaved-changes-context";
 import { cn } from "@/lib/utils";
+import { useCurrency } from "@/lib/settings-context";
 import { toast } from "sonner";
 
 // ============================================
@@ -73,15 +74,6 @@ const MONTH_NAMES_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 ];
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 // ============================================
 // Types
@@ -273,6 +265,7 @@ function CategoryBudgetRow({
   row,
   viewMode,
   formatAmount,
+  userCurrency,
   isPrivacyMode,
   pendingChange,
   onMonthlyChange,
@@ -282,7 +275,8 @@ function CategoryBudgetRow({
 }: {
   row: BudgetCategoryRow;
   viewMode: "month" | "year";
-  formatAmount: (amount: number, formatter?: (n: number) => string) => string;
+  formatAmount: (amount: number, currency?: string, showCode?: boolean) => string;
+  userCurrency: string;
   isPrivacyMode: boolean;
   pendingChange?: PendingChange;
   onMonthlyChange: (categoryId: number, value: string) => void;
@@ -345,7 +339,7 @@ function CategoryBudgetRow({
                       </Badge>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {formatAmount(Math.abs(row.rollingBalance), formatCurrency)}
+                      {formatAmount(Math.abs(row.rollingBalance), userCurrency)}
                       {row.rollingBalance < 0 ? " borrowed" : " available"}
                     </span>
                   </div>
@@ -353,11 +347,11 @@ function CategoryBudgetRow({
                 <TooltipContent className="max-w-xs">
                   <div className="space-y-1 text-xs">
                     <p className="font-medium">Rolling Balance Calculation</p>
-                    <p>Yearly budget: {formatCurrency(row.yearlyBudget)}</p>
-                    <p>Monthly allowance: {formatCurrency(row.monthlyAllowance ?? 0)}</p>
-                    <p>YTD spent: {formatCurrency(row.ytdSpending)}</p>
+                    <p>Yearly budget: {formatAmount(row.yearlyBudget, userCurrency)}</p>
+                    <p>Monthly allowance: {formatAmount(row.monthlyAllowance ?? 0, userCurrency)}</p>
+                    <p>YTD spent: {formatAmount(row.ytdSpending, userCurrency)}</p>
                     <p className="pt-1 border-t">
-                      Balance: {formatCurrency(row.rollingBalance)}
+                      Balance: {formatAmount(row.rollingBalance, userCurrency)}
                     </p>
                   </div>
                 </TooltipContent>
@@ -400,7 +394,7 @@ function CategoryBudgetRow({
             "font-medium",
             isOverBudget && !isPrivacyMode && "text-red-500"
           )}>
-            {formatAmount(spent, formatCurrency)}
+            {formatAmount(spent, userCurrency)}
           </span>
         </div>
         {hasBudget && (
@@ -413,7 +407,7 @@ function CategoryBudgetRow({
               )}
             />
             <div className="text-[10px] text-muted-foreground text-right">
-              {Math.round(percentUsed)}% of {formatAmount(budget, formatCurrency)}
+              {Math.round(percentUsed)}% of {formatAmount(budget, userCurrency)}
             </div>
           </>
         )}
@@ -451,6 +445,7 @@ export default function BudgetPage() {
 
   // Hooks
   const { formatAmount, isPrivacyMode } = usePrivacy();
+  const userCurrency = useCurrency();
   const availablePeriods = useAvailablePeriods();
   const { setHasUnsavedChanges, setSaveHandler } = useUnsavedChanges();
   const budgetData = useBudgetPageData(
@@ -861,7 +856,7 @@ export default function BudgetPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(displayBudgeted, formatCurrency)}
+              {formatAmount(displayBudgeted, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               {viewMode === "month" ? "Monthly allocation" : "Yearly allocation"}
@@ -876,7 +871,7 @@ export default function BudgetPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(displaySpent, formatCurrency)}
+              {formatAmount(displaySpent, userCurrency)}
             </div>
             {displayBudgeted > 0 && (
               <>
@@ -900,7 +895,7 @@ export default function BudgetPage() {
               !isPrivacyMode && displayRemaining < 0 && "text-red-500",
               !isPrivacyMode && displayRemaining > 0 && "text-green-500"
             )}>
-              {formatAmount(displayRemaining, formatCurrency)}
+              {formatAmount(displayRemaining, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               {categoriesOverBudget > 0 ? (
@@ -1000,6 +995,7 @@ export default function BudgetPage() {
                   row={row}
                   viewMode={viewMode}
                   formatAmount={formatAmount}
+                  userCurrency={userCurrency}
                   isPrivacyMode={isPrivacyMode}
                   pendingChange={pendingChanges.get(row.categoryId)}
                   onMonthlyChange={handleMonthlyChange}

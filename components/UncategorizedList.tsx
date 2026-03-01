@@ -30,6 +30,7 @@ import { Plus, ChevronDown, ChevronRight } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import {
   TransactionTable,
   TableBody,
@@ -37,7 +38,6 @@ import {
   TableHeader,
   TableRow,
   TableCell,
-  formatCurrency,
   formatDate,
 } from "@/components/resolve-step";
 
@@ -75,6 +75,7 @@ export function UncategorizedList({
   const categoryInputRef = useRef<HTMLInputElement>(null);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
   const { formatAmount, isPrivacyMode } = usePrivacy();
+  const userCurrency = useCurrency();
 
   const toggleGroupExpanded = (matchField: string) => {
     setExpandedGroups(prev => {
@@ -342,11 +343,11 @@ export function UncategorizedList({
                   <TableCell className="whitespace-nowrap">
                     {group.totalOut > 0 ? (
                       <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                        {formatAmount(group.totalOut, formatCurrency)}
+                        {formatAmount(group.totalOut, userCurrency)}
                       </span>
                     ) : (
                       <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                        {formatAmount(group.totalIn, formatCurrency)}
+                        {formatAmount(group.totalIn, userCurrency)}
                       </span>
                     )}
                   </TableCell>
@@ -418,11 +419,11 @@ export function UncategorizedList({
                     <TableCell className="whitespace-nowrap text-xs">
                       {transaction.amountOut > 0 ? (
                         <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                          {formatAmount(transaction.amountOut, formatCurrency)}
+                          {formatAmount(transaction.amountOut, userCurrency)}
                         </span>
                       ) : (
                         <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                          {formatAmount(transaction.amountIn, formatCurrency)}
+                          {formatAmount(transaction.amountIn, userCurrency)}
                         </span>
                       )}
                     </TableCell>

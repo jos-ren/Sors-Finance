@@ -55,21 +55,13 @@ import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 
 interface TransactionDataTableProps {
   transactions: DbTransaction[];
   categories: DbCategory[];
   onDeleteTransaction?: (id: number) => void;
   onBulkDeleteTransactions?: (ids: number[]) => void;
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
 
 function formatDate(date: Date): string {
@@ -103,8 +95,9 @@ export function TransactionDataTable({
   // Edit state
   const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
 
-  // Privacy mode
+  // Privacy mode and user currency
   const { formatAmount, isPrivacyMode } = usePrivacy();
+  const userCurrency = useCurrency();
 
   // Get category name by ID
   const getCategoryName = (categoryId: number | null): string => {
@@ -192,13 +185,13 @@ export function TransactionDataTable({
           if (transaction.amountOut > 0) {
             return (
               <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>
-                {isPrivacyMode ? "" : "-"}{formatAmount(transaction.amountOut, formatCurrency)}
+                {isPrivacyMode ? "" : "-"}{formatAmount(transaction.amountOut, userCurrency)}
               </span>
             );
           }
           return (
             <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>
-              {isPrivacyMode ? "" : "+"}{formatAmount(transaction.amountIn, formatCurrency)}
+              {isPrivacyMode ? "" : "+"}{formatAmount(transaction.amountIn, userCurrency)}
             </span>
           );
         },
@@ -259,7 +252,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [categories, formatAmount, isPrivacyMode, onDeleteTransaction]
+    [categories, formatAmount, isPrivacyMode, onDeleteTransaction, userCurrency]
   );
 
   // Apply filters to transactions
@@ -415,16 +408,16 @@ export function TransactionDataTable({
           <div className="flex items-center gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">Income:</span>{" "}
-              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>{formatAmount(totals.income, formatCurrency)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-green-600"}`}>{formatAmount(totals.income, userCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Expenses:</span>{" "}
-              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>{formatAmount(totals.expenses, formatCurrency)}</span>
+              <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : "text-destructive"}`}>{formatAmount(totals.expenses, userCurrency)}</span>
             </div>
             <div>
               <span className="text-muted-foreground">Net:</span>{" "}
               <span className={`font-medium ${isPrivacyMode ? "text-muted-foreground" : totals.net >= 0 ? "text-green-600" : "text-destructive"}`}>
-                {formatAmount(totals.net, formatCurrency)}
+                {formatAmount(totals.net, userCurrency)}
               </span>
             </div>
           </div>

@@ -58,6 +58,7 @@ import {
   type DbPortfolioSnapshot,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
@@ -101,29 +102,11 @@ const bucketChartConfig = {
   Debt: { label: "Debt", color: "var(--alt-red)" },
 } satisfies ChartConfig;
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function formatCompact(amount: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    notation: "compact",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 type TrendPeriod = "all" | "year";
 
 export default function PortfolioPage() {
   const { formatAmount } = usePrivacy();
+  const userCurrency = useCurrency();
   const summary = useNetWorthSummary();
   const change = useNetWorthChange();
   const allSnapshots = usePortfolioSnapshots();
@@ -316,7 +299,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(netWorth, formatCurrency)}
+              {formatAmount(netWorth, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               {changeAmount >= 0 ? (
@@ -324,7 +307,7 @@ export default function PortfolioPage() {
               ) : (
                 <TrendingDown className="h-3 w-3 text-red-500" />
               )}
-              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, formatCurrency)} ({changePercent.toFixed(1)}%)
+              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, userCurrency)} ({changePercent.toFixed(1)}%)
             </p>
           </CardContent>
         </Card>
@@ -336,7 +319,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(totalAssets, formatCurrency)}
+              {formatAmount(totalAssets, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               Savings + Investments + Assets
@@ -351,7 +334,7 @@ export default function PortfolioPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatAmount(totalDebt, formatCurrency)}
+              {formatAmount(totalDebt, userCurrency)}
             </div>
             <p className="text-xs text-muted-foreground">
               All liabilities
@@ -413,7 +396,7 @@ export default function PortfolioPage() {
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  tickFormatter={(value) => formatAmount(value, formatCompact)}
+                  tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                 />
                 <ChartTooltip
                   content={
@@ -429,7 +412,7 @@ export default function PortfolioPage() {
                               {netWorthChartConfig[name as keyof typeof netWorthChartConfig]?.label || name}
                             </span>
                             <span className="font-mono font-medium tabular-nums">
-                              {formatAmount(Number(value), formatCurrency)}
+                              {formatAmount(Number(value), userCurrency)}
                             </span>
                           </div>
                         </div>
@@ -557,7 +540,7 @@ export default function PortfolioPage() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    tickFormatter={(value) => formatCompact(value)}
+                    tickFormatter={(value) => formatAmount(value, userCurrency, false)}
                   />
                   <ChartTooltip
                     cursor={false}
@@ -636,21 +619,21 @@ export default function PortfolioPage() {
                             })}
                           </span>
                           <span className="text-lg font-semibold">
-                            {formatAmount(snapshot.netWorth, formatCurrency)}
+                            {formatAmount(snapshot.netWorth, userCurrency)}
                           </span>
                         </div>
                         <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
                           <span className="text-emerald-500">
-                            Savings: {formatAmount(snapshot.totalSavings, formatCompact)}
+                            Savings: {formatAmount(snapshot.totalSavings, userCurrency, false)}
                           </span>
                           <span className="text-blue-500">
-                            Investments: {formatAmount(snapshot.totalInvestments, formatCompact)}
+                            Investments: {formatAmount(snapshot.totalInvestments, userCurrency, false)}
                           </span>
                           <span className="text-amber-500">
-                            Assets: {formatAmount(snapshot.totalAssets, formatCompact)}
+                            Assets: {formatAmount(snapshot.totalAssets, userCurrency, false)}
                           </span>
                           <span className="text-red-500">
-                            Debt: {formatAmount(snapshot.totalDebt, formatCompact)}
+                            Debt: {formatAmount(snapshot.totalDebt, userCurrency, false)}
                           </span>
                         </div>
                       </div>

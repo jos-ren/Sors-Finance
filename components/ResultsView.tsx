@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { Transaction, DateFilter } from "@/lib/types";
 import { usePrivacy } from "@/lib/privacy-context";
+import { useCurrency } from "@/lib/settings-context";
 import { DbCategory } from "@/lib/db";
 import {
   getTransactionsByCategory,
@@ -59,15 +60,7 @@ const MONTH_NAMES = [
 export function ResultsView({ transactions, categories }: ResultsViewProps) {
   const [dateFilter, setDateFilter] = useState<DateFilter>({ type: "all" });
   const { formatAmount, isPrivacyMode } = usePrivacy();
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
+  const userCurrency = useCurrency();
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat("en-CA", {
@@ -218,7 +211,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                         isPrivacyMode ? "text-muted-foreground" : total >= 0 ? "text-green-600" : "text-red-600"
                       }`}
                     >
-                      {formatAmount(Math.abs(total), formatCurrency)}
+                      {formatAmount(Math.abs(total), userCurrency)}
                     </span>
                   </div>
                 </AccordionTrigger>
@@ -247,11 +240,11 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                           <TableCell className="w-[140px] text-right whitespace-nowrap">
                             {transaction.amountOut > 0 ? (
                               <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                                {formatAmount(transaction.amountOut, formatCurrency)}
+                                {formatAmount(transaction.amountOut, userCurrency)}
                               </span>
                             ) : (
                               <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                                {formatAmount(transaction.amountIn, formatCurrency)}
+                                {formatAmount(transaction.amountIn, userCurrency)}
                               </span>
                             )}
                           </TableCell>
@@ -282,7 +275,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                         isPrivacyMode ? "text-muted-foreground" : uncategorizedTotal >= 0 ? "text-green-600" : "text-red-600"
                       }`}
                     >
-                      {formatAmount(Math.abs(uncategorizedTotal), formatCurrency)}
+                      {formatAmount(Math.abs(uncategorizedTotal), userCurrency)}
                     </span>
                   </div>
                 </AccordionTrigger>
@@ -311,11 +304,11 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                           <TableCell className="w-[140px] text-right whitespace-nowrap">
                             {transaction.amountOut > 0 ? (
                               <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                                {formatAmount(transaction.amountOut, formatCurrency)}
+                                {formatAmount(transaction.amountOut, userCurrency)}
                               </span>
                             ) : (
                               <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                                {formatAmount(transaction.amountIn, formatCurrency)}
+                                {formatAmount(transaction.amountIn, userCurrency)}
                               </span>
                             )}
                           </TableCell>

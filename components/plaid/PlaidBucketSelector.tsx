@@ -43,6 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, Plus, PiggyBank, TrendingUp, Home } from "lucide-react";
 import { toast } from "sonner";
 import { invalidatePortfolio } from "@/lib/hooks/useDatabase";
+import { formatCurrencyShort } from "@/lib/formatters";
 
 type BucketType = "Savings" | "Investments" | "Assets" | "Debt";
 
@@ -236,15 +237,6 @@ export function PlaidBucketSelector({
       });
       return newMap;
     });
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-CA", {
-      style: "currency",
-      currency: "CAD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   const getAccountsForBucket = (bucket: BucketType) => {
@@ -448,7 +440,7 @@ export function PlaidBucketSelector({
                       {account.mask && <span className="text-muted-foreground font-normal ml-2">••{account.mask}</span>}
                     </p>
                     <span className="text-sm text-muted-foreground shrink-0">
-                      {formatCurrency(account.currentBalance)}
+                      {formatCurrencyShort(account.currentBalance)}
                     </span>
                   </div>
 

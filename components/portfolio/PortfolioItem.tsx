@@ -18,7 +18,7 @@ import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
-import { formatCurrency as formatCurrencyUtil } from "@/lib/formatters";
+import { formatCurrency } from "@/lib/formatters";
 
 interface PortfolioItemProps {
   item: DbPortfolioItem;
@@ -160,7 +160,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             <p className="text-xs text-muted-foreground truncate">
               {item.ticker}
               {item.quantity !== undefined && ` · ${item.quantity} ${item.quantity === 1 ? "share" : "shares"}`}
-              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatCurrencyUtil(item.pricePerUnit, item.currency)}`}
+              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatCurrency(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
           ) : item.notes ? (
@@ -187,7 +187,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             </Button>
           )}
           <span className="font-semibold tabular-nums">
-            {formatAmount(item.currentValue, (amount) => formatCurrencyUtil(amount, userCurrency))}
+            {formatAmount(item.currentValue, userCurrency)}
           </span>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
