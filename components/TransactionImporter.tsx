@@ -41,7 +41,7 @@ import { FileUpload } from "@/components/FileUpload";
 import { PlaidAccountSelector } from "@/components/PlaidAccountSelector";
 import { ConflictResolver } from "@/components/ConflictResolver";
 import { DuplicateResolver } from "@/components/DuplicateResolver";
-import { UncategorizedList, UncategorizedBulkActions } from "@/components/UncategorizedList";
+import { UncategorizedList } from "@/components/UncategorizedList";
 import { ResultsView } from "@/components/ResultsView";
 import {
   ResolveSection,
@@ -119,12 +119,17 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   const excludedCategory = categories.find(c => c.name === SYSTEM_CATEGORIES.EXCLUDED);
 
   // Effect to reprocess transactions when categories change after a keyword is added
+  // Also clears wasUncategorized for newly-categorized transactions so they auto-move to the right section
   useEffect(() => {
     if (pendingReprocess.current) {
       setTransactions(prev => {
         if (prev.length === 0) return prev;
         pendingReprocess.current = false;
-        return categorizeTransactions(prev, categories);
+        const recategorized = categorizeTransactions(prev, categories);
+        return recategorized.map(t => ({
+          ...t,
+          wasUncategorized: t.wasUncategorized ? (!t.categoryId && !t.isConflict) : false,
+        }));
       });
     }
   }, [categories]);
@@ -164,6 +169,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
   // Check for still uncategorized (originally uncategorized and still no category)
   const stillUncategorized = uncategorizedTransactions.filter(t => !t.categoryId).length;
+
 
   // Check for unresolved duplicates (neither import nor skip)
   const unresolvedDuplicates = duplicateTransactions.filter(
@@ -405,14 +411,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     }
   };
 
-  const handleReprocessTransactions = () => {
-    if (categories.length === 0) return;
-    const categorized = categorizeTransactions(transactions, categories);
-    setTransactions(categorized);
-    updateSectionStates(categorized);
-    toast.success("Transactions recategorized");
-  };
-
   const handleResolveConflict = (transactionId: string, categoryId: string) => {
     setTransactions((prev) => {
       const updated = prev.map((t) =>
@@ -462,6 +460,26 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       keywords: [...category.keywords, keyword.trim()],
     });
     // Mark for reprocess when categories update via live query
+    pendingReprocess.current = true;
+  };
+
+  const handleRemoveKeyword = async (categoryId: string, keyword: string) => {
+    const category = categories.find((c) => c.uuid === categoryId);
+    if (!category || !category.id) return;
+
+    await updateCategory(category.id, {
+      keywords: category.keywords.filter((k) => k !== keyword),
+    });
+    pendingReprocess.current = true;
+  };
+
+  const handleEditKeyword = async (categoryId: string, oldKeyword: string, newKeyword: string) => {
+    const category = categories.find((c) => c.uuid === categoryId);
+    if (!category || !category.id) return;
+
+    await updateCategory(category.id, {
+      keywords: category.keywords.map((k) => (k === oldKeyword ? newKeyword : k)),
+    });
     pendingReprocess.current = true;
   };
 
@@ -833,6 +851,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 conflictTransactions={conflictTransactions}
                 categories={categories}
                 onResolve={handleResolveConflict}
+                onRemoveKeyword={handleRemoveKeyword}
+                onEditKeyword={handleEditKeyword}
               />
             </ResolveSection>
 
@@ -850,14 +870,6 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                 <Badge className="bg-orange-200 text-orange-800 dark:bg-orange-900/50 dark:text-orange-400">
                   {uncategorizedTransactions.length}
                 </Badge>
-              }
-              bulkActions={
-                stillUncategorized > 0 && (
-                  <UncategorizedBulkActions
-                    onReprocess={handleReprocessTransactions}
-                    hasKeywordsToApply={false}
-                  />
-                )
               }
               emptyMessage="All transactions categorized"
               completeMessage="All categorized"

@@ -26,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
@@ -436,12 +436,6 @@ export function UncategorizedList({
         </TableBody>
       </TransactionTable>
 
-      {/* Keyword count summary */}
-      {addedKeywords.size > 0 && (
-        <p className="text-sm text-muted-foreground mt-3">
-          {addedKeywords.size} keyword{addedKeywords.size !== 1 ? 's' : ''} added — will be applied on next reprocess
-        </p>
-      )}
 
       {/* Add Keyword Dialog */}
       <Dialog open={selectedTransaction !== null} onOpenChange={handleCloseDialog}>
@@ -579,18 +573,13 @@ export function UncategorizedList({
 // Bulk action buttons component for use in ResolveSection
 interface UncategorizedBulkActionsProps {
   onReprocess: () => void;
-  hasKeywordsToApply: boolean;
 }
 
-export function UncategorizedBulkActions({
-  onReprocess,
-  hasKeywordsToApply
-}: UncategorizedBulkActionsProps) {
-  if (!hasKeywordsToApply) return null;
-
+export function UncategorizedBulkActions({ onReprocess }: UncategorizedBulkActionsProps) {
   return (
-    <Button size="sm" onClick={onReprocess}>
-      Apply Keywords
+    <Button size="sm" variant="outline" onClick={onReprocess}>
+      <RotateCcw className="h-3 w-3 mr-1" />
+      Re-process
     </Button>
   );
 }

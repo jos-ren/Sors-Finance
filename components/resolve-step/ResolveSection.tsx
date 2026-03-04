@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
+import React from "react";
+import { ChevronDown, ChevronRight, CheckCircle2, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
@@ -37,6 +37,8 @@ interface ResolveSectionProps {
   onOpenChange: (open: boolean) => void;
   /** Optional bulk action buttons (rendered in header) */
   bulkActions?: React.ReactNode;
+  /** Actions rendered in the header row, outside the collapsible trigger */
+  headerActions?: React.ReactNode;
   /** Content to render when expanded (typically a table) */
   children?: React.ReactNode;
   /** Custom empty state message when count is 0 */
@@ -57,6 +59,7 @@ export function ResolveSection({
   isOpen,
   onOpenChange,
   bulkActions,
+  headerActions,
   children,
   emptyMessage = "No items to show",
   completeMessage = "All done!",
@@ -65,21 +68,6 @@ export function ResolveSection({
   const isComplete = status === "complete";
   const isInfo = status === "info";
   const hasContent = count > 0;
-
-  const descriptionRef = useRef<HTMLSpanElement>(null);
-  const [isTruncated, setIsTruncated] = useState(false);
-
-  useEffect(() => {
-    const checkTruncation = () => {
-      if (descriptionRef.current) {
-        setIsTruncated(descriptionRef.current.scrollWidth > descriptionRef.current.clientWidth);
-      }
-    };
-
-    checkTruncation();
-    window.addEventListener("resize", checkTruncation);
-    return () => window.removeEventListener("resize", checkTruncation);
-  }, [description]);
 
   // Badge styling based on status
   const getBadgeVariant = (): "default" | "secondary" | "destructive" | "outline" => {
@@ -99,13 +87,16 @@ export function ResolveSection({
   return (
     <Collapsible open={isOpen} onOpenChange={onOpenChange}>
       {/* Header - always visible, with distinct background */}
+      <div className={cn(
+        "flex items-center",
+        "bg-muted border-b border-border/50",
+        "sticky top-0 z-10"
+      )}>
       <CollapsibleTrigger asChild>
         <button
           className={cn(
-            "w-full flex items-center gap-3 px-4 py-3 text-left",
-            "bg-muted hover:bg-muted/80 transition-colors",
-            "border-b border-border/50",
-            "sticky top-0 z-10"
+            "flex-1 flex items-center gap-3 px-4 py-3 text-left",
+            "hover:bg-accent active:bg-accent/70 transition-colors cursor-pointer select-none",
           )}
         >
           {/* Expand/Collapse indicator */}
@@ -122,8 +113,25 @@ export function ResolveSection({
             {icon}
           </span>
 
-          {/* Title */}
+          {/* Title + info icon */}
           <span className="font-medium shrink-0">{title}</span>
+          {description && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="text-muted-foreground hover:text-foreground transition-colors cursor-default shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Info className="h-4 w-4" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-sm">
+                  <p>{description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* Count badge(s) */}
           <span className="shrink-0">
@@ -133,36 +141,14 @@ export function ResolveSection({
               </Badge>
             )}
           </span>
-
-          {/* Description - takes remaining space, truncates with tooltip */}
-          {description && (
-            isTruncated ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      ref={descriptionRef}
-                      className="flex-1 text-sm text-muted-foreground truncate text-right"
-                    >
-                      {description}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-md">
-                    <p>{description}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <span
-                ref={descriptionRef}
-                className="flex-1 text-sm text-muted-foreground truncate text-right"
-              >
-                {description}
-              </span>
-            )
-          )}
         </button>
       </CollapsibleTrigger>
+      {headerActions && (
+        <div className="shrink-0 px-3">
+          {headerActions}
+        </div>
+      )}
+      </div>
 
       {/* Collapsible content - no border/card wrapper */}
       <CollapsibleContent>

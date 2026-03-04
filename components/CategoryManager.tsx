@@ -284,6 +284,7 @@ export function CategoryManager({
   const [keywords, setKeywords] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [keywordError, setKeywordError] = useState("");
+  const [editingKeyword, setEditingKeyword] = useState<{ old: string; value: string } | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<DbCategory | null>(null);
 
   const sensors = useSensors(
@@ -356,11 +357,22 @@ export function CategoryManager({
     setKeywords(prev => prev.filter((k) => k !== keyword));
   };
 
+  const handleEditKeyword = (oldKeyword: string, newValue: string) => {
+    const trimmed = newValue.trim();
+    if (!trimmed || trimmed === oldKeyword) {
+      setEditingKeyword(null);
+      return;
+    }
+    setKeywords(prev => prev.map(k => k === oldKeyword ? trimmed : k));
+    setEditingKeyword(null);
+  };
+
   const resetForm = () => {
     setNewCategoryName("");
     setKeywords([]);
     setSearchInput("");
     setKeywordError("");
+    setEditingKeyword(null);
   };
 
   const openEditDialog = (category: DbCategory) => {
@@ -616,22 +628,49 @@ export function CategoryManager({
                   )}
                   {filteredKeywords.length > 0 ? (
                     <div className="space-y-0.5">
-                      {filteredKeywords.map((keyword) => (
-                        <div
-                          key={keyword}
-                          className="group flex items-start justify-between gap-2 px-3 py-2 rounded-md hover:bg-accent/50 transition-colors"
-                        >
-                          <span className="font-mono text-sm break-all leading-relaxed">{keyword}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveKeyword(keyword)}
-                            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      {filteredKeywords.map((keyword) => {
+                        const isEditing = editingKeyword?.old === keyword;
+                        return (
+                          <div
+                            key={keyword}
+                            className="group flex items-center justify-between gap-2 px-3 py-2 rounded-md hover:bg-accent/50 transition-colors"
                           >
-                            <X className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-                          </Button>
-                        </div>
-                      ))}
+                            {isEditing ? (
+                              <Input
+                                value={editingKeyword.value}
+                                onChange={(e) => setEditingKeyword({ ...editingKeyword, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleEditKeyword(keyword, editingKeyword.value);
+                                  if (e.key === "Escape") setEditingKeyword(null);
+                                }}
+                                onBlur={() => handleEditKeyword(keyword, editingKeyword.value)}
+                                className="h-6 text-xs font-mono flex-1 min-w-0"
+                                autoFocus
+                              />
+                            ) : (
+                              <span className="font-mono text-sm break-all leading-relaxed flex-1">{keyword}</span>
+                            )}
+                            <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingKeyword({ old: keyword, value: keyword })}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveKeyword(keyword)}
+                                className="h-6 w-6 p-0"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : keywords.length === 0 ? (
                     <div className="flex items-center justify-center h-full text-sm text-muted-foreground py-8">
