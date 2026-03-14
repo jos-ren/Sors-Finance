@@ -13,8 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updatePortfolioSnapshot, DbPortfolioSnapshot } from "@/lib/hooks/useDatabase";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency, useTimezone } from "@/lib/settings-context";
 import { usePrivacy } from "@/lib/privacy-context";
+import { formatDateTime } from "@/lib/formatters";
 import { toast } from "sonner";
 
 interface EditSnapshotDialogProps {
@@ -47,6 +48,7 @@ export function EditSnapshotDialog({ open, onOpenChange, snapshot }: EditSnapsho
   const [debt, setDebt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const userCurrency = useCurrency();
+  const userTimezone = useTimezone();
   const { formatAmount } = usePrivacy();
 
   // Reset form when snapshot changes
@@ -103,12 +105,7 @@ export function EditSnapshotDialog({ open, onOpenChange, snapshot }: EditSnapsho
         <DialogHeader>
           <DialogTitle>Edit Snapshot</DialogTitle>
           <DialogDescription>
-            {snapshot.date.toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+            {formatDateTime(snapshot.date, userTimezone)}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>

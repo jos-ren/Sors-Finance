@@ -15,25 +15,9 @@ import {
 } from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
 
-// ─── Section header ───────────────────────────────────────────────────────────
+// ─── Section header & Row group (re-exported from general components) ────────
 
-export function SectionHeader({ label }: { label: string }) {
-  return (
-    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-0.5">
-      {label}
-    </p>
-  );
-}
-
-// ─── Row group (rounded bordered container with dividers) ─────────────────────
-
-export function RowGroup({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border overflow-hidden divide-y divide-border bg-card">
-      {children}
-    </div>
-  );
-}
+export { SectionHeader, RowGroup } from "@/components/ui/section";
 
 // ─── NavigateRow ──────────────────────────────────────────────────────────────
 

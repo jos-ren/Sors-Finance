@@ -152,8 +152,8 @@ export default function FinnhubSettingsPage() {
             onOpenChange={(open) => setSetupOpen(open)}
           >
             <CollapsibleTrigger asChild>
-              <button className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-accent/30 transition-colors border-t">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted/50 shrink-0">
+              <div className="flex items-center gap-3 py-4 pl-4 pr-5 cursor-pointer hover:bg-muted/40 transition-colors border-t">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                   <Monitor className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -162,13 +162,18 @@ export default function FinnhubSettingsPage() {
                     How to add your Finnhub API key
                   </p>
                 </div>
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0",
-                    effectiveSetupOpen && "rotate-180"
-                  )}
-                />
-              </button>
+                <div className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
+                  effectiveSetupOpen ? "bg-muted" : ""
+                )}>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                      effectiveSetupOpen && "rotate-180"
+                    )}
+                  />
+                </div>
+              </div>
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="px-4 pb-5 pt-3 space-y-4 border-t">

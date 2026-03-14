@@ -514,12 +514,12 @@ export default function SettingsPage() {
                 ) : plaidConfigured ? (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                     <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                    Connected
+                    Configured
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
                     <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                    Not connected
+                    Not configured
                   </span>
                 )}
               </div>

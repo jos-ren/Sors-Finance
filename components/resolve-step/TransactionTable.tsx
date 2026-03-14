@@ -18,14 +18,8 @@ import {
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
-
-export const formatDate = (date: Date) => {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(date);
-};
+import { formatDate } from "@/lib/formatters";
+export { formatDate } from "@/lib/formatters";
 
 // Reusable cell components
 interface DateCellProps {
