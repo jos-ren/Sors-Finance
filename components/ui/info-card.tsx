@@ -59,6 +59,10 @@ interface InfoCardProps {
   children: React.ReactNode;
   /** Optional element pinned to the right (e.g. a Button) */
   action?: React.ReactNode;
+  /** Full-width content rendered below the header row (e.g. expandable details) */
+  footer?: React.ReactNode;
+  /** Called when the icon or content area is clicked (not the action slot) */
+  onClick?: () => void;
   className?: string;
 }
 
@@ -68,6 +72,8 @@ export function InfoCard({
   title,
   children,
   action,
+  footer,
+  onClick,
   className,
 }: InfoCardProps) {
   const s = variantStyles[variant];
@@ -76,29 +82,40 @@ export function InfoCard({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-lg border p-4",
+        "rounded-lg border p-4",
         s.container,
         className
       )}
     >
-      {/* Icon slot */}
-      <div
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-          s.iconWrap
-        )}
-      >
-        <span className={s.iconColor}>{renderedIcon}</span>
+      {/* Header row: icon + content + action */}
+      <div className="flex items-start gap-3">
+        {/* Icon + Content — clickable when onClick is provided */}
+        <div
+          className={cn("flex items-start gap-3 flex-1 min-w-0", onClick && "cursor-pointer")}
+          onClick={onClick}
+        >
+          <div
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+              s.iconWrap
+            )}
+          >
+            <span className={s.iconColor}>{renderedIcon}</span>
+          </div>
+          <div className="flex-1 min-w-0 space-y-1 pt-0.5">
+            {title && <p className="text-sm font-medium leading-none">{title}</p>}
+            <div className="text-sm text-muted-foreground">{children}</div>
+          </div>
+        </div>
+
+        {/* Optional right-side action — height matches the icon slot so buttons center with the first row */}
+        {action && <div className="shrink-0 flex items-center h-9">{action}</div>}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1 pt-0.5">
-        {title && <p className="text-sm font-medium leading-none">{title}</p>}
-        <div className="text-sm text-muted-foreground">{children}</div>
-      </div>
-
-      {/* Optional right-side action */}
-      {action && <div className="shrink-0">{action}</div>}
+      {/* Full-width footer below the header row — left-aligned with the title (past the icon + gap) */}
+      {footer && (
+        <div className="text-sm text-muted-foreground mt-3 ml-12 mr-9">{footer}</div>
+      )}
     </div>
   );
 }

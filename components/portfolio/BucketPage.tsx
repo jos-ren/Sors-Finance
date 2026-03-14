@@ -45,7 +45,12 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
   const [syncResult, setSyncResult] = useState<{
     accountsUpdated: number;
     accountsFailed: number;
+    pricesUpdated: number;
+    pricesFailed: number;
     errors: string[];
+    priceErrors: Array<{ ticker: string; itemName: string; error: string }>;
+    syncedAccounts: Array<{ accountId: string; name: string; balance: number }>;
+    syncedPrices: Array<{ ticker: string; itemName: string; price: number; currency: string }>;
   } | null>(null);
 
   // Header actions
@@ -97,7 +102,12 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
         <PlaidSyncBanner
           accountsUpdated={syncResult.accountsUpdated}
           accountsFailed={syncResult.accountsFailed}
+          pricesUpdated={syncResult.pricesUpdated}
+          pricesFailed={syncResult.pricesFailed}
           errors={syncResult.errors}
+          priceErrors={syncResult.priceErrors}
+          syncedAccounts={syncResult.syncedAccounts}
+          syncedPrices={syncResult.syncedPrices}
           onDismiss={() => setSyncResult(null)}
         />
       )}
