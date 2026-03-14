@@ -23,8 +23,8 @@ function normalizeDate(date: Date): string {
 }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Loader2, Save, FileClock, Trash2, Building2 } from "lucide-react";
+import { InfoCard } from "@/components/ui/info-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
 
@@ -729,17 +729,13 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {errors.length > 0 && (
-        <Alert variant="destructive" className="flex-shrink-0 mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Errors occurred during processing:</strong>
-            <ul className="list-disc list-inside mt-2">
-              {errors.map((error, index) => (
-                <li key={index}>{error}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
+        <InfoCard variant="danger" title="Errors occurred during processing:" className="flex-shrink-0 mb-4">
+          <ul className="list-disc list-inside mt-1">
+            {errors.map((error, index) => (
+              <li key={index}>{error}</li>
+            ))}
+          </ul>
+        </InfoCard>
       )}
 
       <Tabs value={currentStep} onValueChange={(value) => setCurrentStep(value as WizardStep)} className="flex flex-col flex-1 min-h-0">
@@ -913,26 +909,24 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         <TabsContent value="resolve" className="flex flex-col flex-1 min-h-0 mt-0 gap-3">
           {/* Category info banner */}
           {!categoryInfoDismissed && (
-            <Alert className="flex-shrink-0">
-              <Info className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between">
-                <span>
-                  You can view and manage all your categories on the{" "}
-                  <Link href="/settings?tab=configs" className="font-medium underline underline-offset-4 hover:text-primary">
-                    Settings → Configs
-                  </Link>
-                  .
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
+            <InfoCard
+              variant="info"
+              className="flex-shrink-0"
+              action={
+                <button
                   onClick={handleDismissCategoryInfo}
-                  className="shrink-0 ml-2 h-6 px-2"
+                  className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted transition-colors"
                 >
                   <X className="h-3 w-3" />
-                </Button>
-              </AlertDescription>
-            </Alert>
+                </button>
+              }
+            >
+              You can view and manage all your categories on the{" "}
+              <Link href="/settings/categories" className="font-medium underline underline-offset-4 hover:text-primary">
+                Settings → Configs
+              </Link>
+              .
+            </InfoCard>
           )}
 
           {/* All sections in a single scrollable container */}
@@ -1050,13 +1044,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           <div className="flex-1" />
 
           {transactions.length === 0 && (
-            <Alert className="flex-shrink-0">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No transactions to import. All transactions were either duplicates or removed.
-                Click &quot;Start Over&quot; to upload different files.
-              </AlertDescription>
-            </Alert>
+            <InfoCard variant="default" className="flex-shrink-0">
+              No transactions to import. All transactions were either duplicates or removed.
+              Click &quot;Start Over&quot; to upload different files.
+            </InfoCard>
           )}
 
           {/* Action Buttons */}
@@ -1083,22 +1074,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
         <TabsContent value="results" className="flex flex-col flex-1 min-h-0 mt-0 gap-4">
           {hasBlockingIssues && (
-            <Alert variant="destructive" className="flex-shrink-0">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Cannot import yet:</strong> {getBlockingMessage()} still need to be resolved.
-                Go back to resolve these issues.
-              </AlertDescription>
-            </Alert>
+            <InfoCard variant="danger" title="Cannot import yet:" className="flex-shrink-0">
+              {getBlockingMessage()} still need to be resolved. Go back to resolve these issues.
+            </InfoCard>
           )}
 
           {!hasBlockingIssues && summary.uncategorized > 0 && (
-            <Alert className="flex-shrink-0">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Note:</strong> {summary.uncategorized} transactions have no category assigned. They will be imported as uncategorized.
-              </AlertDescription>
-            </Alert>
+            <InfoCard variant="warning" title="Note:" className="flex-shrink-0">
+              {summary.uncategorized} transactions have no category assigned. They will be imported as uncategorized.
+            </InfoCard>
           )}
 
           <div className="flex-1 min-h-0 overflow-y-auto">

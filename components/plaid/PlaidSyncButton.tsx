@@ -11,6 +11,7 @@ interface PlaidSyncButtonProps {
   size?: "default" | "sm" | "lg" | "icon";
   className?: string;
   itemId?: number;
+  bankName?: string;
   onSyncComplete?: (result: {
     accountsUpdated: number;
     accountsFailed: number;
@@ -41,6 +42,7 @@ export function PlaidSyncButton({
   size = "sm",
   className,
   itemId,
+  bankName,
   onSyncComplete
 }: PlaidSyncButtonProps) {
   const [isSyncing, setIsSyncing] = useState(false);
@@ -98,7 +100,8 @@ export function PlaidSyncButton({
         const parts: string[] = [];
         if (accountsUpdated > 0) parts.push(`${accountsUpdated} account${accountsUpdated === 1 ? '' : 's'}`);
         if (pricesUpdated > 0) parts.push(`${pricesUpdated} price${pricesUpdated === 1 ? '' : 's'}`);
-        toast.success(`Synced ${parts.join(' and ')} successfully`);
+        const prefix = bankName ? `${bankName} — ` : '';
+        toast.success(`${prefix}Synced ${parts.join(' and ')} successfully`);
       } else if (totalUpdated > 0 && totalFailed > 0) {
         const successParts: string[] = [];
         if (accountsUpdated > 0) successParts.push(`${accountsUpdated} account${accountsUpdated === 1 ? '' : 's'}`);
@@ -106,14 +109,16 @@ export function PlaidSyncButton({
         const failParts: string[] = [];
         if (accountsFailed > 0) failParts.push(`${accountsFailed} account${accountsFailed === 1 ? '' : 's'}`);
         if (pricesFailed > 0) failParts.push(`${pricesFailed} price${pricesFailed === 1 ? '' : 's'}`);
-        toast.warning(`Synced ${successParts.join(' and ')}, but ${failParts.join(' and ')} failed`);
+        const prefix = bankName ? `${bankName} — ` : '';
+        toast.warning(`${prefix}Synced ${successParts.join(' and ')}, but ${failParts.join(' and ')} failed`);
       } else if (totalFailed > 0) {
         const failParts: string[] = [];
         if (accountsFailed > 0) failParts.push(`${accountsFailed} account${accountsFailed === 1 ? '' : 's'}`);
         if (pricesFailed > 0) failParts.push(`${pricesFailed} price${pricesFailed === 1 ? '' : 's'}`);
-        toast.error(`Failed to sync ${failParts.join(' and ')}`);
+        const prefix = bankName ? `${bankName} — ` : '';
+        toast.error(`${prefix}Failed to sync ${failParts.join(' and ')}`);
       } else {
-        toast.info("Nothing to sync");
+        toast.info(bankName ? `${bankName} — Nothing to sync` : "Nothing to sync");
       }
 
       // After successful sync, create/update today's snapshot

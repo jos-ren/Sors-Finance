@@ -27,7 +27,8 @@ import { toast } from "sonner";
 import type { ColumnMapping, ColumnDetectionResult } from "@/lib/parsers/types";
 import { detectColumns } from "@/lib/parsers/column-detection";
 import { getCellString } from "@/lib/parsers/utils";
-import { Info, Save } from "lucide-react";
+import { Save, Info } from "lucide-react";
+import { InfoCard } from "@/components/ui/info-card";
 
 interface ColumnMappingDialogProps {
   open: boolean;
@@ -408,17 +409,11 @@ export function ColumnMappingDialog({
               </Select>
             </div>
 
-            {/* Same column warning/info */}
+            {/* Same column info */}
             {amountInColumn !== null && amountOutColumn !== null && amountInColumn === amountOutColumn && (
-              <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-blue-900 dark:text-blue-100">Same column for in and out</p>
-                  <p className="text-blue-700 dark:text-blue-300">
-                    Positive values will be treated as money in, negative values as money out.
-                  </p>
-                </div>
-              </div>
+              <InfoCard variant="info" title="Same column for in and out">
+                Positive values will be treated as money in, negative values as money out.
+              </InfoCard>
             )}
 
             {/* Save as Template */}

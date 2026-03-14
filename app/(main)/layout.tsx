@@ -108,6 +108,8 @@ function ScrollableContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex-1 overflow-auto">
       {children}
+      {/* Breathing room at the bottom of every page */}
+      <div className="h-16" />
     </div>
   );
 }

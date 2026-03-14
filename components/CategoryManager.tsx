@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useLayoutEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -52,7 +51,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
-  rectSortingStrategy,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -62,8 +61,9 @@ interface CategoryManagerProps {
   onCategoryUpdate: (id: number, name: string, keywords: string[]) => Promise<void> | void;
   onCategoryDelete: (id: number) => Promise<void> | void;
   onCategoryReorder: (activeId: number, overId: number) => Promise<void> | void;
-  singleColumn?: boolean;
   getTransactionCount?: (categoryUuid: string) => number;
+  addDialogOpen?: boolean;
+  onAddDialogOpenChange?: (open: boolean) => void;
 }
 
 // Component to dynamically show as many keyword tags as fit on one line
@@ -141,11 +141,11 @@ function DynamicKeywordList({ keywords }: { keywords: string[] }) {
   const hiddenCount = keywords.length - visibleCount;
 
   return (
-    <div ref={containerRef} className="w-full min-w-0">
-      {/* Hidden measurement container */}
+    <div ref={containerRef} className="w-full min-w-0 overflow-hidden">
+      {/* Invisible, out-of-flow measurement container — must NOT affect horizontal layout */}
       <div
         ref={measureRef}
-        className="flex gap-1 h-0 overflow-hidden"
+        className="absolute invisible flex gap-1 pointer-events-none"
         aria-hidden="true"
       >
         {keywords.slice().reverse().map((keyword, idx) => (
@@ -211,47 +211,58 @@ function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) 
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-start justify-between p-3 bg-card border rounded-lg"
+      className="flex items-center gap-3 p-4 hover:bg-muted/40 transition-colors"
     >
-      <div className="flex items-start gap-2 flex-1 min-w-0">
-        <button
-          className="self-center cursor-grab active:cursor-grabbing touch-none flex-shrink-0"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-5 w-5 text-muted-foreground" />
-        </button>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-2">
-            <h4 className="font-medium text-sm">{category.name}</h4>
-            {isSystemCategory && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="outline" className="text-xs gap-1 px-1.5">
-                      <Lock className="h-3 w-3" />
-                      System
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>System category - cannot be deleted</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-          <div className="mt-2">
-            <DynamicKeywordList keywords={category.keywords} />
-          </div>
+      {/* Drag handle takes the role of the icon slot */}
+      <button
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted cursor-grab active:cursor-grabbing touch-none",
+          isDragging && "opacity-50"
+        )}
+        {...attributes}
+        {...listeners}
+        title="Drag to reorder"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium">{category.name}</p>
+          {isSystemCategory && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs gap-1 px-1.5">
+                    <Lock className="h-3 w-3" />
+                    System
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>System category — cannot be deleted</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <div className="mt-1.5">
+          <DynamicKeywordList keywords={category.keywords} />
         </div>
       </div>
-      <div className="flex space-x-1 self-center">
+
+      {/* Actions */}
+      <div className="flex items-center gap-1 shrink-0">
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={() => onEdit(category)}
-          disabled={category.name?.toLowerCase() === 'uncategorized'}
-          title={category.name?.toLowerCase() === 'uncategorized' ? "Uncategorized cannot be edited" : "Edit category"}
+          disabled={category.name?.toLowerCase() === "uncategorized"}
+          title={
+            category.name?.toLowerCase() === "uncategorized"
+              ? "Uncategorized cannot be edited"
+              : "Edit category"
+          }
         >
           <Pencil className="h-4 w-4" />
         </Button>
@@ -262,7 +273,9 @@ function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) 
           disabled={isSystemCategory}
           title={isSystemCategory ? "System categories cannot be deleted" : "Delete category"}
         >
-          <Trash2 className={`h-4 w-4 ${isSystemCategory ? "text-muted-foreground" : "text-destructive"}`} />
+          <Trash2
+            className={`h-4 w-4 ${isSystemCategory ? "text-muted-foreground" : "text-destructive"}`}
+          />
         </Button>
       </div>
     </div>
@@ -275,10 +288,16 @@ export function CategoryManager({
   onCategoryUpdate,
   onCategoryDelete,
   onCategoryReorder,
-  singleColumn = false,
   getTransactionCount,
+  addDialogOpen,
+  onAddDialogOpenChange,
 }: CategoryManagerProps) {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [internalAddOpen, setInternalAddOpen] = useState(false);
+  const isAddDialogOpen = addDialogOpen !== undefined ? addDialogOpen : internalAddOpen;
+  const setIsAddDialogOpen = (open: boolean) => {
+    if (addDialogOpen === undefined) setInternalAddOpen(open);
+    onAddDialogOpenChange?.(open);
+  };
   const [editingCategory, setEditingCategory] = useState<DbCategory | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
@@ -401,21 +420,13 @@ export function CategoryManager({
     !checkKeywordExists(searchInput.trim()).exists;
 
   return (
-    <Card className="flex flex-col min-h-0">
-      <CardHeader className="flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <CardTitle>Category Manager</CardTitle>
-          <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsAddDialogOpen(open); }}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Category
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-              <DialogHeader className="flex-shrink-0 pb-4">
-                <DialogTitle>Add New Category</DialogTitle>
-              </DialogHeader>
+    <div className="flex flex-col min-h-0">
+      {/* Add Category Dialog - controlled from parent */}
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsAddDialogOpen(open); }}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0 pb-4">
+              <DialogTitle>Add New Category</DialogTitle>
+            </DialogHeader>
               <div className="flex flex-col gap-5 overflow-hidden flex-1">
                 {/* Category Name */}
                 <div className="flex-shrink-0 space-y-2">
@@ -504,46 +515,40 @@ export function CategoryManager({
                 <Button onClick={handleAddCategory} disabled={!newCategoryName.trim()}>Create Category</Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+        </Dialog>
+      {categories.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center rounded-lg border bg-card">
+          <p className="font-medium">No categories yet</p>
+          <p className="text-sm text-muted-foreground mt-1">Add a category to get started.</p>
         </div>
-      </CardHeader>
-      <CardContent className="flex-1 min-h-0 flex flex-col">
-        {categories.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No categories yet. Add one to get started!
-          </p>
-        ) : (
-          <div className="flex-1 min-h-0 border rounded-lg overflow-hidden">
-            <div className="h-full overflow-y-auto p-3">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={categories.map((cat) => cat.id!)}
-                  strategy={rectSortingStrategy}
-                >
-                  <div className={`grid grid-cols-1 ${!singleColumn ? 'xl:grid-cols-2' : ''} gap-2`}>
-                    {categories.map((category) => (
-                      <SortableItem
-                        key={category.id}
-                        category={category}
-                        onEdit={openEditDialog}
-                        onDeleteConfirm={setCategoryToDelete}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
-          </div>
-        )}
+      ) : (
+        <div className="rounded-lg border overflow-hidden divide-y divide-border bg-card">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={categories.map((cat) => cat.id!)}
+              strategy={verticalListSortingStrategy}
+            >
+              {categories.map((category) => (
+                <SortableItem
+                  key={category.id}
+                  category={category}
+                  onEdit={openEditDialog}
+                  onDeleteConfirm={setCategoryToDelete}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+      )}
 
-        {/* Edit Dialog */}
-        <Dialog open={editingCategory !== null} onOpenChange={(open) => !open && closeEditDialog()}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-            <DialogHeader className="flex-shrink-0 pb-4">
+      {/* Edit Dialog */}
+      <Dialog open={editingCategory !== null} onOpenChange={(open) => !open && closeEditDialog()}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0 pb-4">
               <DialogTitle>Edit Category</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-5 overflow-hidden flex-1">
@@ -722,7 +727,6 @@ export function CategoryManager({
           </AlertDialogContent>
         </AlertDialog>
 
-      </CardContent>
-    </Card>
+    </div>
   );
 }

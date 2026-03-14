@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Loader2, CheckCircle2, X, AlertTriangle } from "lucide-react";
+import { Search, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useHasFinnhubApiKey } from "@/lib/settings-context";
+import { InfoCard } from "@/components/ui/info-card";
 
 export interface TickerResult {
   symbol: string;
@@ -254,54 +255,54 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
   // If we have a selected value, show the confirmation card
   if (value) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/30">
-        <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{value.name}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {value.symbol} · {value.currency} {value.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 flex-shrink-0"
-          onClick={handleClear}
-          title="Clear and search again"
-          disabled={disabled}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      <InfoCard
+        variant="success"
+        title={value.name}
+        action={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={handleClear}
+            title="Clear and search again"
+            disabled={disabled}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        }
+      >
+        {value.symbol} · {value.currency}{" "}
+        {value.price.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}
+      </InfoCard>
     );
   }
 
   // Show loading state while fetching price
   if (isLoadingPrice) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg bg-muted border">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Loading price...</p>
-      </div>
+      <InfoCard variant="default" icon={<Loader2 className="h-4 w-4 animate-spin" />}>
+        Loading price...
+      </InfoCard>
     );
   }
 
   // Show error state if price fetch failed
   if (error && !open) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-        <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0" />
-        <p className="text-sm text-destructive flex-1">{error}</p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setError(null)}
-        >
-          Try again
-        </Button>
-      </div>
+      <InfoCard
+        variant="danger"
+        action={
+          <Button type="button" variant="ghost" size="sm" onClick={() => setError(null)}>
+            Try again
+          </Button>
+        }
+      >
+        {error}
+      </InfoCard>
     );
   }
 
@@ -318,15 +319,12 @@ export function TickerSearch({ value, onSelect, disabled }: TickerSearchProps) {
 
       {/* API key warning for stocks mode */}
       {!hasApiKey && searchMode === "stocks" && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-          <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
-          <p className="text-sm text-muted-foreground">
-            Finnhub API key required for stock search.{" "}
-            <Link href="/settings?tab=integrations" className="text-primary underline underline-offset-2 hover:text-primary/80">
-              Add one in Integrations
-            </Link>
-          </p>
-        </div>
+        <InfoCard variant="warning">
+          Finnhub API key required for stock search.{" "}
+          <Link href="/settings" className="text-primary underline underline-offset-2 hover:text-primary/80">
+            Add one in Settings
+          </Link>
+        </InfoCard>
       )}
 
       {/* Search input */}

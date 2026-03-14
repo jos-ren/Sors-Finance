@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { RefreshCw, AlertTriangle, Info, TrendingUp, Wallet } from "lucide-react";
+import { RefreshCw, Info, TrendingUp, Wallet } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -20,7 +20,7 @@ import { addPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useSettings } from "@/lib/settings-context";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoCard } from "@/components/ui/info-card";
 import {
   Tooltip,
   TooltipContent,
@@ -216,15 +216,12 @@ export function AddItemDialog({
             {isInvestment && !isLoading && !investmentType && (
               <div className="grid gap-3">
                 {showApiKeyWarning && (
-                  <Alert className="border-yellow-500/50 bg-yellow-500/10">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-xs">
-                      <strong>API key required for live prices.</strong> Add a Finnhub API key to track stocks, crypto, and metals.{" "}
-                      <Link href="/settings?tab=integrations" className="underline font-medium">
-                        Add in Integrations
-                      </Link>
-                    </AlertDescription>
-                  </Alert>
+                  <InfoCard variant="warning">
+                    <strong>API key required for live prices.</strong> Add a Finnhub API key to track stocks, crypto, and metals.{" "}
+                    <Link href="/settings" className="underline font-medium">
+                      Add in Settings
+                    </Link>
+                  </InfoCard>
                 )}
                 <Label>What type of investment?</Label>
                 <div className="grid grid-cols-2 gap-3">

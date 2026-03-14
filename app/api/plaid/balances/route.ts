@@ -472,36 +472,38 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // After Plaid sync, refresh ticker prices
-    // Get user currency from settings
-    const userCurrencySetting = await db
-      .select()
-      .from(settings)
-      .where(and(eq(settings.userId, userId), eq(settings.key, "currency")))
-      .limit(1);
+    // After Plaid sync, refresh ticker prices — only when syncing ALL banks (no specific itemId)
+    if (!itemId) {
+      // Get user currency from settings
+      const userCurrencySetting = await db
+        .select()
+        .from(settings)
+        .where(and(eq(settings.userId, userId), eq(settings.key, "currency")))
+        .limit(1);
 
-    const userCurrency = userCurrencySetting[0]?.value || "CAD";
+      const userCurrency = userCurrencySetting[0]?.value || "CAD";
 
-    // Pre-warm currency cache before price refresh
-    try {
-      const { warmCurrencyCache } = await import('@/lib/currency-cache');
-      const cacheResult = await warmCurrencyCache(userId, cookies);
-      console.log(`[Sync All] Currency cache warmed: ${cacheResult.refreshed} rates refreshed, ${cacheResult.failed} failed`);
-    } catch (error) {
-      console.error("Error warming currency cache:", error);
-      // Continue even if cache warming fails
-    }
+      // Pre-warm currency cache before price refresh
+      try {
+        const { warmCurrencyCache } = await import('@/lib/currency-cache');
+        const cacheResult = await warmCurrencyCache(userId, cookies);
+        console.log(`[Sync All] Currency cache warmed: ${cacheResult.refreshed} rates refreshed, ${cacheResult.failed} failed`);
+      } catch (error) {
+        console.error("Error warming currency cache:", error);
+        // Continue even if cache warming fails
+      }
 
-    // Refresh ticker prices for all user's investment items
-    try {
-      const priceRefreshResult = await refreshTickerPricesForUser(userId, userCurrency, cookies);
-      result.pricesUpdated = priceRefreshResult.updated;
-      result.pricesFailed = priceRefreshResult.failed.length;
-      result.priceErrors = priceRefreshResult.failed;
-      result.syncedPrices = priceRefreshResult.synced;
-    } catch (error) {
-      console.error("Error refreshing ticker prices during sync:", error);
-      // Continue even if price refresh fails
+      // Refresh ticker prices for all user's investment items
+      try {
+        const priceRefreshResult = await refreshTickerPricesForUser(userId, userCurrency, cookies);
+        result.pricesUpdated = priceRefreshResult.updated;
+        result.pricesFailed = priceRefreshResult.failed.length;
+        result.priceErrors = priceRefreshResult.failed;
+        result.syncedPrices = priceRefreshResult.synced;
+      } catch (error) {
+        console.error("Error refreshing ticker prices during sync:", error);
+        // Continue even if price refresh fails
+      }
     }
 
     return NextResponse.json({

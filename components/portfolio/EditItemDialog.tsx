@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, AlertTriangle, Info } from "lucide-react";
+import { RefreshCw, Info } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -22,7 +22,7 @@ import { useSettings } from "@/lib/settings-context";
 import { formatCurrencyShort } from "@/lib/formatters";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { InfoCard } from "@/components/ui/info-card";
 import {
   Tooltip,
   TooltipContent,
@@ -232,16 +232,13 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                     : "You enter and update the price manually"}
                 </p>
                 {priceMode === "ticker" && showApiKeyWarning && (
-                  <Alert className="mt-2 border-yellow-500/50 bg-yellow-500/10">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-xs">
-                      <strong>API key required.</strong> Ticker lookup won&apos;t work without a Finnhub API key.{" "}
-                      <Link href="/settings" className="underline font-medium">
-                        Add API key in Settings
-                      </Link>{" "}
-                      or switch to Manual mode.
-                    </AlertDescription>
-                  </Alert>
+                  <InfoCard variant="warning" className="mt-2">
+                    <strong>API key required.</strong> Ticker lookup won&apos;t work without a Finnhub API key.{" "}
+                    <Link href="/settings" className="underline font-medium">
+                      Add API key in Settings
+                    </Link>{" "}
+                    or switch to Manual mode.
+                  </InfoCard>
                 )}
               </div>
             )}
