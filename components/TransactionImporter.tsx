@@ -24,16 +24,9 @@ function normalizeDate(date: Date): string {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Link2, Loader2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, HelpCircle, Copy, RotateCcw, CircleCheck, X, Info, FileUp, Loader2, Save, FileClock, Trash2, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import Link from "next/link";
 import { toast } from "sonner";
@@ -56,11 +49,14 @@ import {
 import {
   useCategories,
   useTransactions,
+  useImportDrafts,
+  invalidateImportDrafts,
   addCategory,
   updateCategory,
 } from "@/lib/hooks";
-import { addTransactionsBulk, addImport, findDuplicateSignatures } from "@/lib/db/client";
+import { addTransactionsBulk, addImport, findDuplicateSignatures, saveImportDraft, deleteImportDraft } from "@/lib/db/client";
 import { SYSTEM_CATEGORIES } from "@/lib/db";
+import type { ImportDraftData, DbImportDraft } from "@/lib/db/types";
 
 interface TransactionImporterProps {
   onComplete?: () => void;
@@ -84,6 +80,11 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   const [errors, setErrors] = useState<string[]>([]);
   const [categoryInfoDismissed, setCategoryInfoDismissed] = useState(getCategoryInfoDismissed);
   const [plaidEndDate, setPlaidEndDate] = useState<string | null>(null); // Track Plaid end date for saving
+
+  // Draft state
+  const [draftUuid, setDraftUuid] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const importDrafts = useImportDrafts();
 
   const handleDismissCategoryInfo = () => {
     localStorage.setItem(CATEGORY_INFO_DISMISSED_KEY, "true");
@@ -489,12 +490,93 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     setTransactions([]);
     setUploadedFiles([]);
     setErrors([]);
+    setDraftUuid(null);
     setSectionsOpen({
       conflicts: false,
       uncategorized: false,
       duplicates: false,
       categorized: false,
     });
+  };
+
+  // Draft serialization
+  const serializeDraftData = (): ImportDraftData => ({
+    currentStep,
+    importSource: importSource as "manual" | "plaid",
+    transactions: transactions.map((t) => ({
+      ...t,
+      date: t.date.toISOString(),
+    })),
+    plaidEndDate,
+    sectionsOpen,
+    errors,
+    filesMeta: uploadedFiles.map((f) => ({
+      name: f.file.name,
+      bankId: f.bankId,
+      templateName: f.templateName,
+    })),
+  });
+
+  const loadDraft = (draft: DbImportDraft) => {
+    const data = draft.draftData;
+    setDraftUuid(draft.uuid);
+    setImportSource(data.importSource);
+    setPlaidEndDate(data.plaidEndDate);
+    setSectionsOpen(data.sectionsOpen);
+    setErrors(data.errors);
+    setTransactions(
+      data.transactions.map((t) => ({
+        ...t,
+        date: new Date(t.date),
+      }))
+    );
+    // Restore uploaded files as empty File stubs (originals can't be serialized)
+    setUploadedFiles(
+      data.filesMeta.map((meta) => ({
+        file: new File([], meta.name),
+        bankId: meta.bankId,
+        templateName: meta.templateName,
+      }))
+    );
+    setCurrentStep(data.currentStep as WizardStep);
+  };
+
+  const handleSaveDraft = async () => {
+    if (isSavingDraft || !importSource) return;
+    setIsSavingDraft(true);
+    try {
+      const sources = [...new Set(transactions.map((t) => t.source))];
+      const name =
+        importSource === "plaid"
+          ? sources[0] || "Plaid Import"
+          : uploadedFiles[0]?.file.name || "Import Draft";
+
+      const result = await saveImportDraft({
+        uuid: draftUuid ?? undefined,
+        name,
+        importSource,
+        currentStep,
+        transactionCount: transactions.length,
+        draftData: serializeDraftData(),
+      });
+      setDraftUuid(result.uuid);
+      invalidateImportDrafts();
+      toast.success("Draft saved");
+    } catch {
+      toast.error("Failed to save draft");
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  const handleDeleteDraft = async (id: number) => {
+    try {
+      await deleteImportDraft(id);
+      invalidateImportDrafts();
+      toast.success("Draft deleted");
+    } catch {
+      toast.error("Failed to delete draft");
+    }
   };
 
   const handleFinish = async () => {
@@ -608,6 +690,21 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         toast.success(`Imported ${totalAdded} transactions successfully!`);
       }
 
+      // Delete the draft if this import was from a draft
+      if (draftUuid) {
+        try {
+          const drafts = importDrafts ?? [];
+          const draft = drafts.find((d) => d.uuid === draftUuid);
+          if (draft?.id) {
+            await deleteImportDraft(draft.id);
+            invalidateImportDrafts();
+          }
+        } catch {
+          // Non-critical
+        }
+        setDraftUuid(null);
+      }
+
       onComplete?.();
     } catch (error) {
       console.error('Failed to save transactions:', error);
@@ -705,16 +802,64 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               }}
             >
               <CardContent className="flex flex-col items-center justify-center p-6 text-center space-y-3">
-                <Link2 className="h-12 w-12 text-muted-foreground" />
+                <img src="/logos/plaid.png" alt="Plaid" className="h-12 w-auto object-contain" />
                 <div>
-                  <h4 className="font-semibold text-base">Connect with Plaid</h4>
+                  <h4 className="font-semibold text-base">Import from Bank</h4>
                   <CardDescription className="mt-1">
-                    Automatically sync transactions from your connected bank accounts
+                    Import transactions directly from your bank account using Plaid
                   </CardDescription>
                 </div>
               </CardContent>
             </Card>
           </div>
+
+          {/* Continue Import - Saved Drafts */}
+          {importDrafts && importDrafts.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium text-muted-foreground">Continue a saved import</h4>
+              <div className="space-y-2">
+                {importDrafts.map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="flex items-center justify-between py-2.5 px-4 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => loadDraft(draft)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileClock className="h-4 w-4 text-amber-500" />
+                      <div className="flex items-center gap-4">
+                        <p className="font-medium text-sm">{draft.name}</p>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>{draft.transactionCount} transactions</span>
+                          <span>Step: {draft.currentStep}</span>
+                          <span>Saved {new Date(draft.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs capitalize">
+                        {draft.importSource === "plaid" ? (
+                          <><Building2 className="h-3 w-3 mr-1" />Plaid</>
+                        ) : (
+                          <><FileUp className="h-3 w-3 mr-1" />File</>
+                        )}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (draft.id) handleDeleteDraft(draft.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Spacer to keep action buttons at bottom */}
           <div className="flex-1" />
@@ -773,8 +918,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               <AlertDescription className="flex items-center justify-between">
                 <span>
                   You can view and manage all your categories on the{" "}
-                  <Link href="/categories" className="font-medium underline underline-offset-4 hover:text-primary">
-                    Categories page
+                  <Link href="/settings?tab=configs" className="font-medium underline underline-offset-4 hover:text-primary">
+                    Settings → Configs
                   </Link>
                   .
                 </span>
@@ -920,6 +1065,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               <RotateCcw className="h-4 w-4 mr-1" />
               Start Over
             </Button>
+            <Button variant="outline" onClick={handleSaveDraft} disabled={isSavingDraft || transactions.length === 0}>
+              <Save className="h-4 w-4 mr-1" />
+              {isSavingDraft ? "Saving..." : "Save Draft"}
+            </Button>
             <Button
               onClick={() => setCurrentStep("results")}
               disabled={transactions.length === 0 || hasBlockingIssues}
@@ -963,6 +1112,10 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             <Button variant="outline" onClick={handleReset}>
               <RotateCcw className="h-4 w-4 mr-1" />
               Start Over
+            </Button>
+            <Button variant="outline" onClick={handleSaveDraft} disabled={isSavingDraft || transactions.length === 0}>
+              <Save className="h-4 w-4 mr-1" />
+              {isSavingDraft ? "Saving..." : "Save Draft"}
             </Button>
             <Button onClick={handleFinish} disabled={hasBlockingIssues || isSaving}>
               {isSaving ? (

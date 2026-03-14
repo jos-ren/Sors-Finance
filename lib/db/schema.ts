@@ -302,6 +302,31 @@ export const currencyExchangeRates = sqliteTable(
 );
 
 // ============================================
+// Import Drafts Table
+// ============================================
+
+export const importDrafts = sqliteTable(
+  "import_drafts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    name: text("name").notNull(),
+    importSource: text("import_source").notNull(), // "manual" | "plaid"
+    currentStep: text("current_step").notNull(), // WizardStep
+    transactionCount: integer("transaction_count").notNull().default(0),
+    draftData: text("draft_data", { mode: "json" }).notNull(), // Full serialized state
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("import_drafts_user_idx").on(table.userId),
+  ]
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
@@ -336,6 +361,9 @@ export type Session = typeof sessions.$inferSelect;
 
 export type CurrencyExchangeRateRow = typeof currencyExchangeRates.$inferSelect;
 export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInsert;
+
+export type ImportDraftRow = typeof importDrafts.$inferSelect;
+export type ImportDraftInsert = typeof importDrafts.$inferInsert;
 
 // ============================================
 // Plaid Items Table

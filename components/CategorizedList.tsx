@@ -73,7 +73,7 @@ export function CategorizedList({ transactions, categories, onChangeCategory }: 
     <div ref={containerRef}>
       <table className="w-full caption-bottom text-sm" style={{ tableLayout: "fixed" }}>
         <colgroup>
-          <col style={{ width: 100 }} />
+          <col style={{ width: 120 }} />
           <col />
           <col style={{ width: 100 }} />
           <col style={{ width: 200 }} />

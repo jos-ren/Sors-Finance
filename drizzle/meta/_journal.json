@@ -64,6 +64,13 @@
       "when": 1772340397584,
       "tag": "0008_true_tattoo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1773451438514,
+      "tag": "0009_stormy_groot",
+      "breakpoints": true
     }
   ]
 }

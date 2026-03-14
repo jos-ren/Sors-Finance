@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown } from "lucide-react";
+import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown, FileClock, Trash2 } from "lucide-react";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +23,12 @@ import { toast } from "sonner";
 import { TransactionImporter } from "@/components/TransactionImporter";
 import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
-import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
+import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
+import { deleteImportDraft } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
 import type { DbImport } from "@/lib/db";
+import type { DbImportDraft } from "@/lib/db/types";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -64,10 +66,44 @@ function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; 
   );
 }
 
+function DraftCard({ draft, onDelete }: { draft: DbImportDraft; onDelete: (id: number) => void }) {
+  return (
+    <div className="flex items-center justify-between py-2 px-3 rounded-md border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
+      <div className="flex items-center gap-3">
+        <FileClock className="h-4 w-4 text-amber-500" />
+        <div className="flex items-center gap-4">
+          <p className="font-medium text-sm">{draft.name}</p>
+          <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">Draft</Badge>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatDate(new Date(draft.updatedAt))}
+            </span>
+            <span className="flex items-center gap-1">
+              <Hash className="h-3 w-3" />
+              {draft.transactionCount}
+            </span>
+            <span className="text-xs capitalize">Step: {draft.currentStep}</span>
+          </div>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+        onClick={() => { if (draft.id) onDelete(draft.id); }}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 export default function TransactionsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const imports = useImports();
+  const importDrafts = useImportDrafts();
   const transactions = useTransactions();
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
@@ -76,7 +112,18 @@ export default function TransactionsPage() {
   const handleImportComplete = () => {
     invalidateTransactions();
     invalidateImports();
+    invalidateImportDrafts();
     setIsImportOpen(false);
+  };
+
+  const handleDeleteDraft = async (id: number) => {
+    try {
+      await deleteImportDraft(id);
+      invalidateImportDrafts();
+      toast.success("Draft deleted");
+    } catch {
+      toast.error("Failed to delete draft");
+    }
   };
 
   // Header actions for sticky header
@@ -163,7 +210,7 @@ export default function TransactionsPage() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent>
-                {sortedImports.length === 0 ? (
+                {sortedImports.length === 0 && (!importDrafts || importDrafts.length === 0) ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <FileX className="h-10 w-10 text-muted-foreground mb-3" />
                     <p className="font-medium">No imports yet</p>
@@ -173,6 +220,9 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {importDrafts && importDrafts.length > 0 && importDrafts.map((draft) => (
+                      <DraftCard key={`draft-${draft.id}`} draft={draft} onDelete={handleDeleteDraft} />
+                    ))}
                     {sortedImports.map((record) => (
                       <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
                     ))}

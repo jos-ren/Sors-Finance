@@ -22,6 +22,9 @@ import {
   Database,
   Monitor,
   Loader2,
+  FileText,
+  Tag,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +70,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
   SUPPORTED_CURRENCIES,
@@ -81,6 +90,18 @@ import { useAuth } from "@/lib/auth-context";
 import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
 import { PlaidBankingConnections } from "@/components/plaid/PlaidBankingConnections";
+import { CategoryManager } from "@/components/CategoryManager";
+import {
+  useCategories,
+  useTransactionCount,
+  useTransactions,
+  addCategory,
+  updateCategory,
+  deleteCategory,
+  reorderCategories,
+  recategorizeTransactions,
+  type RecategorizeMode,
+} from "@/lib/hooks";
 
 // Generate timezone list with UTC offsets and friendly names
 function getTimezoneWithOffset(tz: string): { value: string; label: string; offset: number } {
@@ -224,6 +245,36 @@ export default function SettingsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const dataFileInputRef = useRef<HTMLInputElement>(null);
 
+  // Import template state
+  interface TemplateItem {
+    id: number;
+    uuid: string;
+    name: string;
+    mapping: { dateColumn?: number; descriptionColumn?: number; amountInColumn?: number; amountOutColumn?: number; dateFormat?: string; hasHeaders?: boolean; useNegativeForOut?: boolean; matchFieldColumns?: number[] };
+    createdAt: string;
+    updatedAt: string;
+  }
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateItem | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editMapping, setEditMapping] = useState({ dateColumn: 0, descriptionColumn: 1, amountInColumn: 2, amountOutColumn: 3, hasHeaders: true, useNegativeForOut: false });
+  const [deletingTemplateId, setDeletingTemplateId] = useState<number | null>(null);
+
+  // Categories state (for Configs tab)
+  const categories = useCategories();
+  const transactionCount = useTransactionCount();
+  const transactions = useTransactions();
+  const [isRecategorizing, setIsRecategorizing] = useState(false);
+
+  const getTransactionCountByCategory = (categoryUuid: string): number => {
+    if (!transactions) return 0;
+    return transactions.filter(t => {
+      const category = categories?.find(c => c.id === t.categoryId);
+      return category?.uuid === categoryUuid;
+    }).length;
+  };
+
   // API Configuration status
   const [finnhubConfigured, setFinnhubConfigured] = useState<boolean | null>(null);
   const [plaidConfigured, setPlaidConfigured] = useState<boolean | null>(null);
@@ -242,6 +293,141 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Logout failed:", error);
       toast.error("Failed to log out");
+    }
+  };
+
+  // Import template CRUD
+  const loadTemplates = async () => {
+    setIsLoadingTemplates(true);
+    try {
+      const res = await fetch("/api/custom-import-templates");
+      if (res.ok) {
+        const { data } = await res.json();
+        setTemplates(data || []);
+      }
+    } catch {
+      console.warn("Failed to load templates");
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "configs") {
+      loadTemplates();
+    }
+  }, [activeTab]);
+
+  const handleEditTemplate = (template: TemplateItem) => {
+    setEditingTemplate(template);
+    setEditName(template.name);
+    setEditMapping({
+      dateColumn: template.mapping.dateColumn ?? 0,
+      descriptionColumn: template.mapping.descriptionColumn ?? 1,
+      amountInColumn: template.mapping.amountInColumn ?? 2,
+      amountOutColumn: template.mapping.amountOutColumn ?? 3,
+      hasHeaders: template.mapping.hasHeaders ?? true,
+      useNegativeForOut: template.mapping.useNegativeForOut ?? false,
+    });
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!editingTemplate) return;
+    try {
+      const res = await fetch(`/api/custom-import-templates/${editingTemplate.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), mapping: editMapping }),
+      });
+      if (res.ok) {
+        toast.success("Template updated");
+        setEditingTemplate(null);
+        loadTemplates();
+      } else {
+        toast.error("Failed to update template");
+      }
+    } catch {
+      toast.error("Failed to update template");
+    }
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+    try {
+      const res = await fetch(`/api/custom-import-templates/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Template deleted");
+        setDeletingTemplateId(null);
+        loadTemplates();
+      } else {
+        toast.error("Failed to delete template");
+      }
+    } catch {
+      toast.error("Failed to delete template");
+    }
+  };
+
+  // Category handlers (for Configs tab)
+  const handleRecategorize = async (mode: RecategorizeMode) => {
+    setIsRecategorizing(true);
+    try {
+      const result = await recategorizeTransactions(mode);
+      if (result.updated > 0) {
+        toast.success(
+          `Re-categorized ${result.updated} transaction${result.updated !== 1 ? 's' : ''}` +
+          (result.conflicts > 0 ? ` (${result.conflicts} conflicts skipped)` : '')
+        );
+      } else if (result.conflicts > 0) {
+        toast.warning(`No transactions updated. ${result.conflicts} had keyword conflicts.`);
+      } else {
+        toast.info('No transactions needed re-categorization.');
+      }
+    } catch {
+      toast.error('Failed to re-categorize transactions');
+    } finally {
+      setIsRecategorizing(false);
+    }
+  };
+
+  const handleAddCategory = async (name: string, keywords: string[]) => {
+    try {
+      await addCategory(name, keywords);
+      toast.success(`Category "${name}" created`);
+    } catch {
+      toast.error("Failed to create category");
+    }
+  };
+
+  const handleUpdateCategory = async (id: number, name: string, keywords: string[]) => {
+    try {
+      const result = await updateCategory(id, { name, keywords });
+      const changes: string[] = [];
+      if (result.assigned > 0) changes.push(`${result.assigned} assigned`);
+      if (result.uncategorized > 0) changes.push(`${result.uncategorized} uncategorized`);
+      if (result.conflicts > 0) changes.push(`${result.conflicts} conflicts`);
+      toast.success(`Category "${name}" updated${changes.length > 0 ? ` (${changes.join(', ')})` : ''}`);
+    } catch {
+      toast.error("Failed to update category");
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    try {
+      await deleteCategory(id);
+      toast.success("Category deleted");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("System categories")) {
+        toast.error("System categories cannot be deleted");
+      } else {
+        toast.error("Failed to delete category");
+      }
+    }
+  };
+
+  const handleReorderCategories = async (activeId: number, overId: number) => {
+    try {
+      await reorderCategories(activeId, overId);
+    } catch {
+      toast.error("Failed to reorder categories");
     }
   };
 
@@ -884,6 +1070,7 @@ export default function SettingsPage() {
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
+          <TabsTrigger value="configs">Configs</TabsTrigger>
           {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
             <TabsTrigger value="developer">Developer</TabsTrigger>
           )}
@@ -1429,6 +1616,214 @@ export default function SettingsPage() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Configs Tab */}
+        <TabsContent value="configs" className="space-y-6">
+          {/* Categories Section */}
+          <Card className="max-w-2xl">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Tag className="h-5 w-5" />
+                    Categories
+                  </CardTitle>
+                  <CardDescription className="mt-1.5">
+                    Manage your transaction categories and keywords for auto-categorization
+                  </CardDescription>
+                </div>
+                {(transactionCount ?? 0) > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={isRecategorizing}>
+                        <RefreshCw className={`h-3 w-3 mr-1 ${isRecategorizing ? 'animate-spin' : ''}`} />
+                        Re-categorize
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-80">
+                      <DropdownMenuItem onClick={() => handleRecategorize('uncategorized')}>
+                        Uncategorized only
+                        <span className="ml-2 text-xs text-muted-foreground">Safe - won&apos;t change existing</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleRecategorize('all')}>
+                        All transactions
+                        <span className="ml-2 text-xs text-muted-foreground">Re-applies all keywords</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <CategoryManager
+                categories={categories || []}
+                onCategoryAdd={handleAddCategory}
+                onCategoryUpdate={handleUpdateCategory}
+                onCategoryDelete={handleDeleteCategory}
+                onCategoryReorder={handleReorderCategories}
+                getTransactionCount={getTransactionCountByCategory}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Import File Templates Section */}
+          <Card className="max-w-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Import File Templates
+              </CardTitle>
+              <CardDescription>
+                Manage your custom CSV/Excel column mapping templates. These are used during transaction imports to map columns from your bank&apos;s file format.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingTemplates ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <FileText className="h-10 w-10 text-muted-foreground mb-3" />
+                  <p className="font-medium">No templates yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Templates are created during file import when you configure a custom column mapping and choose to save it.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {templates.map((template) => (
+                    <div key={template.id} className="flex items-center justify-between p-4 rounded-lg border">
+                      <div className="space-y-1">
+                        <p className="font-medium text-sm">{template.name}</p>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <span>Date: col {(template.mapping.dateColumn ?? 0) + 1}</span>
+                          <span>Desc: col {(template.mapping.descriptionColumn ?? 0) + 1}</span>
+                          <span>In: col {(template.mapping.amountInColumn ?? 0) + 1}</span>
+                          <span>Out: col {(template.mapping.amountOutColumn ?? 0) + 1}</span>
+                          {template.mapping.hasHeaders && <Badge variant="outline" className="text-xs">Headers</Badge>}
+                          {template.mapping.useNegativeForOut && <Badge variant="outline" className="text-xs">Negative=Out</Badge>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditTemplate(template)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => setDeletingTemplateId(template.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Edit Template Dialog */}
+          <Dialog open={editingTemplate !== null} onOpenChange={(open) => !open && setEditingTemplate(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Template</DialogTitle>
+                <DialogDescription>
+                  Update the template name and column mappings. Column numbers are 1-based.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Template Name</Label>
+                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Date Column</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={editMapping.dateColumn + 1}
+                      onChange={(e) => setEditMapping(prev => ({ ...prev, dateColumn: Math.max(0, parseInt(e.target.value) - 1) || 0 }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description Column</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={editMapping.descriptionColumn + 1}
+                      onChange={(e) => setEditMapping(prev => ({ ...prev, descriptionColumn: Math.max(0, parseInt(e.target.value) - 1) || 0 }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Amount In Column</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={editMapping.amountInColumn + 1}
+                      onChange={(e) => setEditMapping(prev => ({ ...prev, amountInColumn: Math.max(0, parseInt(e.target.value) - 1) || 0 }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Amount Out Column</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={editMapping.amountOutColumn + 1}
+                      onChange={(e) => setEditMapping(prev => ({ ...prev, amountOutColumn: Math.max(0, parseInt(e.target.value) - 1) || 0 }))}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="has-headers"
+                      checked={editMapping.hasHeaders}
+                      onCheckedChange={(checked) => setEditMapping(prev => ({ ...prev, hasHeaders: !!checked }))}
+                    />
+                    <Label htmlFor="has-headers">First row is headers</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="negative-out"
+                      checked={editMapping.useNegativeForOut}
+                      onCheckedChange={(checked) => setEditMapping(prev => ({ ...prev, useNegativeForOut: !!checked }))}
+                    />
+                    <Label htmlFor="negative-out">Negative values = outgoing</Label>
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingTemplate(null)}>Cancel</Button>
+                <Button onClick={handleSaveTemplate} disabled={!editName.trim()}>Save</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Delete Template Confirmation */}
+          <AlertDialog open={deletingTemplateId !== null} onOpenChange={(open) => !open && setDeletingTemplateId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Template</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete this template? This cannot be undone. Existing imports that used this template are not affected.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-white hover:bg-destructive/90"
+                  onClick={() => deletingTemplateId && handleDeleteTemplate(deletingTemplateId)}
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </TabsContent>
 
         {/* Developer Tab */}
