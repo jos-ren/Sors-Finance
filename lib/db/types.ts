@@ -15,6 +15,7 @@ export interface DbCategory {
   keywords: string[];
   order: number;
   isSystem?: boolean;
+  excludeFromBudget?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

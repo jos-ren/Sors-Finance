@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         const results = await db
           .select({
             categoryId: schema.transactions.categoryId,
-            total: sql<number>`SUM(${schema.transactions.amountOut})`,
+            total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
           })
           .from(schema.transactions)
           .where(and(...conditions))
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
         const results = await db
           .select({
             categoryId: schema.transactions.categoryId,
-            total: sql<number>`SUM(${schema.transactions.amountOut})`,
+            total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
           })
           .from(schema.transactions)
           .where(and(...conditions))
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
         const results = await db
           .select({
             categoryId: schema.transactions.categoryId,
-            total: sql<number>`SUM(${schema.transactions.amountOut})`,
+            total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
           })
           .from(schema.transactions)
           .where(and(...conditions))

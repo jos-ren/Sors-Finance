@@ -235,6 +235,7 @@ export interface BudgetPageSummary {
 export interface BudgetPageData {
   rows: BudgetCategoryRow[];
   summary: BudgetPageSummary;
+  hiddenCategories: DbCategory[];
 }
 
 export function useBudgetPageData(year: number, month: number): BudgetPageData | undefined {
@@ -284,8 +285,10 @@ export function useBudgetPageData(year: number, month: number): BudgetPageData |
     monthsElapsed = currentMonth + 1;
   }
 
+  const hiddenCategories = categories.filter(c => !c.isSystem && c.excludeFromBudget);
+
   const rows: BudgetCategoryRow[] = categories
-    .filter((c) => !c.isSystem)
+    .filter((c) => !c.isSystem && !c.excludeFromBudget)
     .map((category) => {
       const monthlyBudget = monthlyBudgets.find((b) => b.categoryId === category.id);
       const yearlyBudget = yearlyBudgets.find((b) => b.categoryId === category.id);
@@ -343,7 +346,7 @@ export function useBudgetPageData(year: number, month: number): BudgetPageData |
   summary.monthlyRemaining = summary.totalMonthlyBudgeted - summary.totalMonthlySpent;
   summary.yearlyRemaining = summary.totalYearlyBudgeted - summary.totalYtdSpent;
 
-  return { rows, summary };
+  return { rows, summary, hiddenCategories };
 }
 
 // ============================================

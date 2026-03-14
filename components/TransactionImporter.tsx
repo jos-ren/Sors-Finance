@@ -54,7 +54,7 @@ import {
   addCategory,
   updateCategory,
 } from "@/lib/hooks";
-import { addTransactionsBulk, addImport, findDuplicateSignatures, saveImportDraft, deleteImportDraft } from "@/lib/db/client";
+import { addTransactionsBulk, addImport, updateImport, deleteImport, findDuplicateSignatures, saveImportDraft, deleteImportDraft } from "@/lib/db/client";
 import { SYSTEM_CATEGORIES } from "@/lib/db";
 import type { ImportDraftData, DbImportDraft } from "@/lib/db/types";
 
@@ -121,10 +121,19 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         if (prev.length === 0) return prev;
         pendingReprocess.current = false;
         const recategorized = categorizeTransactions(prev, categories);
-        return recategorized.map(t => ({
-          ...t,
-          wasUncategorized: t.wasUncategorized ? (!t.categoryId && !t.isConflict) : false,
-        }));
+        return recategorized.map((t, i) => {
+          const original = prev[i];
+          // Preserve the user's resolved conflict selection — if the user already
+          // picked a category for a conflict, don't wipe it during recategorization.
+          // Only preserve if their chosen category is still among the conflicting options.
+          const preserveConflictResolution = t.isConflict && original.isConflict && original.categoryId
+            && t.conflictingCategories?.includes(original.categoryId);
+          return {
+            ...t,
+            categoryId: preserveConflictResolution ? original.categoryId : t.categoryId,
+            wasUncategorized: t.wasUncategorized ? (!t.categoryId && !t.isConflict) : false,
+          };
+        });
       });
     }
   }, [categories]);
@@ -592,6 +601,15 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       const duplicatesToImport = transactionsToImport.filter(t => t.isDuplicate && t.importDuplicate);
       const normalTransactions = transactionsToImport.filter(t => !t.isDuplicate);
 
+      // All transactions that will actually be imported
+      const allToImport = [...normalTransactions, ...duplicatesToImport];
+
+      if (allToImport.length === 0) {
+        toast.info("No transactions to import.");
+        onComplete?.();
+        return;
+      }
+
       // Group transactions by source (file)
       const groupBySource = (txns: Transaction[]) => {
         const map = new Map<string, Transaction[]>();
@@ -602,6 +620,37 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         }
         return map;
       };
+
+      // Create import records FIRST so we have importIds to link transactions
+      const sources = [...new Set(allToImport.map(t => t.source))];
+      const batchId = sources.length > 1 ? crypto.randomUUID() : null;
+      const importIdMap = new Map<string, number>();
+
+      for (const source of sources) {
+        const sourceTxns = allToImport.filter(t => t.source === source);
+        const sourceCount = sourceTxns.length;
+        const sourceAmount = sourceTxns.reduce((sum, t) => sum + t.amountOut, 0);
+
+        let fileName: string;
+        if (importSource === "plaid") {
+          fileName = source || "Plaid Import";
+        } else {
+          const matchedFile = uploadedFiles.find(f => {
+            return f.templateName === source || f.file.name.includes(source) || source.includes(f.file.name);
+          });
+          fileName = matchedFile?.file.name || source || "Import";
+        }
+
+        const importId = await addImport({
+          fileName,
+          source,
+          transactionCount: sourceCount,
+          totalAmount: sourceAmount,
+          batchId,
+          method: importSource,
+        });
+        importIdMap.set(source, importId);
+      }
 
       const convertToDbFormat = (txns: Transaction[]) => {
         return txns.map(t => {
@@ -618,61 +667,64 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             sourceMethod: t.sourceMethod,
             sourceAccountName: t.sourceAccountName,
             categoryId: category?.id ?? null,
-            importId: null as number | null,
+            importId: importIdMap.get(t.source) ?? null,
           };
         });
       };
 
       let totalAdded = 0;
       let totalSkipped = 0;
+      const skippedBySource = new Map<string, number>();
 
-      // Process normal transactions (with duplicate checking)
-      const normalBySource = groupBySource(normalTransactions);
-      for (const [, sourceTransactions] of normalBySource) {
-        const dbTransactionsToAdd = convertToDbFormat(sourceTransactions);
-        const { inserted, skipped } = await addTransactionsBulk(dbTransactionsToAdd);
-        totalAdded += inserted;
-        totalSkipped += skipped;
+      // Insert transactions — wrap in try/catch to clean up import records on failure
+      try {
+        // Process normal transactions (with duplicate checking)
+        const normalBySource = groupBySource(normalTransactions);
+        for (const [source, sourceTransactions] of normalBySource) {
+          const dbTransactionsToAdd = convertToDbFormat(sourceTransactions);
+          const { inserted, skipped } = await addTransactionsBulk(dbTransactionsToAdd);
+          totalAdded += inserted;
+          totalSkipped += skipped;
+          if (skipped > 0) skippedBySource.set(source, skipped);
+        }
+
+        // Process duplicates marked for import (skip duplicate checking)
+        if (duplicatesToImport.length > 0) {
+          const dbTransactions = convertToDbFormat(duplicatesToImport);
+          const { inserted } = await addTransactionsBulk(dbTransactions, { skipDuplicates: false });
+          totalAdded += inserted;
+        }
+      } catch (insertError) {
+        // Transaction insert failed — clean up orphan import records
+        for (const importId of importIdMap.values()) {
+          try { await deleteImport(importId); } catch { /* best effort */ }
+        }
+
+        if (totalAdded > 0) {
+          // Partial success: some transactions were saved before the failure
+          console.error('Partial import failure:', insertError);
+          toast.error(`Imported ${totalAdded} transactions, but some failed to save. Check your import history and try importing the remaining transactions again.`);
+          onComplete?.();
+          return;
+        }
+        throw insertError;
       }
 
-      // Process duplicates marked for import (skip duplicate checking)
-      if (duplicatesToImport.length > 0) {
-        const dbTransactions = convertToDbFormat(duplicatesToImport);
-        const { inserted } = await addTransactionsBulk(dbTransactions, { skipDuplicates: false });
-        totalAdded += inserted;
-      }
-
-      // Create one import record per source, all sharing the same batchId
-      if (totalAdded > 0) {
-        const sources = [...new Set(transactions.map(t => t.source))];
-        const batchId = crypto.randomUUID();
-        const totalAmount = transactions.reduce((sum, t) => sum + t.amountOut, 0);
-
-        for (const source of sources) {
-          const sourceTxns = transactions.filter(t => t.source === source);
-          const sourceCount = sourceTxns.length;
-          const sourceAmount = sourceTxns.reduce((sum, t) => sum + t.amountOut, 0);
-
-          let fileName: string;
-          if (importSource === "plaid") {
-            fileName = source || "Plaid Import";
-          } else {
-            // Try to find the uploaded file matching this source
-            const matchedFile = uploadedFiles.find(f => {
-              // source is either templateName or bankId from the parser
-              return f.templateName === source || f.file.name.includes(source) || source.includes(f.file.name);
-            });
-            fileName = matchedFile?.file.name || source || "Import";
+      // Update import records if server-side duplicate check skipped additional transactions
+      for (const [source, skipped] of skippedBySource) {
+        const importId = importIdMap.get(source);
+        if (!importId || skipped === 0) continue;
+        const plannedCount = allToImport.filter(t => t.source === source).length;
+        const actualCount = plannedCount - skipped;
+        if (actualCount !== plannedCount) {
+          try {
+            const actualAmount = allToImport
+              .filter(t => t.source === source)
+              .reduce((sum, t) => sum + t.amountOut, 0);
+            await updateImport(importId, { transactionCount: actualCount, totalAmount: actualAmount });
+          } catch {
+            // Non-critical - counts may be slightly off
           }
-
-          await addImport({
-            fileName,
-            source,
-            transactionCount: sourceCount,
-            totalAmount: sources.length === 1 ? totalAmount : sourceAmount,
-            batchId: sources.length > 1 ? batchId : null,
-            method: importSource,
-          });
         }
       }
 
@@ -716,8 +768,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       onComplete?.();
     } catch (error) {
-      console.error('Failed to save transactions:', error);
-      toast.error('Failed to save transactions. Please try again.');
+      console.error('Failed to import:', error);
+      toast.error('Failed to import. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -897,7 +949,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                     uploadedFiles.some(f => 
                       f.bankId === null || 
                       (f.validationErrors && f.validationErrors.length > 0) ||
-                      (f.bankId === "CUSTOM" && !f.mappingConfigured)
+                      ((f.bankId === "CUSTOM" || f.bankId?.startsWith("TEMPLATE_")) && !f.mappingConfigured)
                     )
                   }
                 >
@@ -983,6 +1035,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               icon={<AlertTriangle className="h-5 w-5" />}
               count={conflictTransactions.length}
               status={unresolvedConflicts === 0 ? "complete" : "pending"}
+              customBadges={
+                <Badge
+                  variant={unresolvedConflicts > 0 ? "destructive" : "secondary"}
+                  className={unresolvedConflicts === 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : ""}
+                >
+                  {unresolvedConflicts}
+                </Badge>
+              }
               isBlocking={true}
               isOpen={sectionsOpen.conflicts}
               onOpenChange={(open) => setSectionsOpen(prev => ({ ...prev, conflicts: open }))}

@@ -12,7 +12,11 @@ import {
   Check,
   X,
   Copy,
+  Settings,
+  EyeOff,
+  Eye,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -52,6 +56,8 @@ import {
   useAvailablePeriods,
   BudgetCategoryRow,
   invalidateBudgets,
+  invalidateCategories,
+  updateCategory,
 } from "@/lib/hooks";
 import { setBudget, getBudgetForCategory, deleteBudget, findPreviousMonthWithBudgets, copyBudgetToMonth, getSetting, setSetting } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
@@ -744,6 +750,18 @@ export default function BudgetPage() {
   // Calculate summary stats
   const summary = budgetData?.summary;
   const rows = budgetData?.rows ?? [];
+  const hiddenCategories = budgetData?.hiddenCategories ?? [];
+
+  // Re-include a hidden category
+  const handleReincludeCategory = useCallback(async (categoryId: number) => {
+    try {
+      await updateCategory(categoryId, { excludeFromBudget: false });
+      invalidateBudgets();
+      toast.success("Category restored to budget");
+    } catch {
+      toast.error("Failed to restore category");
+    }
+  }, []);
 
   const displayBudgeted = viewMode === "month"
     ? (summary?.totalMonthlyBudgeted ?? 0)
@@ -955,28 +973,67 @@ export default function BudgetPage() {
               {viewMode === "month" && " Yearly budgets show rolling balance."}
             </CardDescription>
           </div>
-          {hasChanges && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancel}
-                disabled={isSaving}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <Check className="h-4 w-4 mr-1" />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {hasChanges && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Check className="h-4 w-4 mr-1" />
+                  {isSaving ? "Saving..." : "Save"}
+                </Button>
+              </>
+            )}
+            {hiddenCategories.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <EyeOff className="h-4 w-4" />
+                    {hiddenCategories.length} hidden
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-2" align="end">
+                  <p className="text-xs text-muted-foreground px-2 pb-2">
+                    Categories excluded from budget
+                  </p>
+                  <div className="space-y-1">
+                    {hiddenCategories.map((cat) => (
+                      <div key={cat.id} className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/50">
+                        <span className="text-sm">{cat.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs gap-1"
+                          onClick={() => handleReincludeCategory(cat.id!)}
+                        >
+                          <Eye className="h-3 w-3" />
+                          Show
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/settings/categories">
+                <Settings className="h-4 w-4 mr-1" />
+                Edit Categories
+              </Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {!budgetData ? (

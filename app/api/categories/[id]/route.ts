@@ -46,6 +46,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       keywords: row.keywords,
       order: row.order,
       isSystem: row.isSystem ?? false,
+      excludeFromBudget: row.excludeFromBudget ?? false,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -118,6 +119,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.name !== undefined) updateValues.name = updates.name;
     if (updates.keywords !== undefined) updateValues.keywords = updates.keywords;
     if (updates.order !== undefined) updateValues.order = updates.order;
+    if (updates.excludeFromBudget !== undefined) updateValues.excludeFromBudget = updates.excludeFromBudget;
 
     await db
       .update(schema.categories)

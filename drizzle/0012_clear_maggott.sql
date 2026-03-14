@@ -1,0 +1,1 @@
+ALTER TABLE `categories` ADD `exclude_from_budget` integer DEFAULT false;

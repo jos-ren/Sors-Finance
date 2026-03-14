@@ -619,6 +619,12 @@ export default function PortfolioPage() {
                               day: "numeric",
                             })}
                           </span>
+                          <span className="text-sm text-muted-foreground">
+                            {snapshot.createdAt.toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
                           <span className="text-lg font-semibold">
                             {formatAmount(snapshot.netWorth, userCurrency)}
                           </span>

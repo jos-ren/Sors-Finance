@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
-import { useSnapshot } from "@/lib/snapshot-context";
+import { useCallback, useMemo, useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -282,18 +281,6 @@ export default function DashboardPage() {
 
   // View mode: "all", "year", or "month"
   const [viewMode, setViewMode] = useState<"all" | "year" | "month">("all");
-
-  // Auto-snapshot logic - ensure daily snapshot exists (runs in background with rate limiting)
-  const { startBackgroundSnapshot } = useSnapshot();
-  const autoSnapshotAttempted = useRef(false);
-
-  useEffect(() => {
-    if (autoSnapshotAttempted.current) return;
-    autoSnapshotAttempted.current = true;
-
-    // Start background snapshot - it will check if one already exists today
-    startBackgroundSnapshot();
-  }, [startBackgroundSnapshot]);
 
   // Selection values
   const [selectedYearValue, setSelectedYearValue] = useState(currentYear);

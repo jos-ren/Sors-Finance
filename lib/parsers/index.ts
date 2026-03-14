@@ -232,8 +232,8 @@ export interface FullParseResult extends ParseResult {
  * Parse a file using a specific bank parser
  */
 export async function parseFile(file: File, bankId: string, columnMapping?: ColumnMapping): Promise<FullParseResult> {
-  // Handle custom parser with column mapping
-  if (bankId === "CUSTOM") {
+  // Handle custom parser or saved template with column mapping
+  if (bankId === "CUSTOM" || bankId.startsWith("TEMPLATE_")) {
     if (!columnMapping) {
       return {
         bankId,
