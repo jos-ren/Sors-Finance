@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { updatePortfolioItem, DbPortfolioItem, BucketType, PriceMode } from "@/lib/hooks/useDatabase";
 import { getExchangeRate } from "@/lib/hooks/useStockPrice";
 import { useSettings } from "@/lib/settings-context";
-import { formatCurrencyShort } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { InfoCard } from "@/components/ui/info-card";
@@ -42,6 +42,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
   const isInvestment = bucket === "Investments";
   const { hasFinnhubApiKey, isLoading: settingsLoading, settings } = useSettings();
   const userCurrency = settings.currency;
+  const { formatAmount } = usePrivacy();
   // Only show warning after settings have loaded and there's no key
   const showApiKeyWarning = !settingsLoading && !hasFinnhubApiKey;
 
@@ -358,7 +359,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total Value ({userCurrency})</span>
-                    <span className="text-lg font-semibold">{formatCurrencyShort(totalValue, userCurrency)}</span>
+                    <span className="text-lg font-semibold">{formatAmount(totalValue, userCurrency)}</span>
                   </div>
                 </div>
               </>

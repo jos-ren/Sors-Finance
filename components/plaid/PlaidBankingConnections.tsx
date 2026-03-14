@@ -45,7 +45,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
-import { formatCurrency } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 import { getBankLogo } from "@/lib/bank-logos";
 import { SectionHeader, RowGroup } from "@/components/settings/SettingsShared";
 import { PlaidLinkButton } from "./PlaidLinkButton";
@@ -110,6 +110,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
   const [editingInstitution, setEditingInstitution] = useState<PlaidInstitution | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [expandedBanks, setExpandedBanks] = useState<Set<number>>(new Set());
+  const { formatAmount } = usePrivacy();
   const [plaidEnvironment, setPlaidEnvironment] = useState<PlaidEnvironmentType>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("plaid-environment");
@@ -603,7 +604,7 @@ PLAID_SECRET=your_secret_here`}
                                   {/* Balance */}
                                   {account.currentBalance != null && (
                                     <p className="text-sm font-semibold tabular-nums shrink-0">
-                                      {formatCurrency(account.currentBalance)}
+                                      {formatAmount(account.currentBalance ?? 0)}
                                     </p>
                                   )}
                                 </div>

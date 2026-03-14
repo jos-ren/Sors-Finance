@@ -18,7 +18,6 @@ import { EditItemDialog } from "./EditItemDialog";
 import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
-import { formatCurrency } from "@/lib/formatters";
 
 interface PortfolioItemProps {
   item: DbPortfolioItem;
@@ -160,7 +159,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             <p className="text-xs text-muted-foreground truncate">
               {item.ticker}
               {item.quantity !== undefined && ` · ${item.quantity} ${item.quantity === 1 ? "share" : "shares"}`}
-              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatCurrency(item.pricePerUnit, item.currency)}`}
+              {item.pricePerUnit !== undefined && item.currency && ` @ ${formatAmount(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
           ) : item.notes ? (

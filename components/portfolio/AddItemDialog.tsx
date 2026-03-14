@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TickerSearch, SelectedTicker } from "./TickerSearch";
-import { formatCurrency } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 
 type InvestmentType = "security" | "balance";
 
@@ -51,6 +51,7 @@ export function AddItemDialog({
   const hasApiKey = useHasFinnhubApiKey();
   const { isLoading, settings } = useSettings();
   const userCurrency = settings.currency;
+  const { formatAmount } = usePrivacy();
 
   // Show warning if no API key is configured (only after settings loaded)
   const showApiKeyWarning = !isLoading && !hasApiKey;
@@ -374,7 +375,7 @@ export function AddItemDialog({
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Total Value ({userCurrency})</span>
-                    <span className="text-lg font-semibold">{formatCurrency(totalValue, userCurrency)}</span>
+                    <span className="text-lg font-semibold">{formatAmount(totalValue, userCurrency)}</span>
                   </div>
                 </div>
               </>

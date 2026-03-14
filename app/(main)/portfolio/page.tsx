@@ -105,7 +105,7 @@ const bucketChartConfig = {
 type TrendPeriod = "all" | "year";
 
 export default function PortfolioPage() {
-  const { formatAmount } = usePrivacy();
+  const { formatAmount, isPrivacyMode } = usePrivacy();
   const userCurrency = useCurrency();
   const summary = useNetWorthSummary();
   const change = useNetWorthChange();
@@ -308,7 +308,7 @@ export default function PortfolioPage() {
               ) : (
                 <TrendingDown className="h-3 w-3 text-red-500" />
               )}
-              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, userCurrency)} ({changePercent.toFixed(1)}%)
+              {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, userCurrency)}{!isPrivacyMode && ` (${changePercent.toFixed(1)}%)`}
             </p>
           </CardContent>
         </Card>
@@ -481,7 +481,7 @@ export default function PortfolioPage() {
                 <PieChart>
                   <ChartTooltip
                     cursor={false}
-                    content={<ChartTooltipContent hideLabel />}
+                    content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), userCurrency)} />}
                   />
                   <Pie
                     data={bucketData}
@@ -545,7 +545,7 @@ export default function PortfolioPage() {
                   />
                   <ChartTooltip
                     cursor={false}
-                    content={<ChartTooltipContent />}
+                    content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), userCurrency)} />}
                   />
                   <Bar dataKey="value" radius={4}>
                     {comparisonData.map((entry, index) => (
