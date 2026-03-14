@@ -642,29 +642,38 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         totalAdded += inserted;
       }
 
-      // Create a single import record if we added any transactions
+      // Create one import record per source, all sharing the same batchId
       if (totalAdded > 0) {
         const sources = [...new Set(transactions.map(t => t.source))];
-        const uploadedFile = uploadedFiles[0];
-        
-        // Generate fileName based on import source
-        let fileName: string;
-        if (importSource === "plaid") {
-          // For Plaid: use institution name + date range or first source name
-          fileName = sources[0] || "Plaid Import";
-        } else {
-          // For manual: use file name
-          fileName = uploadedFile?.file.name || `${sources.join(', ')} Import`;
-        }
-        
+        const batchId = crypto.randomUUID();
         const totalAmount = transactions.reduce((sum, t) => sum + t.amountOut, 0);
 
-        await addImport({
-          fileName,
-          source: sources[0],
-          transactionCount: totalAdded,
-          totalAmount,
-        });
+        for (const source of sources) {
+          const sourceTxns = transactions.filter(t => t.source === source);
+          const sourceCount = sourceTxns.length;
+          const sourceAmount = sourceTxns.reduce((sum, t) => sum + t.amountOut, 0);
+
+          let fileName: string;
+          if (importSource === "plaid") {
+            fileName = source || "Plaid Import";
+          } else {
+            // Try to find the uploaded file matching this source
+            const matchedFile = uploadedFiles.find(f => {
+              // source is either templateName or bankId from the parser
+              return f.templateName === source || f.file.name.includes(source) || source.includes(f.file.name);
+            });
+            fileName = matchedFile?.file.name || source || "Import";
+          }
+
+          await addImport({
+            fileName,
+            source,
+            transactionCount: sourceCount,
+            totalAmount: sources.length === 1 ? totalAmount : sourceAmount,
+            batchId: sources.length > 1 ? batchId : null,
+            method: importSource,
+          });
+        }
       }
 
       // Save last Plaid import date if this was a Plaid import

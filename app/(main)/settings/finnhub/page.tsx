@@ -88,56 +88,59 @@ export default function FinnhubSettingsPage() {
                 className="h-5 w-auto object-contain"
               />
             }
-            title="API Key"
+            title={
+              <span className="flex items-center gap-2">
+                API Key
+                {finnhubConfigured === null ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : finnhubConfigured ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Configured
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                    Not set up
+                  </span>
+                )}
+              </span>
+            }
             description="Finnhub API key for stock, crypto & metals pricing"
             action={
               <div className="flex items-center gap-2">
-                {finnhubConfigured === null ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                ) : finnhubConfigured ? (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                      Active
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleTest}
-                      disabled={isTesting}
-                    >
-                      {isTesting ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          Testing...
-                        </>
-                      ) : (
-                        "Test Connection"
-                      )}
-                    </Button>
-                  </>
+                {finnhubConfigured === null ? null : finnhubConfigured ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTest}
+                    disabled={isTesting}
+                  >
+                    {isTesting ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        Testing...
+                      </>
+                    ) : (
+                      "Test Connection"
+                    )}
+                  </Button>
                 ) : (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                      <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                      Not set up
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCheck}
-                      disabled={isChecking}
-                    >
-                      {isChecking ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                          Checking...
-                        </>
-                      ) : (
-                        "Check for API Key"
-                      )}
-                    </Button>
-                  </>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCheck}
+                    disabled={isChecking}
+                  >
+                    {isChecking ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      "Check for API Key"
+                    )}
+                  </Button>
                 )}
               </div>
             }

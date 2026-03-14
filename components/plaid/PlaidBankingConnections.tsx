@@ -75,6 +75,8 @@ interface PlaidInstitution {
   }>;
 }
 
+const BUCKET_ORDER = ["Savings", "Investments", "Assets", "Debt"];
+
 const BUCKET_ICONS: Record<string, { icon: typeof PiggyBank; color: string }> = {
   Savings: { icon: PiggyBank, color: "text-emerald-500" },
   Investments: { icon: TrendingUp, color: "text-blue-500" },
@@ -192,29 +194,31 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
               <img src="/logos/plaid.png" alt="Plaid" className="h-5 w-auto object-contain" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">API Credentials</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">API Credentials</p>
+                {plaidConfigured === null ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : plaidConfigured ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Configured
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                    Not configured
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Plaid client ID and secret for bank connections
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {plaidConfigured === null ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : plaidConfigured ? (
-                <>
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                    Configured
-                  </span>
-                  <Button variant="outline" size="sm" onClick={handleTestCredentials} disabled={isTesting}>
-                    {isTesting ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Testing...</> : "Test Connection"}
-                  </Button>
-                </>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-                  Not configured
-                </span>
+              {plaidConfigured && (
+                <Button variant="outline" size="sm" onClick={handleTestCredentials} disabled={isTesting}>
+                  {isTesting ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Testing...</> : "Test Connection"}
+                </Button>
               )}
             </div>
           </div>
@@ -500,7 +504,7 @@ PLAID_SECRET=your_secret_here`}
                             size="icon"
                             onClick={() => setEditingInstitution(institution)}
                           >
-                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
 
                           <AlertDialog>
@@ -550,7 +554,15 @@ PLAID_SECRET=your_secret_here`}
                               No accounts found
                             </p>
                           ) : (
-                            institution.accounts.map((account) => {
+                            [...institution.accounts]
+                              .sort((a, b) => {
+                                const bucketDiff =
+                                  (BUCKET_ORDER.indexOf(a.portfolioBucket || "") === -1 ? 99 : BUCKET_ORDER.indexOf(a.portfolioBucket || "")) -
+                                  (BUCKET_ORDER.indexOf(b.portfolioBucket || "") === -1 ? 99 : BUCKET_ORDER.indexOf(b.portfolioBucket || ""));
+                                if (bucketDiff !== 0) return bucketDiff;
+                                return (b.currentBalance ?? 0) - (a.currentBalance ?? 0);
+                              })
+                              .map((account) => {
                               const bucketConfig = BUCKET_ICONS[account.portfolioBucket || ""];
                               const BucketIcon = bucketConfig?.icon;
                               return (

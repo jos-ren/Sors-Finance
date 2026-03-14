@@ -38,11 +38,17 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
+/* eslint-disable @next/next/no-img-element */
 function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
+  const isPlaid = record.method === "plaid";
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-md border">
       <div className="flex items-center gap-3">
-        <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+        {isPlaid ? (
+          <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
+        ) : (
+          <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+        )}
         <div className="flex items-center gap-4">
           <p className="font-medium text-sm">{record.fileName}</p>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -63,6 +69,56 @@ function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; 
       </div>
       <BankSourceBadge source={record.source} size="sm" />
     </div>
+  );
+}
+
+function BatchImportCard({ records, formatAmount, userCurrency }: { records: DbImport[]; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
+  const [open, setOpen] = useState(false);
+  const totalCount = records.reduce((s, r) => s + r.transactionCount, 0);
+  const totalAmount = records.reduce((s, r) => s + r.totalAmount, 0);
+  const date = records[0].importedAt;
+  const isPlaid = records[0].method === "plaid";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <div className="flex items-center justify-between py-2 px-3 rounded-md border cursor-pointer hover:bg-muted/40 transition-colors">
+          <div className="flex items-center gap-3">
+            {isPlaid ? (
+              <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+            )}
+            <div className="flex items-center gap-4">
+              <p className="font-medium text-sm">{isPlaid ? "Plaid Import" : "Batch Import"}</p>
+              <Badge variant="secondary" className="text-xs">{records.length} files</Badge>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {formatDate(date)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Hash className="h-3 w-3" />
+                  {totalCount}
+                </span>
+                <span className="flex items-center gap-1">
+                  <DollarSign className="h-3 w-3" />
+                  {formatAmount(totalAmount, userCurrency)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1 ml-4 space-y-1 border-l pl-3">
+          {records.map((record) => (
+            <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -146,10 +202,32 @@ export default function TransactionsPage() {
   // Set page header and get sentinel ref
   const sentinelRef = useSetPageHeader("Transactions", headerActions);
 
-  // Sort imports by date (newest first)
+  // Sort imports by date (newest first) and group batches
   const sortedImports = imports
     ? [...imports].sort((a, b) => b.importedAt.getTime() - a.importedAt.getTime())
     : [];
+
+  // Group by batchId; records without a batchId are their own group
+  const importGroups = useMemo(() => {
+    const groups: Array<{ batchId: string | null; records: DbImport[] }> = [];
+    const batchMap = new Map<string, DbImport[]>();
+
+    for (const record of sortedImports) {
+      if (record.batchId) {
+        const existing = batchMap.get(record.batchId);
+        if (existing) {
+          existing.push(record);
+        } else {
+          const group = [record];
+          batchMap.set(record.batchId, group);
+          groups.push({ batchId: record.batchId, records: group });
+        }
+      } else {
+        groups.push({ batchId: null, records: [record] });
+      }
+    }
+    return groups;
+  }, [sortedImports]);
 
   return (
     <>
@@ -223,9 +301,23 @@ export default function TransactionsPage() {
                     {importDrafts && importDrafts.length > 0 && importDrafts.map((draft) => (
                       <DraftCard key={`draft-${draft.id}`} draft={draft} onDelete={handleDeleteDraft} />
                     ))}
-                    {sortedImports.map((record) => (
-                      <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
-                    ))}
+                    {importGroups.map((group) =>
+                      group.records.length > 1 ? (
+                        <BatchImportCard
+                          key={group.batchId!}
+                          records={group.records}
+                          formatAmount={formatAmount}
+                          userCurrency={userCurrency}
+                        />
+                      ) : (
+                        <ImportCard
+                          key={group.records[0].id}
+                          record={group.records[0]}
+                          formatAmount={formatAmount}
+                          userCurrency={userCurrency}
+                        />
+                      )
+                    )}
                   </div>
                 )}
               </CardContent>

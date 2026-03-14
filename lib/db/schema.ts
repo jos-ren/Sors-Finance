@@ -139,12 +139,15 @@ export const imports = sqliteTable(
     source: text("source").notNull(),
     transactionCount: integer("transaction_count").notNull(),
     totalAmount: real("total_amount").notNull(),
+    batchId: text("batch_id"),
+    method: text("method"),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     importedAt: integer("imported_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
     index("imports_source_idx").on(table.source),
     index("imports_user_idx").on(table.userId),
+    index("imports_batch_idx").on(table.batchId),
   ]
 );
 

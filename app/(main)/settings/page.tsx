@@ -447,7 +447,7 @@ export default function SettingsPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-8 max-w-2xl">
+    <div className="p-6 space-y-8">
       <div ref={sentinelRef} className="h-0" />
 
       <SettingsPageHeader
@@ -455,64 +455,10 @@ export default function SettingsPage() {
         description="Manage your app preferences, integrations, and data."
       />
 
-      {/* ── ACCOUNT ──────────────────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <SectionHeader label="Account" />
-        <RowGroup>
-          <ActionRow
-            icon={<User className="h-4 w-4" />}
-            title={user?.username || ""}
-            description="Logged in"
-            action={
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-3.5 w-3.5 mr-1.5" />
-                Sign out
-              </Button>
-            }
-          />
-        </RowGroup>
-      </section>
-
-      {/* ── PREFERENCES ──────────────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <SectionHeader label="Preferences" />
-        <RowGroup>
-          <NavigateRow
-            icon={<DollarSign className="h-4 w-4" />}
-            title="Currency"
-            description="Default currency for transactions and portfolio"
-            value={currency}
-            onClick={() => setCurrencyOpen(true)}
-          />
-          <NavigateRow
-            icon={<Globe className="h-4 w-4" />}
-            title="Timezone"
-            description="Used for accurate date handling"
-            value={timezoneShortLabel}
-            onClick={() => setTimezoneOpen(true)}
-          />
-          <ToggleRow
-            icon={<Copy className="h-4 w-4" />}
-            title="Auto-copy budgets"
-            description="Copy last month's budgets when a new month has none set"
-            id="auto-copy-budgets"
-            checked={autoCopyBudgets}
-            onCheckedChange={handleAutoCopyBudgetsChange}
-          />
-          <NavigateRow
-            icon={<Clock className="h-4 w-4" />}
-            title="Snapshot Schedule"
-            description="Automatic daily net worth snapshots"
-            value={snapshotRowValue}
-            href="/settings/snapshots"
-          />
-        </RowGroup>
-      </section>
-
       {/* ── INTEGRATIONS ─────────────────────────────────────────────────── */}
       <section className="space-y-2">
         <SectionHeader label="Integrations" />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 max-w-lg">
           {/* Finnhub */}
           <Link href="/settings/finnhub" className="block">
           <div
@@ -531,7 +477,7 @@ export default function SettingsPage() {
               ) : finnhubConfigured ? (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                  Active
+                  Configured
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
@@ -589,6 +535,60 @@ export default function SettingsPage() {
             </div>
           </Link>
         </div>
+      </section>
+
+      {/* ── ACCOUNT ──────────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Account" />
+        <RowGroup>
+          <ActionRow
+            icon={<User className="h-4 w-4" />}
+            title={user?.username || ""}
+            description="Logged in"
+            action={
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                Sign out
+              </Button>
+            }
+          />
+        </RowGroup>
+      </section>
+
+      {/* ── PREFERENCES ──────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Preferences" />
+        <RowGroup>
+          <NavigateRow
+            icon={<DollarSign className="h-4 w-4" />}
+            title="Currency"
+            description="Default currency for transactions and portfolio"
+            value={currency}
+            onClick={() => setCurrencyOpen(true)}
+          />
+          <NavigateRow
+            icon={<Globe className="h-4 w-4" />}
+            title="Timezone"
+            description="Used for accurate date handling"
+            value={timezoneShortLabel}
+            onClick={() => setTimezoneOpen(true)}
+          />
+          <ToggleRow
+            icon={<Copy className="h-4 w-4" />}
+            title="Auto-copy budgets"
+            description="Copy last month's budgets when a new month has none set"
+            id="auto-copy-budgets"
+            checked={autoCopyBudgets}
+            onCheckedChange={handleAutoCopyBudgetsChange}
+          />
+          <NavigateRow
+            icon={<Clock className="h-4 w-4" />}
+            title="Snapshot Schedule"
+            description="Automatic daily net worth snapshots"
+            value={snapshotRowValue}
+            href="/settings/snapshots"
+          />
+        </RowGroup>
       </section>
 
       {/* ── CONFIGS ──────────────────────────────────────────────────────── */}

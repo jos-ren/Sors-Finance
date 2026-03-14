@@ -184,6 +184,7 @@ export default function PortfolioPage() {
             }
           },
         },
+        actionButtonStyle: { backgroundColor: "#16a34a", color: "white" },
       });
     } catch (error) {
       toast.error("Failed to delete snapshot");

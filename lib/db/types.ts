@@ -71,6 +71,8 @@ export interface DbImport {
   source: string;
   transactionCount: number;
   totalAmount: number;
+  batchId?: string | null;
+  method?: string | null;
   importedAt: Date;
 }
 

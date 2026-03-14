@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       .select()
       .from(schema.portfolioSnapshots)
       .where(and(...conditions))
-      .orderBy(desc(schema.portfolioSnapshots.date));
+      .orderBy(desc(schema.portfolioSnapshots.date), desc(schema.portfolioSnapshots.id));
 
     if (limit) {
       query = query.limit(parseInt(limit, 10)) as typeof query;
