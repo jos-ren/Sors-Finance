@@ -505,8 +505,8 @@ PLAID_SECRET=your_secret_here`}
 
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -521,7 +521,7 @@ PLAID_SECRET=your_secret_here`}
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => handleDeleteInstitution(institution.id)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  variant="destructive"
                                 >
                                   Remove
                                 </AlertDialogAction>

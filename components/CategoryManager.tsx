@@ -272,10 +272,9 @@ function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) 
           onClick={() => onDeleteConfirm(category)}
           disabled={isSystemCategory}
           title={isSystemCategory ? "System categories cannot be deleted" : "Delete category"}
+          className={!isSystemCategory ? "text-destructive hover:text-destructive hover:bg-destructive/10" : ""}
         >
-          <Trash2
-            className={`h-4 w-4 ${isSystemCategory ? "text-muted-foreground" : "text-destructive"}`}
-          />
+          <Trash2 className="h-4 w-4" />
         </Button>
       </div>
     </div>
@@ -668,9 +667,9 @@ export function CategoryManager({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleRemoveKeyword(keyword)}
-                                className="h-6 w-6 p-0"
+                                className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                               >
-                                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>

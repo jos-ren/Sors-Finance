@@ -658,7 +658,7 @@ export default function PortfolioPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-muted-foreground hover:text-destructive"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           onClick={() => handleDeleteSnapshot(snapshot.id!)}
                         >
                           <Trash2 className="h-4 w-4" />

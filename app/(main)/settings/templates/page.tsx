@@ -197,7 +197,7 @@ export default function TemplatesSettingsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={() => setDeletingTemplateId(template.id)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -334,7 +334,7 @@ export default function TemplatesSettingsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => deletingTemplateId && handleDeleteTemplate(deletingTemplateId)}
             >
               Delete
