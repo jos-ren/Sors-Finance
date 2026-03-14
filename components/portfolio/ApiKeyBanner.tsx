@@ -2,9 +2,9 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { AlertTriangle, Settings, X } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Settings, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InfoCard } from "@/components/ui/info-card";
 import { useSettings } from "@/lib/settings-context";
 
 const DISMISSED_KEY = "sors-api-key-banner-dismissed";
@@ -30,21 +30,20 @@ export function ApiKeyBanner() {
   }
 
   return (
-    <Alert className="border-yellow-500/50 bg-yellow-500/10">
-      <AlertTriangle className="h-4 w-4 text-yellow-500" />
-      <AlertTitle className="text-yellow-600 dark:text-yellow-400">
-        Stock Price Updates Disabled
-      </AlertTitle>
-      <AlertDescription className="flex flex-col gap-3">
-        <p className="text-muted-foreground">
+    <InfoCard
+      variant="warning"
+      title="Stock Price Updates Disabled"
+      className="mb-0"
+    >
+      <div className="space-y-3">
+        <p>
           Without a Finnhub API key, you&apos;ll need to{" "}
           <strong>manually update stock prices</strong>. The automatic refresh
-          button won&apos;t work. Add a free API key to enable live stock
-          prices.
+          button won&apos;t work. Add a free API key to enable live stock prices.
         </p>
         <div className="flex items-center gap-2">
           <Button size="sm" asChild>
-            <Link href="/settings?tab=integrations">
+            <Link href="/settings">
               <Settings className="h-4 w-4 mr-2" />
               Configure API Key
             </Link>
@@ -59,7 +58,7 @@ export function ApiKeyBanner() {
             Dismiss
           </Button>
         </div>
-      </AlertDescription>
-    </Alert>
+      </div>
+    </InfoCard>
   );
 }

@@ -2,47 +2,25 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import {
-  ExternalLink,
   Check,
-  AlertTriangle,
   Globe,
   DollarSign,
   Download,
   Trash2,
-  Plus,
-  Pencil,
-  ChevronsUpDown,
   Clock,
-  Info,
   LogOut,
   User,
   Upload,
-  Database,
-  Monitor,
   Loader2,
+  FileText,
+  Tag,
+  Copy,
+  Code2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,12 +39,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import {
   SUPPORTED_CURRENCIES,
@@ -78,16 +50,22 @@ import {
 } from "@/lib/db/client";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { useAuth } from "@/lib/auth-context";
-import { useSettings } from "@/lib/settings-context";
 import { cn } from "@/lib/utils";
-import { PlaidBankingConnections } from "@/components/plaid/PlaidBankingConnections";
+import {
+  SectionHeader,
+  RowGroup,
+  NavigateRow,
+  ToggleRow,
+  ActionRow,
+  SettingsPageHeader,
+} from "@/components/settings/SettingsShared";
 
-// Generate timezone list with UTC offsets and friendly names
+// ─── Timezone helpers (unchanged) ────────────────────────────────────────────
+
 function getTimezoneWithOffset(tz: string): { value: string; label: string; offset: number } {
   try {
     const now = new Date();
 
-    // Get the offset (e.g., "GMT-5")
     const offsetFormatter = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       timeZoneName: "shortOffset",
@@ -95,7 +73,6 @@ function getTimezoneWithOffset(tz: string): { value: string; label: string; offs
     const offsetParts = offsetFormatter.formatToParts(now);
     const offsetStr = offsetParts.find(p => p.type === "timeZoneName")?.value || "UTC";
 
-    // Get the long name (e.g., "Eastern Standard Time")
     const nameFormatter = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       timeZoneName: "long",
@@ -160,173 +137,45 @@ const TIMEZONE_LIST = [
   "Pacific/Fiji",          // UTC+12
 ];
 
+
 export default function SettingsPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const initialTab = searchParams.get("tab") || "general";
-  const [activeTab, setActiveTab] = useState(initialTab);
-  const { refreshFinnhubApiKey } = useSettings();
-
-  // Update URL when tab changes
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    router.push(`${pathname}?tab=${value}`, { scroll: false });
-  };
-
-  // Sync tab state when URL changes (back/forward navigation)
-  useEffect(() => {
-    const tabFromUrl = searchParams.get("tab") || "general";
-    if (tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
-    }
-  }, [searchParams, activeTab]);
-
   // Currency & Timezone state
   const [currency, setCurrencyState] = useState<Currency>("USD");
   const [timezone, setTimezoneState] = useState("");
-
-  // Search states for dropdowns
   const [currencySearch, setCurrencySearch] = useState("");
   const [timezoneSearch, setTimezoneSearch] = useState("");
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [timezoneOpen, setTimezoneOpen] = useState(false);
+  const [pendingCurrency, setPendingCurrency] = useState<Currency>("USD");
+  const [pendingTimezone, setPendingTimezone] = useState("");
   const [highlightedCurrencyIndex, setHighlightedCurrencyIndex] = useState(0);
   const [highlightedTimezoneIndex, setHighlightedTimezoneIndex] = useState(0);
   const currencyListRef = useRef<HTMLDivElement>(null);
   const timezoneListRef = useRef<HTMLDivElement>(null);
 
-  // Dialog states
+  // Dialog / UI states
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
-  const [isExporting, setIsExporting] = useState(false);
 
-  // Dev page dialog states
-  const [showDevAlertDialog, setShowDevAlertDialog] = useState(false);
-  const [showDevDialog, setShowDevDialog] = useState(false);
-
-  // Preferences state
+  // Preferences
   const [autoCopyBudgets, setAutoCopyBudgets] = useState(false);
-
-  // Snapshot scheduler state
   const [snapshotEnabled, setSnapshotEnabled] = useState(true);
   const [snapshotTime, setSnapshotTime] = useState("03:00");
-  const [plaidSyncEnabled, setPlaidSyncEnabled] = useState(false); // Opt-in for Plaid sync with snapshot
-  const [priceRefreshEnabled, setPriceRefreshEnabled] = useState(true); // Opt-in for price refresh with snapshot
-  const [isLoadingSnapshotConfig, setIsLoadingSnapshotConfig] = useState(true);
 
-  // Snapshot import/export state
-  const [isExportingSnapshots, setIsExportingSnapshots] = useState(false);
-  const [isImportingSnapshots, setIsImportingSnapshots] = useState(false);
-  const snapshotFileInputRef = useRef<HTMLInputElement>(null);
-
-  // Data import state
+  // Data transfer state
+  const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const dataFileInputRef = useRef<HTMLInputElement>(null);
 
-  // API Configuration status
+  // API status
   const [finnhubConfigured, setFinnhubConfigured] = useState<boolean | null>(null);
   const [plaidConfigured, setPlaidConfigured] = useState<boolean | null>(null);
-  const [isTestingFinnhub, setIsTestingFinnhub] = useState(false);
-  const [isCheckingFinnhub, setIsCheckingFinnhub] = useState(false);
 
-  // Page header
   const sentinelRef = useSetPageHeader("Settings");
-
-  // Auth
   const { user, logout } = useAuth();
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
-      toast.error("Failed to log out");
-    }
-  };
-
-  // Check if Finnhub API key exists in environment
-  const handleCheckFinnhub = async () => {
-    setIsCheckingFinnhub(true);
-    try {
-      const response = await fetch("/api/integrations/has-finnhub-key");
-      const data = await response.json();
-      
-      setFinnhubConfigured(data.hasKey);
-      
-      // Also refresh the settings context
-      await refreshFinnhubApiKey();
-      
-      if (data.hasKey) {
-        toast.success("Finnhub API key detected!");
-      } else {
-        toast.error("No Finnhub API key found in environment");
-      }
-    } catch (error) {
-      console.error("Finnhub check error:", error);
-      toast.error("Failed to check for Finnhub API key");
-    } finally {
-      setIsCheckingFinnhub(false);
-    }
-  };
-
-  // Test Finnhub API credentials
-  const handleTestFinnhub = async () => {
-    setIsTestingFinnhub(true);
-    try {
-      const response = await fetch("/api/integrations/test-finnhub");
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success("Finnhub API key is valid and working!");
-      } else {
-        toast.error(data.error || "Invalid Finnhub API key");
-      }
-    } catch (error) {
-      console.error("Finnhub test error:", error);
-      toast.error("Failed to test Finnhub API key");
-    } finally {
-      setIsTestingFinnhub(false);
-    }
-  };
-
-  // Generate timezone options with offsets
-  const timezoneOptions = useMemo(() => {
-    return TIMEZONE_LIST.map(tz => getTimezoneWithOffset(tz))
-      .sort((a, b) => a.offset - b.offset);
-  }, []);
-
-  // Filter currencies based on search
-  const filteredCurrencies = useMemo(() => {
-    if (!currencySearch.trim()) return SUPPORTED_CURRENCIES;
-    const search = currencySearch.toLowerCase();
-    return SUPPORTED_CURRENCIES.filter(
-      c => c.value.toLowerCase().includes(search) ||
-           c.label.toLowerCase().includes(search)
-    );
-  }, [currencySearch]);
-
-  // Filter timezones based on search
-  const filteredTimezones = useMemo(() => {
-    if (!timezoneSearch.trim()) return timezoneOptions;
-    const search = timezoneSearch.toLowerCase();
-    return timezoneOptions.filter(
-      tz => tz.value.toLowerCase().includes(search) ||
-            tz.label.toLowerCase().includes(search)
-    );
-  }, [timezoneSearch, timezoneOptions]);
-
-  // Reset highlight index when filter changes
+  // Load settings on mount
   useEffect(() => {
-    setHighlightedCurrencyIndex(0);
-  }, [filteredCurrencies]);
-
-  useEffect(() => {
-    setHighlightedTimezoneIndex(0);
-  }, [filteredTimezones]);
-
-  useEffect(() => {
-    // Load saved settings from database
     const loadSettings = async () => {
       try {
         const [currencyValue, timezoneValue, autoCopyValue] = await Promise.all([
@@ -334,74 +183,54 @@ export default function SettingsPage() {
           getSetting("TIMEZONE"),
           getSetting("autoCopyBudgets"),
         ]);
-
-        if (currencyValue) {
-          setCurrencyState(currencyValue as Currency);
-        }
-
+        if (currencyValue) setCurrencyState(currencyValue as Currency);
         if (timezoneValue) {
           setTimezoneState(timezoneValue);
         } else {
-          // Default to browser timezone if not set
-          const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-          setTimezoneState(defaultTimezone);
+          setTimezoneState(Intl.DateTimeFormat().resolvedOptions().timeZone);
         }
-
         setAutoCopyBudgets(autoCopyValue === "true");
-      } catch (error) {
-        console.error("Failed to load settings:", error);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
       }
     };
-
     loadSettings();
 
-    // Load snapshot scheduler config
     fetch("/api/scheduler/config")
-      .then(res => res.json())
+      .then((r) => r.json())
       .then(({ data }) => {
         setSnapshotEnabled(data?.enabled ?? true);
         setSnapshotTime(data?.time || "03:00");
-        setPlaidSyncEnabled(data?.plaidSync ?? false); // Load Plaid sync setting
-        setPriceRefreshEnabled(data?.priceRefresh ?? true); // Load price refresh setting
       })
-      .catch(err => {
-        console.error("Failed to load scheduler config:", err);
-      })
-      .finally(() => {
-        setIsLoadingSnapshotConfig(false);
-      });
+      .catch(() => {});
 
-    // Check API configuration status
-    const checkApiStatus = async () => {
-      try {
-        const res = await fetch("/api/integrations/status");
-        if (res.ok) {
-          const data = await res.json();
-          setFinnhubConfigured(data.finnhub);
-          setPlaidConfigured(data.plaid);
-        } else {
-          console.error("Failed to check integration status");
-          setFinnhubConfigured(false);
-          setPlaidConfigured(false);
-        }
-      } catch (error) {
-        console.error("Error checking integration status:", error);
+    fetch("/api/integrations/status")
+      .then((r) => r.json())
+      .then((data) => {
+        setFinnhubConfigured(data.finnhub);
+        setPlaidConfigured(data.plaid);
+      })
+      .catch(() => {
         setFinnhubConfigured(false);
         setPlaidConfigured(false);
-      }
-    };
-    checkApiStatus();
+      });
 
-    // Check if we just reset data and show toast (with delay to ensure Toaster is mounted)
     if (sessionStorage.getItem("data-reset-success")) {
       sessionStorage.removeItem("data-reset-success");
-      setTimeout(() => {
-        toast.success("All data has been reset");
-      }, 100);
+      setTimeout(() => toast.success("All data has been reset"), 100);
     }
   }, []);
 
-  // Currency handler
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch {
+      toast.error("Failed to log out");
+    }
+  };
+
   const handleCurrencyChange = async (value: Currency) => {
     setCurrencyState(value);
     setCurrencyOpen(false);
@@ -409,234 +238,60 @@ export default function SettingsPage() {
     try {
       await setSetting("CURRENCY", value);
       toast.success(`Currency set to ${value}`);
-    } catch (error) {
-      console.error("Failed to save currency:", error);
+    } catch {
       toast.error("Failed to save currency setting");
     }
   };
 
-  // Auto-copy budgets handler
+  const handleCurrencySave = () => handleCurrencyChange(pendingCurrency as Currency);
+
+  const handleTimezoneChange = async (value: string) => {
+    setTimezoneState(value);
+    setTimezoneOpen(false);
+    setTimezoneSearch("");
+    try {
+      await setSetting("TIMEZONE", value);
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: value,
+        timeZoneName: "short",
+      });
+      const abbrev =
+        formatter.formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value || value;
+      toast.success(`Timezone set to ${abbrev}`);
+    } catch {
+      toast.error("Failed to save timezone setting");
+    }
+  };
+
+  const handleTimezoneSave = () => handleTimezoneChange(pendingTimezone);
+
   const handleAutoCopyBudgetsChange = async (checked: boolean) => {
     setAutoCopyBudgets(checked);
     await setSetting("autoCopyBudgets", checked ? "true" : "false");
     toast.success(checked ? "Auto-copy budgets enabled" : "Auto-copy budgets disabled");
   };
 
-  // Snapshot scheduler handlers
-  const handleSnapshotEnabledChange = async (checked: boolean) => {
-    try {
-      const res = await fetch("/api/scheduler/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: checked }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      setSnapshotEnabled(checked);
-      toast.success(checked ? "Automatic snapshots enabled" : "Automatic snapshots disabled");
-    } catch (err) {
-      console.error("Failed to update snapshot enabled:", err);
-      toast.error("Failed to update setting");
-    }
-  };
-
-  const handleSnapshotTimeChange = async (time: string) => {
-    // Validate HH:MM format
-    if (!/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time)) {
-      toast.error("Invalid time format. Use HH:MM (e.g., 03:00)");
-      return;
-    }
-    try {
-      const res = await fetch("/api/scheduler/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ time }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      setSnapshotTime(time);
-      toast.success(`Snapshot time set to ${time}`);
-    } catch (err) {
-      console.error("Failed to update snapshot time:", err);
-      toast.error("Failed to update setting");
-    }
-  };
-
-  const handlePlaidSyncChange = async (checked: boolean) => {
-    try {
-      const res = await fetch("/api/scheduler/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plaidSync: checked }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      setPlaidSyncEnabled(checked);
-      toast.success(checked ? "Plaid sync enabled with snapshots" : "Plaid sync disabled");
-    } catch (err) {
-      console.error("Failed to update Plaid sync setting:", err);
-      toast.error("Failed to update setting");
-    }
-  };
-
-  const handlePriceRefreshChange = async (checked: boolean) => {
-    try {
-      const res = await fetch("/api/scheduler/config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceRefresh: checked }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      setPriceRefreshEnabled(checked);
-      toast.success(checked ? "Price refresh enabled with snapshots" : "Price refresh disabled");
-    } catch (err) {
-      console.error("Failed to update price refresh setting:", err);
-      toast.error("Failed to update setting");
-    }
-  };
-
-  // Timezone handler
-  const handleTimezoneChange = async (value: string) => {
-    setTimezoneState(value);
-    setTimezoneOpen(false);
-    setTimezoneSearch("");
-
-    try {
-      await setSetting("TIMEZONE", value);
-      // Get short abbreviation like "PST", "EST", etc.
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: value,
-        timeZoneName: "short",
-      });
-      const parts = formatter.formatToParts(new Date());
-      const abbrev = parts.find(p => p.type === "timeZoneName")?.value || value;
-      toast.success(`Timezone set to ${abbrev}`);
-    } catch (error) {
-      console.error("Failed to save timezone:", error);
-      toast.error("Failed to save timezone setting");
-    }
-  };
-
-  // Keyboard navigation for currency
-  const handleCurrencyKeyDown = (e: React.KeyboardEvent) => {
-    if (!currencyOpen) {
-      if (e.key === "Enter" || e.key === "ArrowDown") {
-        e.preventDefault();
-        setCurrencyOpen(true);
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setHighlightedCurrencyIndex(prev =>
-          Math.min(prev + 1, filteredCurrencies.length - 1)
-        );
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setHighlightedCurrencyIndex(prev => Math.max(prev - 1, 0));
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (filteredCurrencies[highlightedCurrencyIndex]) {
-          handleCurrencyChange(filteredCurrencies[highlightedCurrencyIndex].value);
-        }
-        break;
-      case "Escape":
-        e.preventDefault();
-        setCurrencyOpen(false);
-        setCurrencySearch("");
-        break;
-    }
-  };
-
-  // Keyboard navigation for timezone
-  const handleTimezoneKeyDown = (e: React.KeyboardEvent) => {
-    if (!timezoneOpen) {
-      if (e.key === "Enter" || e.key === "ArrowDown") {
-        e.preventDefault();
-        setTimezoneOpen(true);
-      }
-      return;
-    }
-
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setHighlightedTimezoneIndex(prev =>
-          Math.min(prev + 1, filteredTimezones.length - 1)
-        );
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setHighlightedTimezoneIndex(prev => Math.max(prev - 1, 0));
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (filteredTimezones[highlightedTimezoneIndex]) {
-          handleTimezoneChange(filteredTimezones[highlightedTimezoneIndex].value);
-        }
-        break;
-      case "Escape":
-        e.preventDefault();
-        setTimezoneOpen(false);
-        setTimezoneSearch("");
-        break;
-    }
-  };
-
-  // Get display label for current currency
-  const currentCurrencyLabel = useMemo(() => {
-    const curr = SUPPORTED_CURRENCIES.find(c => c.value === currency);
-    return curr ? `${curr.value} - ${curr.label}` : currency;
-  }, [currency]);
-
-  // Get display label for current timezone
-  const currentTimezoneLabel = useMemo(() => {
-    const tz = timezoneOptions.find(t => t.value === timezone);
-    return tz?.label || timezone;
-  }, [timezone, timezoneOptions]);
-
-  // Delete account handler
   const handleDeleteAccount = async () => {
     if (resetConfirmText !== "DELETE MY ACCOUNT") {
       toast.error("Please type 'DELETE MY ACCOUNT' to confirm");
       return;
     }
-
     try {
-      // Delete account via API
       const res = await fetch("/api/auth/me", { method: "DELETE" });
-      if (!res.ok) {
-        throw new Error("Failed to delete account");
-      }
-
-      // Redirect to login page
+      if (!res.ok) throw new Error("Failed to delete account");
       window.location.href = "/login";
-    } catch (error) {
-      console.error("Error deleting account:", error);
+    } catch {
       toast.error("Failed to delete account");
     }
   };
 
-  // Data export handler
   const handleExportData = async () => {
     setIsExporting(true);
     try {
-      // Fetch all data from API
       const res = await fetch("/api/data");
-      if (!res.ok) {
-        throw new Error("Failed to fetch data");
-      }
+      if (!res.ok) throw new Error("Failed to fetch data");
       const { data: exportData } = await res.json();
-
-      // Create export object with metadata
-      const jsonExport = {
-        exportedAt: new Date().toISOString(),
-        version: 1,
-        data: exportData,
-      };
-
-      // Download as JSON
+      const jsonExport = { exportedAt: new Date().toISOString(), version: 1, data: exportData };
       const blob = new Blob([JSON.stringify(jsonExport, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -646,1136 +301,547 @@ export default function SettingsPage() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
       toast.success("Data exported successfully");
-    } catch (error) {
-      console.error("Error exporting data:", error);
+    } catch {
       toast.error("Failed to export data");
     } finally {
       setIsExporting(false);
     }
   };
 
-  // Data import handler
   const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setIsImporting(true);
     try {
       const text = await file.text();
       const importData = JSON.parse(text);
-
-      if (!importData.data) {
-        throw new Error("Invalid export file format");
-      }
-
-      // Send to API for import
+      if (!importData.data) throw new Error("Invalid export file format");
       const res = await fetch("/api/data", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(importData.data),
       });
-
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.error || "Failed to import data");
       }
-
       const result = await res.json();
       const imported = result.data?.imported || {};
-      toast.success(`Imported ${imported.transactions || 0} transactions, ${imported.categories || 0} categories, ${imported.budgets || 0} budgets`);
-
-      // Reload the page to refresh all data
+      toast.success(
+        `Imported ${imported.transactions || 0} transactions, ${imported.categories || 0} categories, ${imported.budgets || 0} budgets`
+      );
       window.location.reload();
     } catch (error) {
-      console.error("Error importing data:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to import data. Check file format.");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to import data. Check file format."
+      );
     } finally {
       setIsImporting(false);
-      // Reset file input
-      if (dataFileInputRef.current) {
-        dataFileInputRef.current.value = "";
-      }
+      if (dataFileInputRef.current) dataFileInputRef.current.value = "";
     }
   };
 
-  // Snapshot export handler
-  const handleExportSnapshots = async () => {
-    setIsExportingSnapshots(true);
-    try {
-      const res = await fetch("/api/portfolio/snapshots");
-      if (!res.ok) {
-        throw new Error("Failed to fetch snapshots");
+  // ── Keyboard navigation ────────────────────────────────────────────────────
+
+  const handleCurrencyKeyDown = (e: React.KeyboardEvent) => {
+    if (!currencyOpen) {
+      if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setCurrencyOpen(true);
       }
-      const { data: snapshots } = await res.json();
-
-      if (!snapshots || snapshots.length === 0) {
-        toast.error("No snapshots to export");
-        return;
-      }
-
-      // Create export object with metadata
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        version: 1,
-        count: snapshots.length,
-        snapshots: snapshots.map((s: {
-          date: string;
-          totalSavings: number;
-          totalInvestments: number;
-          totalAssets: number;
-          totalDebt: number;
-          netWorth: number;
-          details: unknown;
-        }) => ({
-          date: s.date,
-          totalSavings: s.totalSavings,
-          totalInvestments: s.totalInvestments,
-          totalAssets: s.totalAssets,
-          totalDebt: s.totalDebt,
-          netWorth: s.netWorth,
-          details: s.details,
-        })),
-      };
-
-      // Download as JSON
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sors-snapshots-${new Date().toISOString().split("T")[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      toast.success(`Exported ${snapshots.length} snapshots`);
-    } catch (error) {
-      console.error("Error exporting snapshots:", error);
-      toast.error("Failed to export snapshots");
-    } finally {
-      setIsExportingSnapshots(false);
+      return;
+    }
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedCurrencyIndex((p) => Math.min(p + 1, filteredCurrencies.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedCurrencyIndex((p) => Math.max(p - 1, 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (filteredCurrencies[highlightedCurrencyIndex])
+          setPendingCurrency(filteredCurrencies[highlightedCurrencyIndex].value as Currency);
+        break;
+      case "Escape":
+        e.preventDefault();
+        setCurrencyOpen(false);
+        setCurrencySearch("");
+        break;
     }
   };
 
-  // Snapshot import handler
-  const handleImportSnapshots = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsImportingSnapshots(true);
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-
-      if (!data.snapshots || !Array.isArray(data.snapshots)) {
-        throw new Error("Invalid snapshot file format");
+  const handleTimezoneKeyDown = (e: React.KeyboardEvent) => {
+    if (!timezoneOpen) {
+      if (e.key === "Enter" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setTimezoneOpen(true);
       }
-
-      let imported = 0;
-      let skipped = 0;
-
-      for (const snapshot of data.snapshots) {
-        if (!snapshot.date) {
-          skipped++;
-          continue;
-        }
-
-        try {
-          const res = await fetch("/api/portfolio/snapshots", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              date: snapshot.date,
-              totalSavings: snapshot.totalSavings ?? 0,
-              totalInvestments: snapshot.totalInvestments ?? 0,
-              totalAssets: snapshot.totalAssets ?? 0,
-              totalDebt: snapshot.totalDebt ?? 0,
-              netWorth: snapshot.netWorth ?? 0,
-              details: snapshot.details ?? { accounts: [], items: [] },
-            }),
-          });
-
-          if (res.ok) {
-            imported++;
-          } else {
-            skipped++;
-          }
-        } catch {
-          skipped++;
-        }
-      }
-
-      if (imported > 0) {
-        toast.success(`Imported ${imported} snapshots${skipped > 0 ? `, ${skipped} skipped` : ""}`);
-      } else {
-        toast.error("No snapshots were imported");
-      }
-    } catch (error) {
-      console.error("Error importing snapshots:", error);
-      toast.error("Failed to import snapshots. Check file format.");
-    } finally {
-      setIsImportingSnapshots(false);
-      // Reset file input
-      if (snapshotFileInputRef.current) {
-        snapshotFileInputRef.current.value = "";
-      }
+      return;
+    }
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedTimezoneIndex((p) => Math.min(p + 1, filteredTimezones.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedTimezoneIndex((p) => Math.max(p - 1, 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (filteredTimezones[highlightedTimezoneIndex])
+          setPendingTimezone(filteredTimezones[highlightedTimezoneIndex].value);
+        break;
+      case "Escape":
+        e.preventDefault();
+        setTimezoneOpen(false);
+        setTimezoneSearch("");
+        break;
     }
   };
 
-  // Keyboard navigation effects removed for brevity
+  // ── Derived values ─────────────────────────────────────────────────────────
 
-  // Developer page content
-  const colors = [
-    { name: "Background", var: "--background", class: "bg-background" },
-    { name: "Foreground", var: "--foreground", class: "bg-foreground" },
-    { name: "Primary", var: "--primary", class: "bg-primary" },
-    { name: "Primary Foreground", var: "--primary-foreground", class: "bg-primary-foreground" },
-    { name: "Secondary", var: "--secondary", class: "bg-secondary" },
-    { name: "Secondary Foreground", var: "--secondary-foreground", class: "bg-secondary-foreground" },
-    { name: "Muted", var: "--muted", class: "bg-muted" },
-    { name: "Muted Foreground", var: "--muted-foreground", class: "bg-muted-foreground" },
-    { name: "Accent", var: "--accent", class: "bg-accent" },
-    { name: "Accent Foreground", var: "--accent-foreground", class: "bg-accent-foreground" },
-    { name: "Destructive", var: "--destructive", class: "bg-destructive" },
-    { name: "Border", var: "--border", class: "bg-border" },
-    { name: "Input", var: "--input", class: "bg-input" },
-    { name: "Ring", var: "--ring", class: "bg-ring" },
-    { name: "Card", var: "--card", class: "bg-card" },
-    { name: "Card Foreground", var: "--card-foreground", class: "bg-card-foreground" },
-    { name: "Popover", var: "--popover", class: "bg-popover" },
-    { name: "Popover Foreground", var: "--popover-foreground", class: "bg-popover-foreground" },
-  ];
+  const timezoneOptions = useMemo(
+    () => TIMEZONE_LIST.map((tz) => getTimezoneWithOffset(tz)).sort((a, b) => a.offset - b.offset),
+    []
+  );
 
-  const chartColors = [
-    { name: "Chart 1", var: "--chart-1", class: "bg-chart-1" },
-    { name: "Chart 2", var: "--chart-2", class: "bg-chart-2" },
-    { name: "Chart 3", var: "--chart-3", class: "bg-chart-3" },
-    { name: "Chart 4", var: "--chart-4", class: "bg-chart-4" },
-    { name: "Chart 5", var: "--chart-5", class: "bg-chart-5" },
-    { name: "Chart Success", var: "--chart-success", class: "bg-[var(--chart-success)]" },
-    { name: "Chart Danger", var: "--chart-danger", class: "bg-[var(--chart-danger)]" },
-    { name: "Alt Orange", var: "--alt-orange", class: "bg-[var(--alt-orange)]" },
-    { name: "Alt Amber", var: "--alt-amber", class: "bg-[var(--alt-amber)]" },
-    { name: "Alt Blue", var: "--alt-blue", class: "bg-[var(--alt-blue)]" },
-    { name: "Alt Cyan", var: "--alt-cyan", class: "bg-[var(--alt-cyan)]" },
-    { name: "Alt Emerald", var: "--alt-emerald", class: "bg-[var(--alt-emerald)]" },
-    { name: "Alt Fuchsia", var: "--alt-fuchsia", class: "bg-[var(--alt-fuchsia)]" },
-    { name: "Alt Green", var: "--alt-green", class: "bg-[var(--alt-green)]" },
-    { name: "Alt Indigo", var: "--alt-indigo", class: "bg-[var(--alt-indigo)]" },
-    { name: "Alt Lime", var: "--alt-lime", class: "bg-[var(--alt-lime)]" },
-    { name: "Alt Pink", var: "--alt-pink", class: "bg-[var(--alt-pink)]" },
-  ];
+  const filteredCurrencies = useMemo(() => {
+    if (!currencySearch.trim()) return SUPPORTED_CURRENCIES;
+    const s = currencySearch.toLowerCase();
+    return SUPPORTED_CURRENCIES.filter(
+      (c) => c.value.toLowerCase().includes(s) || c.label.toLowerCase().includes(s)
+    );
+  }, [currencySearch]);
 
+  const filteredTimezones = useMemo(() => {
+    if (!timezoneSearch.trim()) return timezoneOptions;
+    const s = timezoneSearch.toLowerCase();
+    return timezoneOptions.filter(
+      (tz) => tz.value.toLowerCase().includes(s) || tz.label.toLowerCase().includes(s)
+    );
+  }, [timezoneSearch, timezoneOptions]);
+
+  useEffect(() => {
+    setHighlightedCurrencyIndex(0);
+  }, [filteredCurrencies]);
+  useEffect(() => {
+    setHighlightedTimezoneIndex(0);
+  }, [filteredTimezones]);
+
+  const timezoneShortLabel = useMemo(() => {
+    const tz = timezoneOptions.find((t) => t.value === timezone);
+    if (!tz) return undefined;
+    const match = tz.label.match(/\((.+?)\)/);
+    return match ? match[1] : timezone.split("/").pop()?.replace("_", " ");
+  }, [timezone, timezoneOptions]);
+
+  const snapshotRowValue = snapshotEnabled ? `Daily ${snapshotTime}` : "Disabled";
+
+  // Dev colors
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">
-          Configure your app preferences and integrations
-        </p>
-        <div ref={sentinelRef} className="h-0" />
-      </div>
+    <div className="p-6 space-y-8">
+      <div ref={sentinelRef} className="h-0" />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="data">Data</TabsTrigger>
-          {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
-            <TabsTrigger value="developer">Developer</TabsTrigger>
-          )}
-        </TabsList>
+      <SettingsPageHeader
+        title="Settings"
+        description="Manage your app preferences, integrations, and data."
+      />
 
-        {/* General Tab */}
-        <TabsContent value="general" className="space-y-6 max-w-2xl">
-          {/* Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Account
-              </CardTitle>
-              <CardDescription>
-                Your account information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
-                    <User className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{user?.username}</p>
-                    <p className="text-sm text-muted-foreground">Logged in</p>
-                  </div>
-                </div>
-                <Button variant="outline" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Log out
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Currency Setting */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Currency
-              </CardTitle>
-              <CardDescription>
-                Set your default currency for transactions and portfolio values
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Default Currency</Label>
-                <Popover open={currencyOpen} onOpenChange={setCurrencyOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={currencyOpen}
-                      className="w-[320px] justify-between font-normal"
-                    >
-                      {currentCurrencyLabel}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[320px] p-0" align="start">
-                    <div className="p-2 border-b">
-                      <Input
-                        placeholder="Search currencies..."
-                        value={currencySearch}
-                        onChange={(e) => setCurrencySearch(e.target.value)}
-                        onKeyDown={handleCurrencyKeyDown}
-                        autoFocus
-                      />
-                    </div>
-                    <div
-                      ref={currencyListRef}
-                      className="max-h-[300px] overflow-y-auto p-1"
-                    >
-                      {filteredCurrencies.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-muted-foreground">
-                          No currency found
-                        </div>
-                      ) : (
-                        filteredCurrencies.map((c, index) => (
-                          <div
-                            key={c.value}
-                            className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
-                              index === highlightedCurrencyIndex && "bg-accent",
-                              c.value === currency && "font-medium"
-                            )}
-                            onClick={() => handleCurrencyChange(c.value)}
-                            onMouseEnter={() => setHighlightedCurrencyIndex(index)}
-                          >
-                            <Check
-                              className={cn(
-                                "h-4 w-4 shrink-0",
-                                c.value === currency ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <span className="font-mono w-10">{c.value}</span>
-                            <span className="flex-1 truncate text-muted-foreground">{c.label}</span>
-                            <span className="text-muted-foreground">{c.symbol}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <p className="text-sm text-muted-foreground">
-                  This assumes all your imported transactions are in this currency.
-                  Changing this will not convert existing values.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Timezone Setting */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                Timezone
-              </CardTitle>
-              <CardDescription>
-                Set your timezone for accurate date handling
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Timezone</Label>
-                <Popover open={timezoneOpen} onOpenChange={setTimezoneOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={timezoneOpen}
-                      className="w-[320px] justify-between font-normal"
-                    >
-                      {currentTimezoneLabel || "Select timezone..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[320px] p-0" align="start">
-                    <div className="p-2 border-b">
-                      <Input
-                        placeholder="Search timezones..."
-                        value={timezoneSearch}
-                        onChange={(e) => setTimezoneSearch(e.target.value)}
-                        onKeyDown={handleTimezoneKeyDown}
-                        autoFocus
-                      />
-                    </div>
-                    <div
-                      ref={timezoneListRef}
-                      className="max-h-[300px] overflow-y-auto p-1"
-                    >
-                      {filteredTimezones.length === 0 ? (
-                        <div className="py-6 text-center text-sm text-muted-foreground">
-                          No timezone found
-                        </div>
-                      ) : (
-                        filteredTimezones.map((tz, index) => (
-                          <div
-                            key={tz.value}
-                            className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
-                              index === highlightedTimezoneIndex && "bg-accent",
-                              tz.value === timezone && "font-medium"
-                            )}
-                            onClick={() => handleTimezoneChange(tz.value)}
-                            onMouseEnter={() => setHighlightedTimezoneIndex(index)}
-                          >
-                            <Check
-                              className={cn(
-                                "h-4 w-4 shrink-0",
-                                tz.value === timezone ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <span className="flex-1">{tz.label}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <p className="text-sm text-muted-foreground">
-                  Defaults to your browser&apos;s timezone on first launch.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Preferences Tab */}
-        <TabsContent value="preferences" className="space-y-6 max-w-2xl">
-          {/* Budget Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Budget
-              </CardTitle>
-              <CardDescription>
-                Configure budget behavior and automation
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="auto-copy-budgets">Auto-copy budgets</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Automatically copy budget amounts from the previous month when entering a new month with no budgets set
-                  </p>
-                </div>
-                <Switch
-                  id="auto-copy-budgets"
-                  checked={autoCopyBudgets}
-                  onCheckedChange={handleAutoCopyBudgetsChange}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Portfolio Snapshots */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Portfolio Snapshots
-              </CardTitle>
-              <CardDescription>
-                Configure automatic daily snapshots of your net worth
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {isLoadingSnapshotConfig ? (
-                <div className="text-sm text-muted-foreground">Loading...</div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <Label htmlFor="snapshot-enabled">Enable automatic snapshots</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Automatically save a snapshot of your portfolio each day
-                      </p>
-                    </div>
-                    <Switch
-                      id="snapshot-enabled"
-                      checked={snapshotEnabled}
-                      onCheckedChange={handleSnapshotEnabledChange}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="snapshot-time">Snapshot time</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="snapshot-time"
-                        type="text"
-                        placeholder="03:00"
-                        value={snapshotTime}
-                        onChange={(e) => setSnapshotTime(e.target.value)}
-                        onBlur={(e) => handleSnapshotTimeChange(e.target.value)}
-                        className="w-24 font-mono"
-                        disabled={!snapshotEnabled}
-                        maxLength={5}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        (HH:MM, 24-hour)
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Time of day when the automatic snapshot will be taken
-                    </p>
-                  </div>
-
-                  {/* Plaid Sync Toggle - Only show if Plaid is configured */}
-                  {plaidConfigured && (
-                    <div className="flex items-center justify-between gap-4 pt-2 border-t">
-                      <div className="space-y-1">
-                        <Label htmlFor="plaid-sync-enabled">Sync Plaid balances with snapshot</Label>
-                        <p className="text-sm text-muted-foreground">
-                          Automatically sync Plaid account balances when taking scheduled portfolio snapshots
-                        </p>
-                      </div>
-                      <Switch
-                        id="plaid-sync-enabled"
-                        checked={plaidSyncEnabled}
-                        onCheckedChange={handlePlaidSyncChange}
-                        disabled={!snapshotEnabled}
-                      />
-                    </div>
-                  )}
-
-                  {/* Price Refresh Toggle */}
-                  <div className="flex items-center justify-between gap-4 pt-2 border-t">
-                    <div className="space-y-1">
-                      <Label htmlFor="price-refresh-enabled">Refresh ticker prices with snapshot</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Automatically refresh stock/crypto/metal prices when taking scheduled portfolio snapshots
-                      </p>
-                    </div>
-                    <Switch
-                      id="price-refresh-enabled"
-                      checked={priceRefreshEnabled}
-                      onCheckedChange={handlePriceRefreshChange}
-                      disabled={!snapshotEnabled}
-                    />
-                  </div>
-
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertTitle>Important</AlertTitle>
-                    <AlertDescription>
-                      For automatic snapshots to work, the application must be running during the time of the snapshot. This means:
-                      <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>
-                          <strong>Development:</strong> Keep <code className="bg-muted px-1 py-0.5 rounded text-xs">npm run dev</code> running in your terminal
-                        </li>
-                        <li>
-                          <strong>Docker:</strong> Ensure the Docker container is running
-                        </li>
-                      </ul>
-                    </AlertDescription>
-                  </Alert>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Integrations Tab */}
-        <TabsContent value="integrations" className="space-y-6 max-w-2xl">
-          {/* Finnhub Integration Card */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+      {/* ── INTEGRATIONS ─────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Integrations" />
+        <div className="grid grid-cols-2 gap-4 max-w-lg">
+          {/* Finnhub */}
+          <Link href="/settings/finnhub" className="block">
+          <div
+            className="rounded-xl border bg-card p-5 flex flex-col gap-3 cursor-pointer hover:border-primary/40 transition-colors h-full"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-500/10 shrink-0">
                 <img
                   src="/logos/finnhub.png"
                   alt="Finnhub"
-                  className="h-5 w-auto object-contain"
+                  className="h-6 w-auto object-contain"
                 />
-                Finnhub Stock Market Data
-              </CardTitle>
-              <CardDescription className="space-y-2">
-                <p>
-                  Get real-time stock prices and market data for your portfolio investments.
-                  Free tier includes 60 API calls per minute.
-                </p>
-                <a
-                  href="https://finnhub.io"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-lime-600 hover:text-lime-700 dark:text-lime-400 dark:hover:text-lime-300"
-                >
-                  Learn more about Finnhub
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Status Section */}
-              <div className="flex items-center justify-between py-2 border-b">
-                <div className="flex items-center gap-2">
-                  {finnhubConfigured === null ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Checking configuration...</span>
-                    </>
-                  ) : finnhubConfigured ? (
-                    <>
-                      <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
-                      <span className="font-medium text-green-600 dark:text-green-400">Configured</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                      <span className="font-medium text-amber-600 dark:text-amber-400">Not Configured</span>
-                    </>
-                  )}
+              </div>
+              {finnhubConfigured === null ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground mt-0.5" />
+              ) : finnhubConfigured ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                  Configured
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                  Not set up
+                </span>
+              )}
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-sm">Finnhub</p>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                Real-time stock, crypto & metal prices
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="self-start"
+            >
+              {finnhubConfigured ? "Manage" : "Set up"}
+            </Button>
+          </div>
+          </Link>
+
+          {/* Plaid */}
+          <Link href="/settings/plaid" className="block">
+            <div className="rounded-xl border bg-card p-5 flex flex-col gap-3 cursor-pointer hover:border-primary/40 transition-colors h-full">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/10 shrink-0">
+                  <img src="/logos/plaid.png" alt="Plaid" className="h-6 w-auto object-contain" />
                 </div>
-                {finnhubConfigured ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleTestFinnhub}
-                    disabled={isTestingFinnhub}
-                  >
-                    {isTestingFinnhub ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      "Test Connection"
-                    )}
-                  </Button>
-                ) : finnhubConfigured === false && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCheckFinnhub}
-                    disabled={isCheckingFinnhub}
-                  >
-                    {isCheckingFinnhub ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
-                        Checking...
-                      </>
-                    ) : (
-                      "Check for API Key"
-                    )}
-                  </Button>
+                {plaidConfigured === null ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground mt-0.5" />
+                ) : plaidConfigured ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Connected
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                    Not connected
+                  </span>
                 )}
               </div>
-
-              {/* Instructions */}
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Setup Instructions:</p>
-                
-                <div className="space-y-2">
-                  <div>
-                    <p className="text-sm font-medium mb-1 flex items-center gap-2">
-                      <Monitor className="h-4 w-4" />
-                      Local Development & Docker CLI
-                    </p>
-                    <ol className="text-sm space-y-1 list-decimal list-inside ml-6 text-muted-foreground">
-                      <li>Get a free API key from <a href="https://finnhub.io/register" target="_blank" rel="noopener noreferrer" className="text-lime-600 hover:underline">finnhub.io/register</a></li>
-                      <li>Add to your <code className="bg-muted px-1 py-0.5 rounded">.env</code> file:
-                        <pre className="mt-1 p-2 bg-muted rounded text-xs overflow-x-auto">FINNHUB_API_KEY=your_api_key_here</pre>
-                      </li>
-                      <li>Restart the server</li>
-                    </ol>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-medium mb-1 flex items-center gap-2">
-                      <img src="/logos/docker.png" alt="Docker" className="h-4 w-4" />
-                      Docker UI/Portainer
-                    </p>
-                    <p className="text-sm ml-6 text-muted-foreground">
-                      Add <code className="bg-muted px-1 py-0.5 rounded">FINNHUB_API_KEY</code> in your stack&apos;s Environment Variables section
-                    </p>
-                  </div>
-                </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Plaid Banking</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                  Bank account connections & balance sync
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Plaid Banking Integration Card */}
-          <PlaidBankingConnections 
-            plaidConfigured={plaidConfigured}
-          />
-        </TabsContent>
-
-        {/* Data Tab */}
-        <TabsContent value="data" className="space-y-6 max-w-2xl">
-          {/* Import/Export Data */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Import & Export Data
-              </CardTitle>
-              <CardDescription>
-                Backup and restore all your data as a JSON file
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1 space-y-2">
-                  <Label>Export Data</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Download all transactions, categories, budgets, and portfolio data
-                  </p>
-                  <Button onClick={handleExportData} disabled={isExporting} variant="outline">
-                    <Download className="h-4 w-4 mr-2" />
-                    {isExporting ? "Exporting..." : "Export to JSON"}
-                  </Button>
-                </div>
-                <div className="flex-1 space-y-2">
-                  <Label>Import Data</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Restore data from a previously exported JSON file
-                  </p>
-                  <div>
-                    <input
-                      ref={dataFileInputRef}
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportData}
-                      className="hidden"
-                      id="data-import"
-                    />
-                    <Button
-                      onClick={() => dataFileInputRef.current?.click()}
-                      disabled={isImporting}
-                      variant="outline"
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      {isImporting ? "Importing..." : "Import from JSON"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertTitle>Note</AlertTitle>
-                <AlertDescription>
-                  Importing will add new records. Existing data with matching IDs will not be duplicated.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-
-          {/* Delete Account */}
-          <Card className="border-destructive/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-destructive">
-                <Trash2 className="h-5 w-5" />
-                Delete Account
-              </CardTitle>
-              <CardDescription>
-                Permanently delete your account and all associated data. This action cannot be undone.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Warning</AlertTitle>
-                <AlertDescription>
-                  This will permanently delete your account and all associated data
-                  including transactions, categories, budgets, portfolio items, and
-                  snapshots. Consider exporting your data first.
-                </AlertDescription>
-              </Alert>
-              <Button
-                variant="destructive"
-                onClick={() => setShowResetDialog(true)}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Account
+              <Button variant="outline" size="sm" className="self-start">
+                {plaidConfigured ? "Manage" : "Connect"}
               </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </Link>
+        </div>
+      </section>
 
-        {/* Developer Tab */}
-        {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
-          <TabsContent value="developer" className="space-y-6">
-            {/* Snapshot History Import/Export */}
-            <Card className="max-w-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Snapshot History
-                </CardTitle>
-                <CardDescription>
-                  Import and export your complete portfolio snapshot history
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1 space-y-2">
-                    <Label>Export Snapshots</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Download all snapshots as a JSON file for backup or migration
-                    </p>
-                    <Button
-                      onClick={handleExportSnapshots}
-                      disabled={isExportingSnapshots}
-                      variant="outline"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      {isExportingSnapshots ? "Exporting..." : "Export to JSON"}
-                    </Button>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <Label>Import Snapshots</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Restore snapshots from a previously exported JSON file
-                    </p>
-                    <div>
-                      <input
-                        ref={snapshotFileInputRef}
-                        type="file"
-                        accept=".json"
-                        onChange={handleImportSnapshots}
-                        className="hidden"
-                        id="snapshot-import"
-                      />
-                      <Button
-                        onClick={() => snapshotFileInputRef.current?.click()}
-                        disabled={isImportingSnapshots}
-                        variant="outline"
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        {isImportingSnapshots ? "Importing..." : "Import from JSON"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Note</AlertTitle>
-                  <AlertDescription>
-                    Importing snapshots will add new entries. Duplicate dates will create additional snapshots.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
+      {/* ── ACCOUNT ──────────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Account" />
+        <RowGroup>
+          <ActionRow
+            icon={<User className="h-4 w-4" />}
+            title={user?.username || ""}
+            description="Logged in"
+            action={
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="h-3.5 w-3.5 mr-1.5" />
+                Sign out
+              </Button>
+            }
+          />
+        </RowGroup>
+      </section>
 
-            {/* Primary Colors */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Primary Colors</CardTitle>
-                <CardDescription>Core color palette used throughout the app</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                  {colors.map((color) => (
-                    <div key={color.var} className="space-y-1.5">
-                      <div
-                        className={`h-16 rounded-lg border ${color.class}`}
-                      />
-                      <div className="text-xs">
-                        <p className="font-medium">{color.name}</p>
-                        <p className="text-muted-foreground font-mono">{color.var}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+      {/* ── PREFERENCES ──────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Preferences" />
+        <RowGroup>
+          <NavigateRow
+            icon={<DollarSign className="h-4 w-4" />}
+            title="Currency"
+            description="Default currency for transactions and portfolio"
+            value={currency}
+            onClick={() => setCurrencyOpen(true)}
+          />
+          <NavigateRow
+            icon={<Globe className="h-4 w-4" />}
+            title="Timezone"
+            description="Used for accurate date handling"
+            value={timezoneShortLabel}
+            onClick={() => setTimezoneOpen(true)}
+          />
+          <ToggleRow
+            icon={<Copy className="h-4 w-4" />}
+            title="Auto-copy budgets"
+            description="Copy last month's budgets when a new month has none set"
+            id="auto-copy-budgets"
+            checked={autoCopyBudgets}
+            onCheckedChange={handleAutoCopyBudgetsChange}
+          />
+          <NavigateRow
+            icon={<Clock className="h-4 w-4" />}
+            title="Snapshot Schedule"
+            description="Automatic daily net worth snapshots"
+            value={snapshotRowValue}
+            href="/settings/snapshots"
+          />
+        </RowGroup>
+      </section>
 
-            {/* Chart Colors */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Chart Colors</CardTitle>
-                <CardDescription>Colors used for charts and data visualization</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                  {chartColors.map((color) => (
-                    <div key={color.var} className="space-y-1.5">
-                      <div
-                        className={`h-16 rounded-lg border ${color.class}`}
-                      />
-                      <div className="text-xs">
-                        <p className="font-medium">{color.name}</p>
-                        <p className="text-muted-foreground font-mono">{color.var}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+      {/* ── CONFIGS ──────────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Configs" />
+        <RowGroup>
+          <NavigateRow
+            icon={<Tag className="h-4 w-4" />}
+            title="Categories"
+            description="Manage transaction categories and auto-categorization keywords"
+            href="/settings/categories"
+          />
+          <NavigateRow
+            icon={<FileText className="h-4 w-4" />}
+            title="Import Templates"
+            description="Custom CSV and Excel column mapping templates"
+            href="/settings/templates"
+          />
+        </RowGroup>
+      </section>
 
-            {/* Buttons */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Buttons</CardTitle>
-                <CardDescription>Button variants and sizes</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Variants</p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button>Default</Button>
-                    <Button variant="secondary">Secondary</Button>
-                    <Button variant="destructive">Destructive</Button>
-                    <Button variant="outline">Outline</Button>
-                    <Button variant="ghost">Ghost</Button>
-                    <Button variant="link">Link</Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Sizes</p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button size="lg">Large</Button>
-                    <Button size="default">Default</Button>
-                    <Button size="sm">Small</Button>
-                    <Button size="icon"><Plus className="h-4 w-4" /></Button>
-                    <Button size="icon-sm"><Plus className="h-4 w-4" /></Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">With Icons</p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button><Plus className="h-4 w-4 mr-2" />Add Item</Button>
-                    <Button variant="outline"><Pencil className="h-4 w-4 mr-2" />Edit</Button>
-                    <Button variant="destructive"><Trash2 className="h-4 w-4 mr-2" />Delete</Button>
-                    <Button variant="secondary"><Check className="h-4 w-4 mr-2" />Confirm</Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">States</p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button disabled>Disabled</Button>
-                    <Button variant="outline" disabled>Disabled Outline</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+      {/* ── DATA ─────────────────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionHeader label="Data" />
+        <RowGroup>
+          <ActionRow
+            icon={<Download className="h-4 w-4" />}
+            title="Export Data"
+            description="Download all transactions, categories, budgets, and portfolio data"
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportData}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  "Export"
+                )}
+              </Button>
+            }
+          />
+          <ActionRow
+            icon={<Upload className="h-4 w-4" />}
+            title="Import Data"
+            description="Restore data from a previously exported JSON backup file"
+            action={
+              <>
+                <input
+                  ref={dataFileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportData}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => dataFileInputRef.current?.click()}
+                  disabled={isImporting}
+                >
+                  {isImporting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Import"
+                  )}
+                </Button>
+              </>
+            }
+          />
+          <NavigateRow
+            icon={<Trash2 className="h-4 w-4" />}
+            title="Delete Account"
+            description="Permanently delete your account and all associated data"
+            onClick={() => setShowResetDialog(true)}
+            destructive
+          />
+        </RowGroup>
+      </section>
 
-            {/* Badges */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Badges</CardTitle>
-                <CardDescription>Badge variants for labels and status indicators</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-3">
-                  <Badge>Default</Badge>
-                  <Badge variant="secondary">Secondary</Badge>
-                  <Badge variant="destructive">Destructive</Badge>
-                  <Badge variant="outline">Outline</Badge>
-                </div>
-              </CardContent>
-            </Card>
+      {/* ── DEVELOPER (conditional) ──────────────────────────────────────── */}
+      {(process.env.NODE_ENV === "development" || user?.username === "joshdev") && (
+        <section className="space-y-2">
+          <SectionHeader label="Developer" />
+          <RowGroup>
+            <NavigateRow
+              icon={<Code2 className="h-4 w-4" />}
+              title="Developer Tools"
+              description="Snapshot history, component library, color palette"
+              href="/settings/developer"
+            />
+          </RowGroup>
+        </section>
+      )}
 
-            {/* Dialogs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Dialogs</CardTitle>
-                <CardDescription>Modal dialogs and alert dialogs</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-3">
-                  <Button variant="outline" onClick={() => setShowDevDialog(true)}>
-                    Open Dialog
-                  </Button>
-                  <Button variant="destructive" onClick={() => setShowDevAlertDialog(true)}>
-                    Open Alert Dialog
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+      {/* ─── DIALOGS ─────────────────────────────────────────────────────── */}
 
-            {/* Inputs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Inputs</CardTitle>
-                <CardDescription>Form input components</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Default Input</p>
-                    <Input placeholder="Enter text..." />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Disabled Input</p>
-                    <Input placeholder="Disabled" disabled />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">With Value</p>
-                    <Input defaultValue="Sample value" />
-                  </div>
+      {/* Currency Picker Dialog */}
+      <Dialog
+        open={currencyOpen}
+        onOpenChange={(open) => {
+          setCurrencyOpen(open);
+          if (open) setPendingCurrency(currency);
+          else setCurrencySearch("");
+        }}
+      >
+        <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b">
+            <DialogTitle>Select Currency</DialogTitle>
+            <DialogDescription className="sr-only">
+              Search and select your default currency
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-3 pt-3 pb-2 border-b">
+            <Input
+              placeholder="Search currencies..."
+              value={currencySearch}
+              onChange={(e) => setCurrencySearch(e.target.value)}
+              onKeyDown={handleCurrencyKeyDown}
+              autoFocus
+            />
+          </div>
+          <div ref={currencyListRef} className="max-h-[300px] overflow-y-auto p-1">
+            {filteredCurrencies.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No currency found
+              </div>
+            ) : (
+              filteredCurrencies.map((c, index) => (
+                <div
+                  key={c.value}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
+                    index === highlightedCurrencyIndex && "bg-accent",
+                    c.value === pendingCurrency && "bg-muted font-medium"
+                  )}
+                  onClick={() => setPendingCurrency(c.value as Currency)}
+                  onMouseEnter={() => setHighlightedCurrencyIndex(index)}
+                >
+                  <Check
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      c.value === pendingCurrency ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <span className="font-mono w-10">{c.value}</span>
+                  <span className="flex-1 truncate text-muted-foreground">{c.label}</span>
+                  <span className="text-muted-foreground">{c.symbol}</span>
                 </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Checkbox</p>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="check1" />
-                      <label htmlFor="check1" className="text-sm">Unchecked</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="check2" defaultChecked />
-                      <label htmlFor="check2" className="text-sm">Checked</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox id="check3" disabled />
-                      <label htmlFor="check3" className="text-sm text-muted-foreground">Disabled</label>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              ))
+            )}
+          </div>
+          <DialogFooter className="px-4 py-3 border-t">
+            <Button
+              variant="outline"
+              onClick={() => { setCurrencyOpen(false); setCurrencySearch(""); }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleCurrencySave}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            {/* Tooltips */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Tooltips</CardTitle>
-                <CardDescription>Hover tooltips for additional context</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-3">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="outline">Hover me</Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>This is a tooltip</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Edit item</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button size="icon" variant="ghost">
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete item</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+      {/* Timezone Picker Dialog */}
+      <Dialog
+        open={timezoneOpen}
+        onOpenChange={(open) => {
+          setTimezoneOpen(open);
+          if (open) setPendingTimezone(timezone);
+          else setTimezoneSearch("");
+        }}
+      >
+        <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-4 pt-4 pb-3 border-b">
+            <DialogTitle>Select Timezone</DialogTitle>
+            <DialogDescription className="sr-only">
+              Search and select your timezone
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-3 pt-3 pb-2 border-b">
+            <Input
+              placeholder="Search timezones..."
+              value={timezoneSearch}
+              onChange={(e) => setTimezoneSearch(e.target.value)}
+              onKeyDown={handleTimezoneKeyDown}
+              autoFocus
+            />
+          </div>
+          <div ref={timezoneListRef} className="max-h-[300px] overflow-y-auto p-1">
+            {filteredTimezones.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                No timezone found
+              </div>
+            ) : (
+              filteredTimezones.map((tz, index) => (
+                <div
+                  key={tz.value}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer",
+                    index === highlightedTimezoneIndex && "bg-accent",
+                    tz.value === pendingTimezone && "bg-muted font-medium"
+                  )}
+                  onClick={() => setPendingTimezone(tz.value)}
+                  onMouseEnter={() => setHighlightedTimezoneIndex(index)}
+                >
+                  <Check
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      tz.value === pendingTimezone ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <span className="flex-1">{tz.label}</span>
                 </div>
-              </CardContent>
-            </Card>
+              ))
+            )}
+          </div>
+          <DialogFooter className="px-4 py-3 border-t">
+            <Button
+              variant="outline"
+              onClick={() => { setTimezoneOpen(false); setTimezoneSearch(""); }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleTimezoneSave}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            {/* Typography */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Typography</CardTitle>
-                <CardDescription>Text styles and headings</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <h1 className="text-4xl font-bold tracking-tight">Heading 1</h1>
-                  <h2 className="text-3xl font-bold tracking-tight">Heading 2</h2>
-                  <h3 className="text-2xl font-semibold">Heading 3</h3>
-                  <h4 className="text-xl font-semibold">Heading 4</h4>
-                  <h5 className="text-lg font-medium">Heading 5</h5>
-                  <p className="text-base">Body text - The quick brown fox jumps over the lazy dog.</p>
-                  <p className="text-sm text-muted-foreground">Muted text - Secondary information.</p>
-                  <p className="text-xs text-muted-foreground">Small text - Fine print.</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Spacing Reference */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Spacing</CardTitle>
-                <CardDescription>Common spacing values used in the app</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {[1, 2, 3, 4, 6, 8, 12, 16].map((space) => (
-                    <div key={space} className="flex items-center gap-3">
-                      <div className="bg-primary h-4" style={{ width: `${space * 4}px` }} />
-                      <span className="text-sm font-mono text-muted-foreground">
-                        {space} ({space * 4}px)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-      </Tabs>
-
-      {/* Delete Account Confirmation Dialog */}
+      {/* Delete Account Dialog */}
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete your account?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete your account and all associated data. This action cannot be undone.
+              This will permanently delete your account and all associated data. This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4">
             <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
               <li>Your user account</li>
-              <li>All transactions</li>
-              <li>All categories</li>
-              <li>All budgets</li>
-              <li>All import history</li>
-              <li>All portfolio accounts and items</li>
-              <li>All portfolio snapshots</li>
+              <li>All transactions and import history</li>
+              <li>All categories and budgets</li>
+              <li>All portfolio accounts, items, and snapshots</li>
               <li>All app preferences</li>
             </ul>
             <div>
-              <p className="text-sm font-medium mb-3">
-                Type <code className="bg-muted px-1 py-0.5 rounded">DELETE MY ACCOUNT</code> to confirm:
+              <p className="text-sm font-medium mb-2">
+                Type <code className="bg-muted px-1 py-0.5 rounded">DELETE MY ACCOUNT</code> to
+                confirm:
               </p>
               <Input
                 value={resetConfirmText}
@@ -1785,9 +851,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setResetConfirmText("")}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setResetConfirmText("")}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleDeleteAccount}
@@ -1799,44 +863,6 @@ export default function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dev Alert Dialog */}
-      <AlertDialog open={showDevAlertDialog} onOpenChange={setShowDevAlertDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This is an example alert dialog for the developer showcase.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Dev Dialog */}
-      <Dialog open={showDevDialog} onOpenChange={setShowDevDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Example Dialog</DialogTitle>
-            <DialogDescription>
-              This is an example dialog with a form input.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Input placeholder="Enter something..." />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDevDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => setShowDevDialog(false)}>
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

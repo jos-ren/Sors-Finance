@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, X, ChevronDown, ChevronUp } 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { formatCurrency } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
 
 interface PlaidSyncBannerProps {
@@ -46,6 +46,7 @@ export function PlaidSyncBanner({
 }: PlaidSyncBannerProps) {
   const [expanded, setExpanded] = useState(false);
   const userCurrency = useCurrency();
+  const { formatAmount } = usePrivacy();
   
   const hasErrors = accountsFailed > 0 || pricesFailed > 0;
   const hasLoginErrors = errors.some(err => 
@@ -135,7 +136,7 @@ export function PlaidSyncBanner({
                       {syncedAccounts.map((account, idx) => (
                         <div key={idx} className="flex justify-between text-sm">
                           <span className="text-muted-foreground">{account.name}</span>
-                          <span className="font-mono tabular-nums">{formatCurrency(account.balance, userCurrency)}</span>
+                          <span className="font-mono tabular-nums">{formatAmount(account.balance, userCurrency)}</span>
                         </div>
                       ))}
                     </div>
@@ -152,7 +153,7 @@ export function PlaidSyncBanner({
                           <span className="text-muted-foreground">
                             {item.ticker} - {item.itemName}
                           </span>
-                          <span className="font-mono tabular-nums">{formatCurrency(item.price, item.currency)}</span>
+                          <span className="font-mono tabular-nums">{formatAmount(item.price, item.currency)}</span>
                         </div>
                       ))}
                     </div>
@@ -198,9 +199,9 @@ export function PlaidSyncBanner({
                 <span className="text-sm">
                   Some banks require re-authentication.
                 </span>
-                <Link href="/settings?tab=integrations">
+                <Link href="/settings/plaid">
                   <Button variant="outline" size="sm" className="h-7 gap-1">
-                    Go to Integrations
+                    Go to Plaid Banking
                     <ExternalLink className="h-3 w-3" />
                   </Button>
                 </Link>

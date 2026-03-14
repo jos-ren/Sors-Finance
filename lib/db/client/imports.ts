@@ -19,6 +19,8 @@ export async function addImport(importData: {
   source: string;
   transactionCount: number;
   totalAmount: number;
+  batchId?: string | null;
+  method?: string | null;
 }): Promise<number> {
   const res = await fetch("/api/imports", {
     method: "POST",

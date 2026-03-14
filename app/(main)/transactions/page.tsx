@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown } from "lucide-react";
+import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown, FileClock, Trash2 } from "lucide-react";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +23,12 @@ import { toast } from "sonner";
 import { TransactionImporter } from "@/components/TransactionImporter";
 import { TransactionDataTable } from "@/components/TransactionDataTable";
 import { AddTransactionDialog } from "@/components/AddTransactionDialog";
-import { useImports, useTransactions, useCategories, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
+import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
+import { deleteImportDraft } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
 import type { DbImport } from "@/lib/db";
+import type { DbImportDraft } from "@/lib/db/types";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -36,11 +38,17 @@ function formatDate(date: Date): string {
   }).format(date);
 }
 
+/* eslint-disable @next/next/no-img-element */
 function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
+  const isPlaid = record.method === "plaid";
   return (
     <div className="flex items-center justify-between py-2 px-3 rounded-md border">
       <div className="flex items-center gap-3">
-        <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+        {isPlaid ? (
+          <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
+        ) : (
+          <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+        )}
         <div className="flex items-center gap-4">
           <p className="font-medium text-sm">{record.fileName}</p>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -64,10 +72,94 @@ function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; 
   );
 }
 
+function BatchImportCard({ records, formatAmount, userCurrency }: { records: DbImport[]; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
+  const [open, setOpen] = useState(false);
+  const totalCount = records.reduce((s, r) => s + r.transactionCount, 0);
+  const totalAmount = records.reduce((s, r) => s + r.totalAmount, 0);
+  const date = records[0].importedAt;
+  const isPlaid = records[0].method === "plaid";
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <div className="flex items-center justify-between py-2 px-3 rounded-md border cursor-pointer hover:bg-muted/40 transition-colors">
+          <div className="flex items-center gap-3">
+            {isPlaid ? (
+              <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+            )}
+            <div className="flex items-center gap-4">
+              <p className="font-medium text-sm">{isPlaid ? "Plaid Import" : "Batch Import"}</p>
+              <Badge variant="secondary" className="text-xs">{records.length} files</Badge>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {formatDate(date)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Hash className="h-3 w-3" />
+                  {totalCount}
+                </span>
+                <span className="flex items-center gap-1">
+                  <DollarSign className="h-3 w-3" />
+                  {formatAmount(totalAmount, userCurrency)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </div>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-1 ml-4 space-y-1 border-l pl-3">
+          {records.map((record) => (
+            <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function DraftCard({ draft, onDelete }: { draft: DbImportDraft; onDelete: (id: number) => void }) {
+  return (
+    <div className="flex items-center justify-between py-2 px-3 rounded-md border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
+      <div className="flex items-center gap-3">
+        <FileClock className="h-4 w-4 text-amber-500" />
+        <div className="flex items-center gap-4">
+          <p className="font-medium text-sm">{draft.name}</p>
+          <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">Draft</Badge>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatDate(new Date(draft.updatedAt))}
+            </span>
+            <span className="flex items-center gap-1">
+              <Hash className="h-3 w-3" />
+              {draft.transactionCount}
+            </span>
+            <span className="text-xs capitalize">Step: {draft.currentStep}</span>
+          </div>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+        onClick={() => { if (draft.id) onDelete(draft.id); }}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
 export default function TransactionsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
   const imports = useImports();
+  const importDrafts = useImportDrafts();
   const transactions = useTransactions();
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
@@ -76,7 +168,18 @@ export default function TransactionsPage() {
   const handleImportComplete = () => {
     invalidateTransactions();
     invalidateImports();
+    invalidateImportDrafts();
     setIsImportOpen(false);
+  };
+
+  const handleDeleteDraft = async (id: number) => {
+    try {
+      await deleteImportDraft(id);
+      invalidateImportDrafts();
+      toast.success("Draft deleted");
+    } catch {
+      toast.error("Failed to delete draft");
+    }
   };
 
   // Header actions for sticky header
@@ -99,10 +202,32 @@ export default function TransactionsPage() {
   // Set page header and get sentinel ref
   const sentinelRef = useSetPageHeader("Transactions", headerActions);
 
-  // Sort imports by date (newest first)
+  // Sort imports by date (newest first) and group batches
   const sortedImports = imports
     ? [...imports].sort((a, b) => b.importedAt.getTime() - a.importedAt.getTime())
     : [];
+
+  // Group by batchId; records without a batchId are their own group
+  const importGroups = useMemo(() => {
+    const groups: Array<{ batchId: string | null; records: DbImport[] }> = [];
+    const batchMap = new Map<string, DbImport[]>();
+
+    for (const record of sortedImports) {
+      if (record.batchId) {
+        const existing = batchMap.get(record.batchId);
+        if (existing) {
+          existing.push(record);
+        } else {
+          const group = [record];
+          batchMap.set(record.batchId, group);
+          groups.push({ batchId: record.batchId, records: group });
+        }
+      } else {
+        groups.push({ batchId: null, records: [record] });
+      }
+    }
+    return groups;
+  }, [sortedImports]);
 
   return (
     <>
@@ -163,7 +288,7 @@ export default function TransactionsPage() {
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent>
-                {sortedImports.length === 0 ? (
+                {sortedImports.length === 0 && (!importDrafts || importDrafts.length === 0) ? (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
                     <FileX className="h-10 w-10 text-muted-foreground mb-3" />
                     <p className="font-medium">No imports yet</p>
@@ -173,9 +298,26 @@ export default function TransactionsPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {sortedImports.map((record) => (
-                      <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
+                    {importDrafts && importDrafts.length > 0 && importDrafts.map((draft) => (
+                      <DraftCard key={`draft-${draft.id}`} draft={draft} onDelete={handleDeleteDraft} />
                     ))}
+                    {importGroups.map((group) =>
+                      group.records.length > 1 ? (
+                        <BatchImportCard
+                          key={group.batchId!}
+                          records={group.records}
+                          formatAmount={formatAmount}
+                          userCurrency={userCurrency}
+                        />
+                      ) : (
+                        <ImportCard
+                          key={group.records[0].id}
+                          record={group.records[0]}
+                          formatAmount={formatAmount}
+                          userCurrency={userCurrency}
+                        />
+                      )
+                    )}
                   </div>
                 )}
               </CardContent>

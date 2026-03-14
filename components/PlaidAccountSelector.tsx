@@ -17,8 +17,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CalendarIcon, Loader2, AlertCircle, Building2, ChevronDown, Info, CreditCard, PiggyBank, TrendingUp, Home } from "lucide-react";
+import { InfoCard } from "@/components/ui/info-card";
+import { CalendarIcon, Loader2, AlertCircle, Building2, ChevronDown, CreditCard, PiggyBank, TrendingUp, Home, Info } from "lucide-react";
 import { format, subMonths, startOfMonth, addDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -267,12 +267,9 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
   if (plaidItems.length === 0) {
     return (
       <div className="space-y-4">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            No bank accounts connected. Please connect a bank account in Settings first.
-          </AlertDescription>
-        </Alert>
+        <InfoCard variant="info">
+          No bank accounts connected. Please connect a bank account in Settings first.
+        </InfoCard>
         <div className="flex justify-between">
           <Button variant="outline" onClick={onBack}>
             Back
@@ -285,10 +282,7 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
   return (
     <div className="space-y-6">
       {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <InfoCard variant="danger">{error}</InfoCard>
       )}
 
       {/* Institution & Account Selection */}

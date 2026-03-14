@@ -575,23 +575,79 @@ async function runSnapshotTask() {
           console.log(`[Scheduler] Price refresh disabled for user #${user.id} (${user.username}), skipping.`);
         }
 
-        // Step 3: Create portfolio snapshot if enabled
+        // Step 3: Create or update portfolio snapshot if enabled
         const snapshotEnabled = await isSnapshotEnabledForUser(user.id);
         if (!snapshotEnabled) {
           console.log(`[Scheduler] Snapshots disabled for user #${user.id} (${user.username}), skipping.`);
           continue;
         }
 
-        // Check if snapshot already exists today for this user
+        // If prices were refreshed, always upsert today's snapshot so it captures fresh values.
+        // Otherwise, only create if no snapshot exists today.
         const exists = await hasSnapshotTodayForUser(user.id);
-        if (exists) {
+        if (exists && !priceRefreshEnabled) {
           console.log(`[Scheduler] Snapshot already exists for user #${user.id} (${user.username}), skipping.`);
           continue;
         }
 
-        // Create snapshot for this user
-        const snapshotId = await createSnapshotForUser(user.id);
-        console.log(`[Scheduler] Created snapshot #${snapshotId} for user #${user.id} (${user.username})`);
+        if (exists) {
+          // Update the existing today snapshot with latest portfolio values
+          const now = new Date();
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+          const existingSnapshot = await db
+            .select()
+            .from(schema.portfolioSnapshots)
+            .where(
+              and(
+                eq(schema.portfolioSnapshots.userId, user.id),
+                gte(schema.portfolioSnapshots.date, startOfDay),
+                lte(schema.portfolioSnapshots.date, endOfDay)
+              )
+            )
+            .limit(1);
+
+          if (existingSnapshot.length > 0) {
+            // Re-calculate totals with fresh prices
+            const accounts = await db
+              .select()
+              .from(schema.portfolioAccounts)
+              .where(eq(schema.portfolioAccounts.userId, user.id));
+            const items = await db
+              .select()
+              .from(schema.portfolioItems)
+              .where(
+                and(
+                  eq(schema.portfolioItems.userId, user.id),
+                  eq(schema.portfolioItems.isActive, true)
+                )
+              );
+
+            let totalSavings = 0, totalInvestments = 0, totalAssets = 0, totalDebt = 0;
+            for (const account of accounts) {
+              const total = items.filter(i => i.accountId === account.id).reduce((s, i) => s + i.currentValue, 0);
+              switch (account.bucket) {
+                case "Savings": totalSavings += total; break;
+                case "Investments": totalInvestments += total; break;
+                case "Assets": totalAssets += total; break;
+                case "Debt": totalDebt += total; break;
+              }
+            }
+            const netWorth = totalSavings + totalInvestments + totalAssets - totalDebt;
+
+            await db
+              .update(schema.portfolioSnapshots)
+              .set({ totalSavings, totalInvestments, totalAssets, totalDebt, netWorth })
+              .where(eq(schema.portfolioSnapshots.id, existingSnapshot[0].id));
+
+            console.log(`[Scheduler] Updated existing snapshot #${existingSnapshot[0].id} for user #${user.id} with refreshed prices.`);
+          }
+        } else {
+          // Create snapshot for this user
+          const snapshotId = await createSnapshotForUser(user.id);
+          console.log(`[Scheduler] Created snapshot #${snapshotId} for user #${user.id} (${user.username})`);
+        }
       } catch (userError) {
         console.error(`[Scheduler] Failed to process user #${user.id}:`, userError);
         // Continue with other users even if one fails

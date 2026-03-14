@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
       portfolioAccounts,
       portfolioSnapshots,
       settings,
+      customImportTemplates,
     ] = await Promise.all([
       db.select().from(schema.transactions).where(eq(schema.transactions.userId, userId)),
       db.select().from(schema.categories).where(eq(schema.categories.userId, userId)),
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
       db.select().from(schema.portfolioAccounts).where(eq(schema.portfolioAccounts.userId, userId)),
       db.select().from(schema.portfolioSnapshots).where(eq(schema.portfolioSnapshots.userId, userId)),
       db.select().from(schema.settings).where(eq(schema.settings.userId, userId)),
+      db.select().from(schema.customImportTemplates).where(eq(schema.customImportTemplates.userId, userId)),
     ]);
 
     return NextResponse.json({
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest) {
         portfolioAccounts,
         portfolioSnapshots,
         settings,
+        customImportTemplates,
         exportedAt: new Date().toISOString(),
         version: "2.0", // SQLite version
       },
@@ -86,6 +89,7 @@ export async function DELETE(request: NextRequest) {
         )
       );
       await db.delete(schema.settings).where(eq(schema.settings.userId, userId));
+      await db.delete(schema.customImportTemplates).where(eq(schema.customImportTemplates.userId, userId));
     }
 
     return NextResponse.json({
@@ -122,6 +126,7 @@ export async function POST(request: NextRequest) {
     await db.delete(schema.budgets).where(eq(schema.budgets.userId, userId));
     await db.delete(schema.transactions).where(eq(schema.transactions.userId, userId));
     await db.delete(schema.imports).where(eq(schema.imports.userId, userId));
+    await db.delete(schema.customImportTemplates).where(eq(schema.customImportTemplates.userId, userId));
     // Only delete non-system categories - preserve system categories
     await db.delete(schema.categories).where(
       and(
@@ -207,6 +212,8 @@ export async function POST(request: NextRequest) {
           amountIn: t.amountIn ?? 0,
           netAmount: t.netAmount ?? (t.amountIn - t.amountOut),
           source: t.source || "Manual",
+          sourceMethod: t.sourceMethod || null,
+          sourceAccountName: t.sourceAccountName || null,
           categoryId: t.categoryId ? (categoryIdMap.get(t.categoryId) ?? null) : null,
           importId: t.importId ? (importIdMap.get(t.importId) ?? null) : null,
           userId,
@@ -286,7 +293,9 @@ export async function POST(request: NextRequest) {
             currency: item.currency || null,
             lastPriceUpdate: item.lastPriceUpdate ? new Date(item.lastPriceUpdate) : null,
             priceMode: item.priceMode || null,
+            tickerType: item.tickerType || null,
             isInternational: item.isInternational || null,
+            // plaidAccountId intentionally omitted — Plaid data is not exported
             userId,
             createdAt: item.createdAt ? new Date(item.createdAt) : now,
             updatedAt: item.updatedAt ? new Date(item.updatedAt) : now,
@@ -313,6 +322,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Import custom import templates (CSV/Excel column mappings)
+    if (body.customImportTemplates?.length) {
+      for (const tpl of body.customImportTemplates) {
+        await db.insert(schema.customImportTemplates).values({
+          uuid: randomUUID(), // Always generate new UUID to avoid conflicts
+          name: tpl.name,
+          mapping: tpl.mapping,
+          userId,
+          createdAt: tpl.createdAt ? new Date(tpl.createdAt) : now,
+          updatedAt: tpl.updatedAt ? new Date(tpl.updatedAt) : now,
+        });
+      }
+    }
+
     return NextResponse.json({
       data: {
         imported: {
@@ -324,6 +347,7 @@ export async function POST(request: NextRequest) {
           portfolioItems: body.portfolioItems?.length || 0,
           portfolioSnapshots: body.portfolioSnapshots?.length || 0,
           settings: body.settings?.length || 0,
+          customImportTemplates: body.customImportTemplates?.length || 0,
         },
       },
       success: true,

@@ -6,7 +6,6 @@ import {
   Receipt,
   Wallet,
   DollarSign,
-  Tags,
   TrendingUp,
   PiggyBank,
   Home,
@@ -46,11 +45,6 @@ const navItems = [
     title: "Budget",
     url: "/budget",
     icon: Wallet,
-  },
-  {
-    title: "Categories",
-    url: "/categories",
-    icon: Tags,
   },
   {
     title: "Transactions",

@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updatePortfolioSnapshot, DbPortfolioSnapshot } from "@/lib/hooks/useDatabase";
 import { useCurrency } from "@/lib/settings-context";
-import { formatCurrency as formatCurrencyUtil } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 import { toast } from "sonner";
 
 interface EditSnapshotDialogProps {
@@ -47,6 +47,7 @@ export function EditSnapshotDialog({ open, onOpenChange, snapshot }: EditSnapsho
   const [debt, setDebt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const userCurrency = useCurrency();
+  const { formatAmount } = usePrivacy();
 
   // Reset form when snapshot changes
   useEffect(() => {
@@ -176,7 +177,7 @@ export function EditSnapshotDialog({ open, onOpenChange, snapshot }: EditSnapsho
             <div className="rounded-lg bg-muted p-3 mt-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">Net Worth</span>
-                <span className="text-lg font-semibold">{formatCurrencyUtil(netWorth, userCurrency)}</span>
+                <span className="text-lg font-semibold">{formatAmount(netWorth, userCurrency)}</span>
               </div>
             </div>
           </div>

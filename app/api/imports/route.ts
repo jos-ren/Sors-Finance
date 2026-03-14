@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
       source: row.source,
       transactionCount: row.transactionCount,
       totalAmount: row.totalAmount,
+      batchId: row.batchId ?? null,
+      method: row.method ?? null,
       importedAt: row.importedAt,
     }));
 
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
 
-    const { fileName, source, transactionCount, totalAmount } = await request.json();
+    const { fileName, source, transactionCount, totalAmount, batchId, method } = await request.json();
 
     if (!fileName || !source) {
       return NextResponse.json(
@@ -61,6 +63,8 @@ export async function POST(request: NextRequest) {
         source,
         transactionCount: transactionCount ?? 0,
         totalAmount: totalAmount ?? 0,
+        batchId: batchId ?? null,
+        method: method ?? null,
         userId,
         importedAt: new Date(),
       })

@@ -43,7 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, Plus, PiggyBank, TrendingUp, Home } from "lucide-react";
 import { toast } from "sonner";
 import { invalidatePortfolio } from "@/lib/hooks/useDatabase";
-import { formatCurrencyShort } from "@/lib/formatters";
+import { usePrivacy } from "@/lib/privacy-context";
 
 type BucketType = "Savings" | "Investments" | "Assets" | "Debt";
 
@@ -99,6 +99,7 @@ export function PlaidBucketSelector({
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   // Track which accounts are explicitly in "create new" mode (not derived from name matching)
   const [creatingNewAccounts, setCreatingNewAccounts] = useState<Set<number>>(new Set());
+  const { formatAmount } = usePrivacy();
 
   // Initialize account selections when dialog opens with accounts
   useEffect(() => {
@@ -440,7 +441,7 @@ export function PlaidBucketSelector({
                       {account.mask && <span className="text-muted-foreground font-normal ml-2">••{account.mask}</span>}
                     </p>
                     <span className="text-sm text-muted-foreground shrink-0">
-                      {formatCurrencyShort(account.currentBalance)}
+                      {formatAmount(account.currentBalance)}
                     </span>
                   </div>
 
