@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, useEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualScroll } from "@/components/resolve-step/VirtualScrollContext";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,17 +23,9 @@ import {
 } from "@/components/ui/dialog";
 import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
-import {
-  TransactionTable,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableCell,
-  DateCell,
-  DescriptionCell,
-  AmountCell,
-} from "@/components/resolve-step";
+import { DateCell, DescriptionCell, AmountCell } from "@/components/resolve-step";
+
+const ROW_HEIGHT = 41;
 
 interface ConflictResolverProps {
   conflictTransactions: Transaction[];
@@ -49,6 +43,40 @@ export function ConflictResolver({
   onEditKeyword,
 }: ConflictResolverProps) {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const outerScrollRef = useVirtualScroll();
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const outerScroll = outerScrollRef?.current;
+    if (!container || !outerScroll) return;
+    const outerRect = outerScroll.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    setScrollMargin(Math.max(0, containerRect.top - outerRect.top + outerScroll.scrollTop));
+  });
+
+  // Re-measure when the scroll container resizes (e.g. tab animation completes on first open)
+  useEffect(() => {
+    const outerScroll = outerScrollRef?.current;
+    const container = containerRef.current;
+    if (!outerScroll || !container) return;
+    const observer = new ResizeObserver(() => {
+      const outerRect = outerScroll.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setScrollMargin(Math.max(0, containerRect.top - outerRect.top + outerScroll.scrollTop));
+    });
+    observer.observe(outerScroll);
+    return () => observer.disconnect();
+  }, [outerScrollRef]);
+
+  const virtualizer = useVirtualizer({
+    count: conflictTransactions.length,
+    getScrollElement: () => outerScrollRef?.current ?? null,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 5,
+    scrollMargin,
+  });
   // Pending edits: "categoryId:keyword" -> new value
   const [pendingValues, setPendingValues] = useState<Map<string, string>>(new Map());
   // Pending removals: set of "categoryId:keyword"
@@ -116,64 +144,78 @@ export function ConflictResolver({
     return null;
   }
 
+  const virtualItems = virtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start - scrollMargin : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end + scrollMargin
+      : 0;
+
   return (
     <>
-      <TransactionTable>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[100px] pl-6">Date</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead className="w-[100px]">Amount</TableHead>
-            <TableHead className="w-[220px] text-right pr-6">Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {conflictTransactions.map((transaction) => {
-            const conflicting = getConflictingCategories(transaction);
-            const resolvedCategory = getResolvedCategory(transaction);
-            const isResolved = !!resolvedCategory;
-
-            return (
-              <TableRow key={transaction.id}>
-                <DateCell date={transaction.date} />
-                <DescriptionCell description={transaction.description} />
-                <AmountCell
-                  amountOut={transaction.amountOut}
-                  amountIn={transaction.amountIn}
-                />
-                <TableCell className="text-right pr-6">
-                  <div className="flex justify-end items-center gap-1.5">
-                    <Select
-                      value={isResolved ? resolvedCategory.uuid : undefined}
-                      onValueChange={(value) => onResolve(transaction.id, value)}
-                    >
-                      <SelectTrigger className="w-[130px] h-7 text-xs">
-                        <SelectValue placeholder="Pick category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {conflicting.map((cat) => (
-                          <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => setEditingTransaction(transaction)}
-                      title="Edit conflicting keywords"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </TransactionTable>
+      <div ref={containerRef}>
+        <table className="w-full caption-bottom text-sm" style={{ tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 100 }} />
+            <col />
+            <col style={{ width: 100 }} />
+            <col style={{ width: 220 }} />
+          </colgroup>
+          <thead className="border-b">
+            <tr>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground pl-6">Date</th>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Description</th>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Amount</th>
+              <th className="h-10 px-2 text-right align-middle font-medium text-muted-foreground pr-6">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paddingTop > 0 && <tr><td colSpan={4} style={{ height: paddingTop }} /></tr>}
+            {virtualItems.map((vItem) => {
+              const transaction = conflictTransactions[vItem.index];
+              const conflicting = getConflictingCategories(transaction);
+              const resolvedCategory = getResolvedCategory(transaction);
+              const isResolved = !!resolvedCategory;
+              return (
+                <tr key={vItem.key} className="border-b transition-colors hover:bg-muted/50">
+                  <DateCell date={transaction.date} />
+                  <DescriptionCell description={transaction.description} />
+                  <AmountCell amountOut={transaction.amountOut} amountIn={transaction.amountIn} />
+                  <td className="p-2 text-right pr-6">
+                    <div className="flex justify-end items-center gap-1.5">
+                      <Select
+                        value={isResolved ? resolvedCategory.uuid : undefined}
+                        onValueChange={(value) => onResolve(transaction.id, value)}
+                      >
+                        <SelectTrigger className="w-[130px] h-7 text-xs">
+                          <SelectValue placeholder="Pick category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {conflicting.map((cat) => (
+                            <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">
+                              {cat.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => setEditingTransaction(transaction)}
+                        title="Edit conflicting keywords"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && <tr><td colSpan={4} style={{ height: paddingBottom }} /></tr>}
+          </tbody>
+        </table>
+      </div>
 
       {/* Edit Keywords Dialog */}
       <Dialog open={editingTransaction !== null} onOpenChange={(open) => !open && handleCloseDialog()}>

@@ -42,19 +42,10 @@ import { PlaidAccountSelector } from "@/components/PlaidAccountSelector";
 import { ConflictResolver } from "@/components/ConflictResolver";
 import { DuplicateResolver } from "@/components/DuplicateResolver";
 import { UncategorizedList } from "@/components/UncategorizedList";
+import { CategorizedList } from "@/components/CategorizedList";
 import { ResultsView } from "@/components/ResultsView";
-import {
-  ResolveSection,
-  TransactionTable,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableCell,
-  DateCell,
-  DescriptionCell,
-  AmountCell,
-} from "@/components/resolve-step";
+import { ResolveSection } from "@/components/resolve-step";
+import { VirtualScrollContext } from "@/components/resolve-step/VirtualScrollContext";
 import { Transaction, UploadedFile, WizardStep } from "@/lib/types";
 import { parseFile } from "@/lib/parsers";
 import {
@@ -114,6 +105,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
   // Track pending reprocess - when categories change, we need to recategorize
   const pendingReprocess = useRef(false);
+
+  // Outer scroll container ref for shared virtual scrolling
+  const outerScrollRef = useRef<HTMLDivElement>(null);
 
   // Get the Excluded category for assigning excluded transactions
   const excludedCategory = categories.find(c => c.name === SYSTEM_CATEGORIES.EXCLUDED);
@@ -797,7 +791,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           )}
 
           {/* All sections in a single scrollable container */}
-          <div className="min-h-0 max-h-full overflow-y-auto border rounded-lg">
+          <VirtualScrollContext.Provider value={outerScrollRef}>
+          <div ref={outerScrollRef} className="min-h-0 max-h-full overflow-y-auto border rounded-lg">
             {/* Duplicates Section - FIRST to identify duplicates before anything else */}
             <ResolveSection
               title="Duplicates"
@@ -817,13 +812,13 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                       {skippedDuplicates}
                     </Badge>
                     {importedDuplicates > 0 && (
-                      <Badge className="bg-green-200 text-green-800 dark:bg-green-900/50 dark:text-green-400">
+                      <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
                         {importedDuplicates}
                       </Badge>
                     )}
                   </div>
                 ) : (
-                  <Badge className="bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">0</Badge>
+                  <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">0</Badge>
                 )
               }
             >
@@ -897,51 +892,14 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               emptyMessage="No transactions ready yet"
               completeMessage={`${categorizedTransactions.length} ready to import`}
             >
-              {categorizedTransactions.length > 0 && (
-                <TransactionTable>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px] pl-6">Date</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="w-[100px]">Amount</TableHead>
-                      <TableHead className="w-[200px] text-right pr-6">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {categorizedTransactions.map((t) => {
-                      const selectableCategories = categories.filter(c => c.name.toLowerCase() !== "uncategorized");
-                      return (
-                        <TableRow key={t.id}>
-                          <DateCell date={t.date} />
-                          <DescriptionCell description={t.description} />
-                          <AmountCell amountOut={t.amountOut} amountIn={t.amountIn} />
-                          <TableCell className="text-right pr-6">
-                            <div className="flex justify-end">
-                              <Select
-                                value={t.categoryId || undefined}
-                                onValueChange={(value) => handleChangeCategorizedCategory(t.id, value)}
-                              >
-                                <SelectTrigger className="w-[140px] h-7 text-xs">
-                                  <SelectValue placeholder="Select category" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {selectableCategories.map((c) => (
-                                    <SelectItem key={c.uuid} value={c.uuid} className="text-xs">
-                                      {c.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </TransactionTable>
-              )}
+              <CategorizedList
+                transactions={categorizedTransactions}
+                categories={categories}
+                onChangeCategory={handleChangeCategorizedCategory}
+              />
             </ResolveSection>
           </div>
+          </VirtualScrollContext.Provider>
 
           {/* Spacer to keep action buttons at bottom */}
           <div className="flex-1" />

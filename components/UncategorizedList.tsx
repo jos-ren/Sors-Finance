@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useVirtualScroll } from "@/components/resolve-step/VirtualScrollContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,15 +33,28 @@ import { Transaction } from "@/lib/types";
 import { DbCategory } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
-import {
-  TransactionTable,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableCell,
-  formatDate,
-} from "@/components/resolve-step";
+import { formatDate } from "@/components/resolve-step";
+
+const ROW_HEIGHT = 41;
+const SUBROW_HEIGHT = 33;
+
+type GroupItem = {
+  matchField: string;
+  transactions: Transaction[];
+  count: number;
+  totalOut: number;
+  totalIn: number;
+  hasKeyword: boolean;
+  addedKeyword: { keyword: string; categoryId: string; categoryName: string } | null | undefined;
+  isExcluded: boolean | undefined;
+  isCategorized: boolean;
+  assignedCategory: import("@/lib/db").DbCategory | null | undefined;
+  date: Date;
+};
+
+type FlatRow =
+  | { type: "group"; group: GroupItem; isExpanded: boolean; canExpand: boolean }
+  | { type: "subrow"; transaction: Transaction; idx: number; total: number };
 
 interface UncategorizedListProps {
   uncategorizedTransactions: Transaction[];
@@ -185,11 +200,11 @@ export function UncategorizedList({
     const totalIn = transactions.reduce((sum, t) => sum + t.amountIn, 0);
     const hasKeyword = transactions.some(t => addedKeywords.has(t.id));
     const addedKeyword = hasKeyword ? addedKeywords.get(transactions[0].id) : null;
-    const isExcluded = excludedCategoryId && transactions.some(t => t.categoryId === excludedCategoryId);
+    const isExcluded = !!excludedCategoryId && transactions.some(t => t.categoryId === excludedCategoryId);
 
     // Check if transaction has been categorized (has categoryId that's not excluded)
     const firstTransaction = transactions[0];
-    const isCategorized = firstTransaction.categoryId && firstTransaction.categoryId !== excludedCategoryId;
+    const isCategorized = !!firstTransaction.categoryId && firstTransaction.categoryId !== excludedCategoryId;
     const assignedCategory = isCategorized
       ? categories.find(c => c.uuid === firstTransaction.categoryId)
       : null;
@@ -209,6 +224,62 @@ export function UncategorizedList({
       date: transactions[0].date,
     };
   }).sort((a, b) => b.date.getTime() - a.date.getTime());
+
+  // Flatten groups + expanded sub-rows into a single array for the virtualizer
+  const flatRows = useMemo<FlatRow[]>(() => {
+    const rows: FlatRow[] = [];
+    for (const group of transactionGroups) {
+      const isExpanded = expandedGroups.has(group.matchField);
+      const canExpand = group.count > 1;
+      rows.push({ type: "group", group, isExpanded, canExpand });
+      if (isExpanded && canExpand) {
+        group.transactions.forEach((t, idx) => {
+          rows.push({ type: "subrow", transaction: t, idx, total: group.count });
+        });
+      }
+    }
+    return rows;
+  }, [transactionGroups, expandedGroups]);
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const outerScrollRef = useVirtualScroll();
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const outerScroll = outerScrollRef?.current;
+    if (!container || !outerScroll) return;
+    const outerRect = outerScroll.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    setScrollMargin(Math.max(0, containerRect.top - outerRect.top + outerScroll.scrollTop));
+  });
+
+  // Re-measure when the scroll container resizes (e.g. tab animation completes on first open)
+  useEffect(() => {
+    const outerScroll = outerScrollRef?.current;
+    const container = containerRef.current;
+    if (!outerScroll || !container) return;
+    const observer = new ResizeObserver(() => {
+      const outerRect = outerScroll.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setScrollMargin(Math.max(0, containerRect.top - outerRect.top + outerScroll.scrollTop));
+    });
+    observer.observe(outerScroll);
+    return () => observer.disconnect();
+  }, [outerScrollRef]);
+
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => outerScrollRef?.current ?? null,
+    estimateSize: (i) => (flatRows[i]?.type === "subrow" ? SUBROW_HEIGHT : ROW_HEIGHT),
+    overscan: 5,
+    scrollMargin,
+    getItemKey: (i) => {
+      const row = flatRows[i];
+      if (!row) return i;
+      return row.type === "group" ? `g:${row.group.matchField}` : `s:${row.transaction.id}`;
+    },
+  });
 
   const handleGroupClick = (transactions: Transaction[]) => {
     // Open dialog with the first transaction (they all have same matchField)
@@ -288,153 +359,155 @@ export function UncategorizedList({
     return null;
   }
 
+  const virtualItems = virtualizer.getVirtualItems();
+  const paddingTop = virtualItems.length > 0 ? virtualItems[0].start - scrollMargin : 0;
+  const paddingBottom =
+    virtualItems.length > 0
+      ? virtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end + scrollMargin
+      : 0;
+
   return (
     <>
-      <TransactionTable>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[100px] pl-6">Date</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead className="w-[100px]">Amount</TableHead>
-            <TableHead className="w-[200px] text-right pr-6">Status</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {transactionGroups.map((group) => {
-            const isExpanded = expandedGroups.has(group.matchField);
-            const canExpand = group.count > 1;
+      <div ref={containerRef}>
+        <table className="w-full caption-bottom text-sm" style={{ tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: 100 }} />
+            <col />
+            <col style={{ width: 100 }} />
+            <col style={{ width: 200 }} />
+          </colgroup>
+          <thead className="border-b">
+            <tr>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground pl-6">Date</th>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Description</th>
+              <th className="h-10 px-2 text-left align-middle font-medium text-muted-foreground">Amount</th>
+              <th className="h-10 px-2 text-right align-middle font-medium text-muted-foreground pr-6">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paddingTop > 0 && <tr><td colSpan={4} style={{ height: paddingTop }} /></tr>}
+            {virtualItems.map((vItem) => {
+              const row = flatRows[vItem.index];
+              if (!row) return null;
 
-            return (
-              <React.Fragment key={group.matchField}>
-                <TableRow className={canExpand ? "cursor-pointer" : ""} onClick={canExpand ? () => toggleGroupExpanded(group.matchField) : undefined}>
-                  <TableCell className="whitespace-nowrap pl-6">
-                    <div className="flex items-center gap-1">
-                      {canExpand && (
-                        isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )
-                      )}
-                      {formatDate(group.date)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <p className="text-sm max-w-md truncate cursor-default">
-                              {group.matchField}
-                            </p>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-md">
-                            <p>{group.matchField}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      {group.count > 1 && (
-                        <Badge variant="secondary" className="text-xs shrink-0">
-                          ×{group.count}
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {group.totalOut > 0 ? (
-                      <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                        {formatAmount(group.totalOut, userCurrency)}
-                      </span>
-                    ) : (
-                      <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                        {formatAmount(group.totalIn, userCurrency)}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-end">
-                      {group.isExcluded || group.isCategorized ? (
-                        <Select
-                          value={group.isExcluded ? excludedCategoryId : group.assignedCategory?.uuid}
-                          onValueChange={(value) => {
-                            if (onChangeCategory) {
-                              onChangeCategory(group.transactions.map(t => t.id), value);
-                            }
-                          }}
-                        >
-                          <SelectTrigger className="w-[140px] h-7 text-xs">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectableCategories.map((cat) => (
-                              <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">
-                                {cat.name}
-                              </SelectItem>
-                            ))}
-                            {excludedCategoryId && (
-                              <SelectItem value={excludedCategoryId} className="text-xs">
-                                Excluded
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          className="w-[140px] h-7 text-xs"
-                          onClick={() => handleGroupClick(group.transactions)}
-                        >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Add Keyword
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-                {/* Expanded sub-rows */}
-                {isExpanded && group.transactions.map((transaction, idx) => (
-                  <TableRow key={transaction.id} className="bg-muted/30">
-                    <TableCell className="whitespace-nowrap pl-14 text-muted-foreground text-xs">
-                      {formatDate(transaction.date)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-xs">
+              if (row.type === "group") {
+                const { group, isExpanded, canExpand } = row;
+                return (
+                  <tr
+                    key={vItem.key}
+                    className={`border-b transition-colors hover:bg-muted/50 ${canExpand ? "cursor-pointer" : ""}`}
+                    onClick={canExpand ? () => toggleGroupExpanded(group.matchField) : undefined}
+                  >
+                    <td className="p-2 whitespace-nowrap pl-6">
+                      <div className="flex items-center gap-1">
+                        {canExpand && (
+                          isExpanded
+                            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        {formatDate(group.date)}
+                      </div>
+                    </td>
+                    <td className="p-2">
                       <div className="flex items-center gap-2">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <p className="max-w-md truncate cursor-default">
-                                {transaction.description}
-                              </p>
+                              <p className="text-sm truncate cursor-default">{group.matchField}</p>
                             </TooltipTrigger>
-                            <TooltipContent className="max-w-md">
-                              <p>{transaction.description}</p>
-                            </TooltipContent>
+                            <TooltipContent className="max-w-md"><p>{group.matchField}</p></TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                        <span className="text-muted-foreground/60 shrink-0">
-                          ({idx + 1}/{group.count})
-                        </span>
+                        {group.count > 1 && (
+                          <Badge variant="secondary" className="text-xs shrink-0">×{group.count}</Badge>
+                        )}
                       </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {transaction.amountOut > 0 ? (
+                    </td>
+                    <td className="p-2 whitespace-nowrap">
+                      {group.totalOut > 0 ? (
                         <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
-                          {formatAmount(transaction.amountOut, userCurrency)}
+                          {formatAmount(group.totalOut, userCurrency)}
                         </span>
                       ) : (
                         <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
-                          {formatAmount(transaction.amountIn, userCurrency)}
+                          {formatAmount(group.totalIn, userCurrency)}
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell></TableCell>
-                  </TableRow>
-                ))}
-              </React.Fragment>
-            );
-          })}
-        </TableBody>
-      </TransactionTable>
+                    </td>
+                    <td className="p-2 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex justify-end">
+                        {group.isExcluded || group.isCategorized ? (
+                          <Select
+                            value={group.isExcluded ? excludedCategoryId : group.assignedCategory?.uuid}
+                            onValueChange={(value) => onChangeCategory?.(group.transactions.map(t => t.id), value)}
+                          >
+                            <SelectTrigger className="w-[140px] h-7 text-xs">
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectableCategories.map((cat) => (
+                                <SelectItem key={cat.uuid} value={cat.uuid} className="text-xs">{cat.name}</SelectItem>
+                              ))}
+                              {excludedCategoryId && (
+                                <SelectItem value={excludedCategoryId} className="text-xs">Excluded</SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            className="w-[140px] h-7 text-xs"
+                            onClick={() => handleGroupClick(group.transactions)}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Keyword
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+
+              // Sub-row
+              const { transaction, idx, total } = row;
+              return (
+                <tr key={vItem.key} className="bg-muted/30 border-b">
+                  <td className="p-2 whitespace-nowrap pl-14 text-muted-foreground text-xs">
+                    {formatDate(transaction.date)}
+                  </td>
+                  <td className="p-2 text-muted-foreground text-xs">
+                    <div className="flex items-center gap-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="truncate cursor-default">{transaction.description}</p>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-md"><p>{transaction.description}</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <span className="text-muted-foreground/60 shrink-0">({idx + 1}/{total})</span>
+                    </div>
+                  </td>
+                  <td className="p-2 whitespace-nowrap text-xs">
+                    {transaction.amountOut > 0 ? (
+                      <span className={isPrivacyMode ? "text-muted-foreground" : "text-destructive"}>
+                        {formatAmount(transaction.amountOut, userCurrency)}
+                      </span>
+                    ) : (
+                      <span className={isPrivacyMode ? "text-muted-foreground" : "text-green-500"}>
+                        {formatAmount(transaction.amountIn, userCurrency)}
+                      </span>
+                    )}
+                  </td>
+                  <td />
+                </tr>
+              );
+            })}
+            {paddingBottom > 0 && <tr><td colSpan={4} style={{ height: paddingBottom }} /></tr>}
+          </tbody>
+        </table>
+      </div>
 
 
       {/* Add Keyword Dialog */}

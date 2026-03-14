@@ -99,15 +99,6 @@ export function ResolveSection({
             "hover:bg-accent active:bg-accent/70 transition-colors cursor-pointer select-none",
           )}
         >
-          {/* Expand/Collapse indicator */}
-          <span className="text-muted-foreground shrink-0">
-            {isOpen ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronRight className="h-4 w-4" />
-            )}
-          </span>
-
           {/* Icon */}
           <span className="shrink-0">
             {icon}
@@ -139,6 +130,15 @@ export function ResolveSection({
               <Badge variant={getBadgeVariant()} className={getBadgeClassName()}>
                 {count}
               </Badge>
+            )}
+          </span>
+
+          {/* Expand/Collapse indicator */}
+          <span className="text-muted-foreground shrink-0 ml-auto">
+            {isOpen ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
             )}
           </span>
         </button>

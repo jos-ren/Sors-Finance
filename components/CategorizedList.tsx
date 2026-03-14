@@ -2,24 +2,27 @@
 
 import { useRef, useLayoutEffect, useEffect, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Transaction } from "@/lib/types";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { DbCategory } from "@/lib/db";
 import { DateCell, DescriptionCell, AmountCell } from "@/components/resolve-step";
 import { useVirtualScroll } from "@/components/resolve-step/VirtualScrollContext";
 
 const ROW_HEIGHT = 41;
 
-interface DuplicateResolverProps {
-  duplicateTransactions: Transaction[];
-  onImport: (transactionId: string) => void;
-  onSkip: (transactionId: string) => void;
+interface CategorizedListProps {
+  transactions: Transaction[];
+  categories: DbCategory[];
+  onChangeCategory: (transactionId: string, categoryId: string) => void;
 }
 
-export function DuplicateResolver({
-  duplicateTransactions,
-  onImport,
-  onSkip,
-}: DuplicateResolverProps) {
+export function CategorizedList({ transactions, categories, onChangeCategory }: CategorizedListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
   const outerScrollRef = useVirtualScroll();
@@ -47,17 +50,17 @@ export function DuplicateResolver({
     return () => observer.disconnect();
   }, [outerScrollRef]);
 
+  const selectableCategories = categories.filter(c => c.name.toLowerCase() !== "uncategorized");
+
   const virtualizer = useVirtualizer({
-    count: duplicateTransactions.length,
+    count: transactions.length,
     getScrollElement: () => outerScrollRef?.current ?? null,
     estimateSize: () => ROW_HEIGHT,
     overscan: 5,
     scrollMargin,
   });
 
-  if (duplicateTransactions.length === 0) return null;
-
-  const getValue = (t: Transaction) => (t.importDuplicate ? "import" : "skip");
+  if (transactions.length === 0) return null;
 
   const virtualItems = virtualizer.getVirtualItems();
   const paddingTop = virtualItems.length > 0 ? virtualItems[0].start - scrollMargin : 0;
@@ -86,7 +89,7 @@ export function DuplicateResolver({
         <tbody>
           {paddingTop > 0 && <tr><td colSpan={4} style={{ height: paddingTop }} /></tr>}
           {virtualItems.map((vItem) => {
-            const t = duplicateTransactions[vItem.index];
+            const t = transactions[vItem.index];
             return (
               <tr key={vItem.key} className="border-b transition-colors hover:bg-muted/50">
                 <DateCell date={t.date} />
@@ -94,20 +97,21 @@ export function DuplicateResolver({
                 <AmountCell amountOut={t.amountOut} amountIn={t.amountIn} />
                 <td className="p-2 text-right pr-6">
                   <div className="flex justify-end">
-                    <ToggleGroup
-                      type="single"
-                      value={getValue(t)}
-                      onValueChange={(value) => {
-                        if (value === "import") onImport(t.id);
-                        else if (value === "skip") onSkip(t.id);
-                      }}
-                      variant="outline"
-                      size="sm"
-                      className="h-7"
+                    <Select
+                      value={t.categoryId || undefined}
+                      onValueChange={(value) => onChangeCategory(t.id, value)}
                     >
-                      <ToggleGroupItem value="skip" className="text-xs px-3 h-7">Skip</ToggleGroupItem>
-                      <ToggleGroupItem value="import" className="text-xs px-3 h-7">Import</ToggleGroupItem>
-                    </ToggleGroup>
+                      <SelectTrigger className="w-[140px] h-7 text-xs">
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectableCategories.map((c) => (
+                          <SelectItem key={c.uuid} value={c.uuid} className="text-xs">
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </td>
               </tr>
