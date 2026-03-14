@@ -29,7 +29,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Plus, Pencil, Trash2, X, Search, GripVertical, Lock, Info } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Search, GripVertical, Lock, Info, Eye, EyeOff } from "lucide-react";
 import { DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 
 // Descriptions for system categories
@@ -61,6 +61,7 @@ interface CategoryManagerProps {
   onCategoryUpdate: (id: number, name: string, keywords: string[]) => Promise<void> | void;
   onCategoryDelete: (id: number) => Promise<void> | void;
   onCategoryReorder: (activeId: number, overId: number) => Promise<void> | void;
+  onToggleBudgetExclusion?: (category: DbCategory) => void;
   getTransactionCount?: (categoryUuid: string) => number;
   addDialogOpen?: boolean;
   onAddDialogOpenChange?: (open: boolean) => void;
@@ -187,9 +188,10 @@ interface SortableItemProps {
   category: DbCategory;
   onEdit: (category: DbCategory) => void;
   onDeleteConfirm: (category: DbCategory) => void;
+  onToggleBudgetExclusion?: (category: DbCategory) => void;
 }
 
-function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) {
+function SortableItem({ category, onEdit, onDeleteConfirm, onToggleBudgetExclusion }: SortableItemProps) {
   const {
     attributes,
     listeners,
@@ -245,6 +247,12 @@ function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) 
               </Tooltip>
             </TooltipProvider>
           )}
+          {category.excludeFromBudget && (
+            <Badge variant="secondary" className="text-xs gap-1 px-1.5">
+              <EyeOff className="h-3 w-3" />
+              Hidden from budget
+            </Badge>
+          )}
         </div>
         <div className="mt-1.5">
           <DynamicKeywordList keywords={category.keywords} />
@@ -253,6 +261,25 @@ function SortableItem({ category, onEdit, onDeleteConfirm }: SortableItemProps) 
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {!isSystemCategory && onToggleBudgetExclusion && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onToggleBudgetExclusion(category)}
+                  title={category.excludeFromBudget ? "Show in budget" : "Hide from budget"}
+                >
+                  {category.excludeFromBudget ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{category.excludeFromBudget ? "Show in budget" : "Hide from budget"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -287,6 +314,7 @@ export function CategoryManager({
   onCategoryUpdate,
   onCategoryDelete,
   onCategoryReorder,
+  onToggleBudgetExclusion,
   getTransactionCount,
   addDialogOpen,
   onAddDialogOpenChange,
@@ -537,6 +565,7 @@ export function CategoryManager({
                   category={category}
                   onEdit={openEditDialog}
                   onDeleteConfirm={setCategoryToDelete}
+                  onToggleBudgetExclusion={onToggleBudgetExclusion}
                 />
               ))}
             </SortableContext>

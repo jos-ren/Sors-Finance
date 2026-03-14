@@ -88,9 +88,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Bulk insert
+    // Bulk insert in batches to avoid SQLite variable limit
+    // 15 columns per row, SQLite max 999 variables = 66 rows per batch (use 50 for safety)
+    const BATCH_SIZE = 50;
     if (toInsert.length > 0) {
-      await db.insert(schema.transactions).values(toInsert);
+      for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+        const batch = toInsert.slice(i, i + BATCH_SIZE);
+        await db.insert(schema.transactions).values(batch);
+      }
       insertedCount = toInsert.length;
     }
 
@@ -109,9 +114,10 @@ export async function POST(request: NextRequest) {
         { status: error.statusCode }
       );
     }
-    console.error("POST /api/transactions/bulk error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("POST /api/transactions/bulk error:", message, error);
     return NextResponse.json(
-      { error: "Failed to bulk insert transactions", success: false },
+      { error: message, success: false },
       { status: 500 }
     );
   }

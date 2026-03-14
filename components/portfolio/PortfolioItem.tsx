@@ -162,6 +162,10 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               {item.pricePerUnit !== undefined && item.currency && ` @ ${formatAmount(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
+          ) : item.plaidAccountId && item.updatedAt ? (
+            <p className="text-xs text-muted-foreground truncate">
+              Synced {getTimeAgo(new Date(item.updatedAt))}
+            </p>
           ) : item.notes ? (
             <p className="text-sm text-muted-foreground truncate">{item.notes}</p>
           ) : null}

@@ -20,7 +20,9 @@ import {
   deleteCategory,
   reorderCategories,
   recategorizeTransactions,
+  invalidateBudgets,
   type RecategorizeMode,
+  type DbCategory,
 } from "@/lib/hooks";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import {
@@ -100,6 +102,20 @@ export default function CategoriesSettingsPage() {
     }
   };
 
+  const handleToggleBudgetExclusion = async (category: DbCategory) => {
+    try {
+      await updateCategory(category.id!, { excludeFromBudget: !category.excludeFromBudget });
+      invalidateBudgets();
+      toast.success(
+        category.excludeFromBudget
+          ? `"${category.name}" will now appear in budget`
+          : `"${category.name}" hidden from budget`
+      );
+    } catch {
+      toast.error("Failed to update category");
+    }
+  };
+
   const handleReorderCategories = async (activeId: number, overId: number) => {
     try {
       await reorderCategories(activeId, overId);
@@ -109,7 +125,7 @@ export default function CategoriesSettingsPage() {
   };
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8 overflow-x-hidden">
       <div ref={sentinelRef} className="h-0" />
 
       <SettingsBreadcrumb page="Categories" />
@@ -155,6 +171,7 @@ export default function CategoriesSettingsPage() {
         onCategoryUpdate={handleUpdateCategory}
         onCategoryDelete={handleDeleteCategory}
         onCategoryReorder={handleReorderCategories}
+        onToggleBudgetExclusion={handleToggleBudgetExclusion}
         getTransactionCount={getTransactionCountByCategory}
         addDialogOpen={isAddCategoryOpen}
         onAddDialogOpenChange={setIsAddCategoryOpen}

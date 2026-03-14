@@ -83,7 +83,10 @@ export async function addTransactionsBulk(
       skipDuplicates: options?.skipDuplicates ?? true,
     }),
   });
-  if (!res.ok) throw new Error("Failed to bulk insert transactions");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error || "Failed to bulk insert transactions");
+  }
   const { data } = await res.json();
   return data;
 }

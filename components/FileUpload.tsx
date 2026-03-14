@@ -157,7 +157,7 @@ export function FileUpload({
           i === index
             ? {
                 ...f,
-                bankId: "CUSTOM",
+                bankId, // Keep template ID so dropdown reflects the selection
                 isManuallySet: true,
                 detectionConfidence: "high" as const,
                 detectionReason: `Using template: ${template.name}`,
@@ -220,8 +220,9 @@ export function FileUpload({
     setIsDragging(false);
   };
 
+  const isCustomMapping = (bankId: string | null) => bankId === "CUSTOM" || (bankId?.startsWith("TEMPLATE_") ?? false);
   const hasUnknownFiles = files.some((f) => f.bankId === null);
-  const hasUnconfiguredCustomFiles = files.some((f) => f.bankId === "CUSTOM" && !f.mappingConfigured);
+  const hasUnconfiguredCustomFiles = files.some((f) => isCustomMapping(f.bankId) && !f.mappingConfigured);
   const hasValidationErrors = files.some((f) => f.validationErrors && f.validationErrors.length > 0);
 
   const getConfidenceIcon = (file: UploadedFile) => {
@@ -466,8 +467,8 @@ export function FileUpload({
                     </div>
                   )}
 
-                  {/* Configure Mapping for CUSTOM bank type */}
-                  {uploadedFile.bankId === "CUSTOM" && !uploadedFile.mappingConfigured && (
+                  {/* Configure Mapping for CUSTOM/template bank type */}
+                  {isCustomMapping(uploadedFile.bankId) && !uploadedFile.mappingConfigured && (
                     <div className="ml-8 p-3 bg-primary/10 border border-primary/20 rounded-lg">
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
@@ -489,7 +490,7 @@ export function FileUpload({
                   )}
 
                   {/* Mapping Configured Message */}
-                  {uploadedFile.bankId === "CUSTOM" && uploadedFile.mappingConfigured && (
+                  {isCustomMapping(uploadedFile.bankId) && uploadedFile.mappingConfigured && (
                     <div className="ml-8 p-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />

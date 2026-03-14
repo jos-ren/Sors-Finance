@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
           keywords: cat.keywords || [],
           order: cat.order ?? 0,
           isSystem: false,
+          excludeFromBudget: cat.excludeFromBudget ?? false,
           userId,
           createdAt: cat.createdAt ? new Date(cat.createdAt) : now,
           updatedAt: cat.updatedAt ? new Date(cat.updatedAt) : now,

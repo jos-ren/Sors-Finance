@@ -57,6 +57,7 @@ export const categories = sqliteTable(
     keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
     order: integer("order").notNull().default(0),
     isSystem: integer("is_system", { mode: "boolean" }).default(false),
+    excludeFromBudget: integer("exclude_from_budget", { mode: "boolean" }).default(false),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),

@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       keywords: row.keywords,
       order: row.order,
       isSystem: row.isSystem ?? false,
+      excludeFromBudget: row.excludeFromBudget ?? false,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }));
