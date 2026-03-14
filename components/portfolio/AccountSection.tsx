@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Plus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, MoreHorizontal, Pencil, Trash2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import {
   DbPortfolioAccount,
   usePortfolioItems,
@@ -23,19 +24,22 @@ import {
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
-import { formatCurrency } from "@/lib/formatters";
 import { PortfolioItem } from "./PortfolioItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { getBankLogo } from "@/lib/bank-logos";
 
 interface AccountSectionProps {
   account: DbPortfolioAccount;
   defaultOpen?: boolean;
 }
 
-export function AccountSection({ account, defaultOpen = true }: AccountSectionProps) {
+export function AccountSection({
+  account,
+  defaultOpen = true,
+}: AccountSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [showAddItem, setShowAddItem] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -46,6 +50,8 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
   const total = usePortfolioAccountTotal(account.id);
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
+
+  const itemCount = items?.length ?? 0;
 
   const handleDelete = async () => {
     try {
@@ -86,35 +92,65 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
   return (
     <>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="border rounded-lg">
-          {/* Header */}
-          <div className="flex items-center justify-between p-3 bg-muted/30">
+        <div>
+          {/* Parent row */}
+          <div className="flex items-center gap-3 p-4">
+            {/* Account icon — bank logo or generic */}
             <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-2 hover:text-foreground/80 transition-colors flex-1 text-left">
-                {isOpen ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                {isEditing ? (
-                  <Input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onBlur={handleRename}
-                    onKeyDown={handleKeyDown}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-7 w-48"
-                    autoFocus
-                  />
-                ) : (
-                  <span className="font-medium">{account.name}</span>
-                )}
-              </button>
+              {(() => {
+                const logoData = getBankLogo(account.name);
+                return (
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
+                      logoData ? logoData.bg : "bg-muted"
+                    )}
+                  >
+                    {logoData ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={logoData.path}
+                        alt={account.name}
+                        className="h-full w-full object-contain p-1.5"
+                      />
+                    ) : (
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                    )}
+                  </div>
+                );
+              })()}
             </CollapsibleTrigger>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold tabular-nums">
+
+            {/* Name + item count */}
+            {isEditing ? (
+              <div className="flex-1 min-w-0">
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onBlur={handleRename}
+                  onKeyDown={handleKeyDown}
+                  onClick={(e) => e.stopPropagation()}
+                  className="h-7 w-48"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <CollapsibleTrigger asChild>
+                <div className="flex-1 min-w-0 cursor-pointer">
+                  <p className="text-sm font-medium">{account.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {itemCount} {itemCount === 1 ? "item" : "items"}
+                  </p>
+                </div>
+              </CollapsibleTrigger>
+            )}
+
+            {/* Right: total + dropdown + chevron */}
+            <div className="flex items-center gap-1 shrink-0">
+              <span className="text-sm font-semibold tabular-nums mr-1">
                 {formatAmount(total ?? 0, userCurrency)}
               </span>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -136,32 +172,32 @@ export function AccountSection({ account, defaultOpen = true }: AccountSectionPr
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="icon" className="cursor-pointer">
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                      isOpen && "rotate-180"
+                    )}
+                  />
+                </Button>
+              </CollapsibleTrigger>
             </div>
           </div>
 
-          {/* Content */}
+          {/* Expanded content */}
           <CollapsibleContent>
-            <div className="p-2">
+            <div className="border-t bg-muted/20 divide-y divide-border">
               {items && items.length > 0 ? (
-                <div className="space-y-1">
-                  {items.map((item) => (
-                    <PortfolioItem key={item.id} item={item} bucket={account.bucket} />
-                  ))}
-                </div>
+                items.map((item) => (
+                  <PortfolioItem key={item.id} item={item} bucket={account.bucket} />
+                ))
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
+                <p className="px-6 py-4 text-sm text-muted-foreground">
                   No items yet
                 </p>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full mt-2"
-                onClick={() => setShowAddItem(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Button>
             </div>
           </CollapsibleContent>
         </div>

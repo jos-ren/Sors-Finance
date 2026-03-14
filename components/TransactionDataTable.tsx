@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/tooltip";
 import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
+import { normalizeBankName } from "@/lib/bank-logos";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency, useTimezone } from "@/lib/settings-context";
@@ -136,12 +137,12 @@ export function TransactionDataTable({
     };
   }, [transactions]);
 
-  // Get available sources from transactions
+  // Get available sources from transactions (normalized to canonical bank names)
   const availableSources = useMemo(() => {
     const sources = new Set<string>();
     transactions.forEach((t) => {
       if (t.source) {
-        sources.add(t.source);
+        sources.add(normalizeBankName(t.source));
       }
     });
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
@@ -324,9 +325,9 @@ export function TransactionDataTable({
       }
     }
 
-    // Source filter
+    // Source filter (compare normalized names)
     if (sourceFilter !== "all") {
-      filtered = filtered.filter((t) => t.source === sourceFilter);
+      filtered = filtered.filter((t) => t.source && normalizeBankName(t.source) === sourceFilter);
     }
 
     // Unified date filter

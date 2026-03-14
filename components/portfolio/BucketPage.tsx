@@ -11,11 +11,12 @@ import {
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
-import { formatCurrency } from "@/lib/formatters";
+
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
+import { SectionHeader, RowGroup } from "@/components/ui/section";
 
 interface BucketPageProps {
   bucket: BucketType;
@@ -121,23 +122,22 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
       {bucket === "Investments" && <ApiKeyBanner />}
 
       {/* Accounts */}
-      <div className="space-y-4">
-        {accounts && accounts.length > 0 ? (
-          accounts.map((account) => (
-            <AccountSection key={account.id} account={account} />
-          ))
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            <Icon className={`h-12 w-12 mx-auto mb-4 ${config.color} opacity-50`} />
-            <p className="text-lg font-medium">No accounts yet</p>
-            <p className="text-sm mt-1">Create an account to start tracking your {bucket.toLowerCase()}.</p>
-            <Button className="mt-4" onClick={() => setShowAddAccount(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Account
-            </Button>
-          </div>
-        )}
-      </div>
+      {accounts && accounts.length > 0 ? (
+        <div>
+          <SectionHeader label="Accounts" />
+          <RowGroup>
+            {accounts.map((account) => (
+              <AccountSection key={account.id} account={account} />
+            ))}
+          </RowGroup>
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Icon className={`h-12 w-12 mx-auto mb-4 ${config.color} opacity-50`} />
+          <p className="text-lg font-medium">No accounts yet</p>
+          <p className="text-sm mt-1">Create an account to start tracking your {bucket.toLowerCase()}.</p>
+        </div>
+      )}
 
       {showAddAccount && (
         <AddAccountDialog
