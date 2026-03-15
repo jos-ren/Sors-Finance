@@ -1,17 +1,11 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
 import { useState, useMemo } from "react";
-import { Plus, FileSpreadsheet, Calendar, Hash, DollarSign, FileX, Upload, ChevronDown, FileClock, Trash2 } from "lucide-react";
+import { Plus, FileSpreadsheet, FileX, Upload, FileClock, Trash2 } from "lucide-react";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
-import { BankSourceBadge } from "@/components/BankSourceBadge";
 import {
   Dialog,
   DialogContent,
@@ -26,132 +20,21 @@ import { AddTransactionDialog } from "@/components/AddTransactionDialog";
 import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
 import { deleteImportDraft } from "@/lib/db/client";
 import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency, useTimezone } from "@/lib/settings-context";
+import { formatDateTime } from "@/lib/formatters";
+import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
 import type { DbImport } from "@/lib/db";
 import type { DbImportDraft } from "@/lib/db/types";
 
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(date);
+function importSubtitle(record: DbImport, formatAmount: (amount: number, currency?: string, showCode?: boolean) => string, userCurrency: string) {
+  return `${record.transactionCount} transactions  ·  ${formatAmount(record.totalAmount, userCurrency)}`;
 }
 
-/* eslint-disable @next/next/no-img-element */
-function ImportCard({ record, formatAmount, userCurrency }: { record: DbImport; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
-  const isPlaid = record.method === "plaid";
-  return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-md border">
-      <div className="flex items-center gap-3">
-        {isPlaid ? (
-          <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
-        ) : (
-          <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-        )}
-        <div className="flex items-center gap-4">
-          <p className="font-medium text-sm">{record.fileName}</p>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {formatDate(record.importedAt)}
-            </span>
-            <span className="flex items-center gap-1">
-              <Hash className="h-3 w-3" />
-              {record.transactionCount}
-            </span>
-            <span className="flex items-center gap-1">
-              <DollarSign className="h-3 w-3" />
-              {formatAmount(record.totalAmount, userCurrency)}
-            </span>
-          </div>
-        </div>
-      </div>
-      <BankSourceBadge source={record.source} size="sm" />
-    </div>
-  );
-}
-
-function BatchImportCard({ records, formatAmount, userCurrency }: { records: DbImport[]; formatAmount: (amount: number, currency?: string, showCode?: boolean) => string; userCurrency: string }) {
-  const [open, setOpen] = useState(false);
-  const totalCount = records.reduce((s, r) => s + r.transactionCount, 0);
-  const totalAmount = records.reduce((s, r) => s + r.totalAmount, 0);
-  const date = records[0].importedAt;
-  const isPlaid = records[0].method === "plaid";
-
-  return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger asChild>
-        <div className="flex items-center justify-between py-2 px-3 rounded-md border cursor-pointer hover:bg-muted/40 transition-colors">
-          <div className="flex items-center gap-3">
-            {isPlaid ? (
-              <img src="/logos/plaid.png" alt="Plaid" className="h-4 w-4 object-contain" />
-            ) : (
-              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-            )}
-            <div className="flex items-center gap-4">
-              <p className="font-medium text-sm">{isPlaid ? "Plaid Import" : "Batch Import"}</p>
-              <Badge variant="secondary" className="text-xs">{records.length} files</Badge>
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(date)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Hash className="h-3 w-3" />
-                  {totalCount}
-                </span>
-                <span className="flex items-center gap-1">
-                  <DollarSign className="h-3 w-3" />
-                  {formatAmount(totalAmount, userCurrency)}
-                </span>
-              </div>
-            </div>
-          </div>
-          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-        </div>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-1 ml-4 space-y-1 border-l pl-3">
-          {records.map((record) => (
-            <ImportCard key={record.id} record={record} formatAmount={formatAmount} userCurrency={userCurrency} />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function DraftCard({ draft, onDelete }: { draft: DbImportDraft; onDelete: (id: number) => void }) {
-  return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-md border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
-      <div className="flex items-center gap-3">
-        <FileClock className="h-4 w-4 text-amber-500" />
-        <div className="flex items-center gap-4">
-          <p className="font-medium text-sm">{draft.name}</p>
-          <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">Draft</Badge>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {formatDate(new Date(draft.updatedAt))}
-            </span>
-            <span className="flex items-center gap-1">
-              <Hash className="h-3 w-3" />
-              {draft.transactionCount}
-            </span>
-            <span className="text-xs capitalize">Step: {draft.currentStep}</span>
-          </div>
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-        onClick={() => { if (draft.id) onDelete(draft.id); }}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
-    </div>
+function importIcon(record: DbImport) {
+  return record.method === "plaid" ? (
+    <img src="/logos/plaid.png" alt="Plaid" className="h-5 w-auto object-contain" />
+  ) : (
+    <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
   );
 }
 
@@ -163,6 +46,7 @@ export default function TransactionsPage() {
   const transactions = useTransactions();
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
+  const userTimezone = useTimezone();
   const categories = useCategories();
 
   const handleImportComplete = () => {
@@ -268,62 +152,80 @@ export default function TransactionsPage() {
           />
         )}
 
-        <Collapsible defaultOpen={false}>
-          <Card>
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CardTitle>Import History</CardTitle>
-                    {sortedImports.length > 0 && (
-                      <Badge variant="secondary">{sortedImports.length}</Badge>
-                    )}
+        {/* Import History */}
+        <section className="space-y-2">
+          <SectionHeader label="Import History" />
+          <RowGroup>
+            {sortedImports.length === 0 && (!importDrafts || importDrafts.length === 0) ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+                <FileX className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium">No imports yet</p>
+                <p className="text-xs text-muted-foreground">
+                  Click &quot;Import&quot; to upload your first bank statement
+                </p>
+              </div>
+            ) : (
+              <AccordionRow
+                icon={<Upload className="h-4 w-4 text-muted-foreground" />}
+                title="Import History"
+                subtitle={`${sortedImports.length} import${sortedImports.length !== 1 ? "s" : ""}${importDrafts && importDrafts.length > 0 ? `, ${importDrafts.length} draft${importDrafts.length !== 1 ? "s" : ""}` : ""}`}
+                maxItems={50}
+              >
+                {/* Draft imports */}
+                {importDrafts && importDrafts.length > 0 && importDrafts.map((draft) => (
+                  <div key={`draft-${draft.id}`} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex w-9 shrink-0 justify-center">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60">
+                        <FileClock className="h-4 w-4 text-amber-500" />
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium truncate">{draft.name}</p>
+                        <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                          Draft
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {formatDateTime(new Date(draft.updatedAt), userTimezone)}  ·  {draft.transactionCount} transactions  ·  Step: {draft.currentStep}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => { if (draft.id) handleDeleteDraft(draft.id); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                  <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
-                </div>
-                <CardDescription>
-                  View your past transaction imports and their details
-                </CardDescription>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent>
-                {sortedImports.length === 0 && (!importDrafts || importDrafts.length === 0) ? (
-                  <div className="flex flex-col items-center justify-center py-8 text-center">
-                    <FileX className="h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="font-medium">No imports yet</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Click &quot;Import&quot; to upload your first bank statement
+                ))}
+
+                {/* Import records */}
+                {sortedImports.map((record) => (
+                  <div key={record.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex w-9 shrink-0 justify-center">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60">
+                        {importIcon(record)}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{record.fileName}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {importSubtitle(record, formatAmount, userCurrency)}
+                      </p>
+                    </div>
+                    <p className="text-sm shrink-0 mr-[5px]">
+                      {formatDateTime(record.importedAt, userTimezone)}
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {importDrafts && importDrafts.length > 0 && importDrafts.map((draft) => (
-                      <DraftCard key={`draft-${draft.id}`} draft={draft} onDelete={handleDeleteDraft} />
-                    ))}
-                    {importGroups.map((group) =>
-                      group.records.length > 1 ? (
-                        <BatchImportCard
-                          key={group.batchId!}
-                          records={group.records}
-                          formatAmount={formatAmount}
-                          userCurrency={userCurrency}
-                        />
-                      ) : (
-                        <ImportCard
-                          key={group.records[0].id}
-                          record={group.records[0]}
-                          formatAmount={formatAmount}
-                          userCurrency={userCurrency}
-                        />
-                      )
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+                ))}
+              </AccordionRow>
+            )}
+          </RowGroup>
+        </section>
 
         {/* Import Dialog */}
         <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>

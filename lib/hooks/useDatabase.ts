@@ -17,12 +17,15 @@ import type {
   DbPortfolioAccount,
   DbPortfolioItem,
   DbPortfolioSnapshot,
+  DbPortfolioItemHistory,
   BucketType,
   RecategorizeMode,
   RecategorizeResult,
   UpdateCategoryResult,
   AddPortfolioItemData,
   PriceMode,
+  ItemType,
+  HistorySource,
 } from "../db/types";
 import { SYSTEM_CATEGORIES, BUCKET_TYPES } from "../db/types";
 
@@ -837,8 +840,8 @@ export async function getBudgetForCategory(
 
 // Re-export constants and types
 export { SYSTEM_CATEGORIES, BUCKET_TYPES };
-export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData };
-export type { DbCategory, DbTransaction, DbBudget, DbImport, DbPortfolioAccount, DbPortfolioItem, DbPortfolioSnapshot };
+export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData, ItemType, HistorySource };
+export type { DbCategory, DbTransaction, DbBudget, DbImport, DbPortfolioAccount, DbPortfolioItem, DbPortfolioSnapshot, DbPortfolioItemHistory };
 
 // Re-export from useStockPrice (this will need to be updated separately)
 export { createSnapshotWithPriceRefresh } from "./useStockPrice";
@@ -876,4 +879,32 @@ export async function findDuplicateSignatures(
   transactions: Array<{ date: Date; description: string; amountOut: number; amountIn: number; source: string }>
 ): Promise<Set<string>> {
   return api.findDuplicateSignatures(transactions);
+}
+
+// ============================================
+// Plaid Institution Status Hook
+// ============================================
+
+/** Maps plaid account ID → institution status ('active' | 'login_required' | 'error') */
+export function usePlaidAccountStatuses(): Map<number, string> {
+  const { data } = useSWR(
+    "plaid/institution-statuses",
+    async () => {
+      const response = await fetch("/api/plaid/institutions");
+      if (!response.ok) return [];
+      const json = await response.json();
+      return json.institutions || [];
+    },
+    { ...swrConfig, revalidateOnFocus: false }
+  );
+
+  const map = new Map<number, string>();
+  if (data) {
+    for (const institution of data) {
+      for (const account of institution.accounts) {
+        map.set(account.id, institution.status);
+      }
+    }
+  }
+  return map;
 }

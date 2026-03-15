@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -8,10 +8,11 @@ import {
   Wallet,
   CreditCard,
   Loader2,
-  ChevronDown,
+  FileClock,
   History,
   Trash2,
   Pencil,
+  RefreshCw,
 } from "lucide-react";
 import {
   Bar,
@@ -27,12 +28,6 @@ import {
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -58,9 +53,13 @@ import {
   type DbPortfolioSnapshot,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency, useTimezone } from "@/lib/settings-context";
+import { formatDateTime } from "@/lib/formatters";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
+import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
+import { NavigateRow } from "@/components/settings/SettingsShared";
+import { cn } from "@/lib/utils";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
 import { toast } from "sonner";
@@ -107,6 +106,7 @@ type TrendPeriod = "all" | "year";
 export default function PortfolioPage() {
   const { formatAmount, isPrivacyMode } = usePrivacy();
   const userCurrency = useCurrency();
+  const userTimezone = useTimezone();
   const summary = useNetWorthSummary();
   const change = useNetWorthChange();
   const allSnapshots = usePortfolioSnapshots();
@@ -192,6 +192,21 @@ export default function PortfolioPage() {
     }
   }, [allSnapshots]);
 
+  const [isSnapshotting, setIsSnapshotting] = useState(false);
+  const handleTakeSnapshot = useCallback(async () => {
+    setIsSnapshotting(true);
+    try {
+      const res = await fetch("/api/portfolio/snapshots/today", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(data.action === "updated" ? "Snapshot updated" : "Snapshot created");
+    } catch {
+      toast.error("Failed to take snapshot");
+    } finally {
+      setIsSnapshotting(false);
+    }
+  }, []);
+
   const headerActions = useMemo(() => (
     <PlaidSyncButton onSyncComplete={setSyncResult} />
   ), []);
@@ -225,11 +240,11 @@ export default function PortfolioPage() {
     return reversed.map(s => ({
       date: trendPeriod === "year"
         ? reversed.length > 12
-          ? s.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
-          : s.date.toLocaleDateString("en-US", { month: "short" })
+          ? s.date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: userTimezone })
+          : s.date.toLocaleDateString("en-US", { month: "short", timeZone: userTimezone })
         : spansMultipleYears
-          ? s.date.toLocaleDateString("en-US", { month: "short", year: "numeric" })
-          : s.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          ? s.date.toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: userTimezone })
+          : s.date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: userTimezone }),
       netWorth: s.netWorth,
       savings: s.totalSavings,
       investments: s.totalInvestments,
@@ -573,112 +588,113 @@ export default function PortfolioPage() {
         </div>
       </div>
 
+            {/* Change History */}
+      <section className="space-y-2">
+        <SectionHeader label="Change History" />
+        <RowGroup>
+          <NavigateRow
+            icon={<FileClock className="h-4 w-4" />}
+            title="Portfolio Change History"
+            description="View all edits, syncs, and price refreshes of your portfolio items"
+            href="/portfolio/history"
+          />
+        </RowGroup>
+      </section>
+
       {/* Snapshot History */}
-      <Collapsible defaultOpen={false}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CardTitle>Snapshot History</CardTitle>
-                  {allSnapshots && allSnapshots.length > 0 && (
-                    <Badge variant="secondary">{allSnapshots.length}</Badge>
-                  )}
-                </div>
-                <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
-              </div>
-              <CardDescription>
-                View your portfolio snapshots over time. Only 1 can be taken per day.
-              </CardDescription>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent>
-              {!allSnapshots || allSnapshots.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <History className="h-10 w-10 text-muted-foreground mb-3" />
-                  <p className="font-medium">No snapshots yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Snapshots are automatically saved when you visit this page
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {allSnapshots.map((snapshot) => (
-                    <div
-                      key={snapshot.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium">
-                            {snapshot.date.toLocaleDateString("en-US", {
-                              weekday: "short",
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {snapshot.createdAt.toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                          <span className="text-lg font-semibold">
-                            {formatAmount(snapshot.netWorth, userCurrency)}
-                          </span>
-                        </div>
-                        <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
-                          <span className="text-emerald-500">
-                            Savings: {formatAmount(snapshot.totalSavings, userCurrency, false)}
-                          </span>
-                          <span className="text-blue-500">
-                            Investments: {formatAmount(snapshot.totalInvestments, userCurrency, false)}
-                          </span>
-                          <span className="text-amber-500">
-                            Assets: {formatAmount(snapshot.totalAssets, userCurrency, false)}
-                          </span>
-                          <span className="text-red-500">
-                            Debt: {formatAmount(snapshot.totalDebt, userCurrency, false)}
-                          </span>
-                        </div>
+      <section className="space-y-2">
+        <SectionHeader label="Snapshot History" />
+        <RowGroup>
+          {!allSnapshots || allSnapshots.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+              <History className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-sm font-medium">No snapshots yet</p>
+              <p className="text-xs text-muted-foreground">
+                Snapshots are automatically saved when you visit this page
+              </p>
+            </div>
+          ) : (
+            <AccordionRow
+              icon={<History className="h-4 w-4 text-muted-foreground" />}
+              title="Snapshot History"
+              subtitle={`${allSnapshots.length} snapshot${allSnapshots.length !== 1 ? "s" : ""}`}
+              maxItems={50}
+            >
+              {allSnapshots.map((snapshot) => {
+                const today = new Date();
+                const isToday =
+                  snapshot.date.getFullYear() === today.getFullYear() &&
+                  snapshot.date.getMonth() === today.getMonth() &&
+                  snapshot.date.getDate() === today.getDate();
+
+                return (
+                  <div key={snapshot.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="flex w-9 shrink-0 justify-center">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60">
+                        <History className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div className="flex gap-1">
-                        {(() => {
-                          const today = new Date();
-                          const isToday =
-                            snapshot.date.getFullYear() === today.getFullYear() &&
-                            snapshot.date.getMonth() === today.getMonth() &&
-                            snapshot.date.getDate() === today.getDate();
-                          return !isToday ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="text-muted-foreground hover:text-foreground"
-                              onClick={() => setEditingSnapshot(snapshot)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          ) : null;
-                        })()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">
+                        {formatDateTime(snapshot.createdAt, userTimezone)}
+                      </p>
+                      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+                        <span className="text-emerald-500">
+                          Savings: {formatAmount(snapshot.totalSavings, userCurrency, false)}
+                        </span>
+                        <span className="text-blue-500">
+                          Inv: {formatAmount(snapshot.totalInvestments, userCurrency, false)}
+                        </span>
+                        <span className="text-amber-500">
+                          Assets: {formatAmount(snapshot.totalAssets, userCurrency, false)}
+                        </span>
+                        <span className="text-red-500">
+                          Debt: {formatAmount(snapshot.totalDebt, userCurrency, false)}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-sm font-semibold tabular-nums shrink-0">
+                      {formatAmount(snapshot.netWorth, userCurrency)}
+                    </p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isToday ? (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDeleteSnapshot(snapshot.id!)}
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={handleTakeSnapshot}
+                          disabled={isSnapshotting}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <RefreshCw className={cn("h-4 w-4", isSnapshotting && "animate-spin")} />
                         </Button>
-                      </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => setEditingSnapshot(snapshot)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteSnapshot(snapshot.id!)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
+                  </div>
+                );
+              })}
+            </AccordionRow>
+          )}
+        </RowGroup>
+      </section>
+
+
 
       {/* Edit Snapshot Dialog */}
       {editingSnapshot && (

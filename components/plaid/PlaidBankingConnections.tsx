@@ -47,7 +47,9 @@ import { cn } from "@/lib/utils";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
 import { usePrivacy } from "@/lib/privacy-context";
 import { getBankLogo } from "@/lib/bank-logos";
-import { SectionHeader, RowGroup } from "@/components/settings/SettingsShared";
+import { formatDateTime } from "@/lib/formatters";
+import { useTimezone } from "@/lib/settings-context";
+import { SectionHeader, RowGroup } from "@/components/ui/section";
 import { PlaidLinkButton } from "./PlaidLinkButton";
 import { PlaidSyncButton } from "./PlaidSyncButton";
 import { PlaidBucketSelector } from "./PlaidBucketSelector";
@@ -111,6 +113,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
   const [isTesting, setIsTesting] = useState(false);
   const [expandedBanks, setExpandedBanks] = useState<Set<number>>(new Set());
   const { formatAmount } = usePrivacy();
+  const userTimezone = useTimezone();
   const [plaidEnvironment, setPlaidEnvironment] = useState<PlaidEnvironmentType>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("plaid-environment");
@@ -227,7 +230,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
           {/* Setup instructions — collapsible */}
           <Collapsible open={effectiveSetupOpen} onOpenChange={setSetupOpen}>
             <CollapsibleTrigger asChild>
-              <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/40 transition-colors border-t">
+              <div className="flex items-center gap-3 py-4 pl-4 pr-5 cursor-pointer hover:bg-muted/40 transition-colors border-t">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
                   <Monitor className="h-4 w-4 text-muted-foreground" />
                 </div>
@@ -237,16 +240,21 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
                     How to configure Plaid credentials
                   </p>
                 </div>
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                    effectiveSetupOpen && "rotate-180"
-                  )}
-                />
+                <div className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors",
+                  effectiveSetupOpen ? "bg-muted" : ""
+                )}>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                      effectiveSetupOpen && "rotate-180"
+                    )}
+                  />
+                </div>
               </div>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="px-4 pb-4 space-y-4 border-t bg-muted/20">
+              <div className="px-4 pb-4 space-y-4 border-t bg-muted/40">
                 <div className="pt-4 space-y-3">
                   <InfoCard variant="info" title="Production API Keys Required">
                     <div className="space-y-2 text-xs">
@@ -475,7 +483,7 @@ PLAID_SECRET=your_secret_here`}
                             </div>
                             {institution.lastSync && (
                               <p className="text-xs text-muted-foreground mt-0.5">
-                                Last synced: {new Date(institution.lastSync).toLocaleString()}
+                                Last synced: {formatDateTime(new Date(institution.lastSync), userTimezone)}
                               </p>
                             )}
                           </div>
@@ -549,7 +557,7 @@ PLAID_SECRET=your_secret_here`}
 
                       {/* Accounts */}
                       <CollapsibleContent>
-                        <div className="border-t bg-muted/20 divide-y divide-border">
+                        <div className="border-t bg-muted/40 divide-y divide-border">
                           {institution.accounts.length === 0 ? (
                             <p className="px-6 py-4 text-sm text-muted-foreground">
                               No accounts found
@@ -569,41 +577,36 @@ PLAID_SECRET=your_secret_here`}
                               return (
                                 <div
                                   key={account.id}
-                                  className="flex items-center gap-3 px-4 py-3 pl-14"
+                                  className="flex items-center gap-3 px-4 py-3"
                                 >
                                   {/* Bucket type icon */}
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/60">
+                                  <div className="flex w-9 shrink-0 justify-center">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60">
                                     {BucketIcon ? (
                                       <BucketIcon className={`h-4 w-4 ${bucketConfig.color}`} />
                                     ) : (
                                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                                     )}
                                   </div>
+                                  </div>
 
                                   {/* Name + subtitle */}
                                   <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5">
-                                      <p className="text-sm font-medium truncate">
-                                        {account.portfolioItemName ||
-                                          account.officialName ||
-                                          account.name}
-                                      </p>
-                                      {account.mask && (
-                                        <span className="text-xs text-muted-foreground font-mono shrink-0">
-                                          ••{account.mask}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5 capitalize">
-                                      {account.portfolioAccountId
-                                        ? account.portfolioAccountName
-                                        : "Unmapped"}
+                                    <p className="text-sm font-medium truncate">
+                                      {account.portfolioItemName ||
+                                        account.officialName ||
+                                        account.name}
                                     </p>
+                                    {account.mask && (
+                                      <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                                        ••{account.mask}
+                                      </p>
+                                    )}
                                   </div>
 
                                   {/* Balance */}
                                   {account.currentBalance != null && (
-                                    <p className="text-sm font-semibold tabular-nums shrink-0">
+                                    <p className="text-sm font-semibold tabular-nums shrink-0 mr-[5px]">
                                       {formatAmount(account.currentBalance ?? 0)}
                                     </p>
                                   )}

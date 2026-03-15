@@ -136,6 +136,7 @@ export function AddItemDialog({
           lastPriceUpdate: selectedTicker ? new Date() : undefined,
           priceMode: "ticker",
           tickerType: selectedTicker ? selectedTicker.tickerType : undefined,
+          type: selectedTicker ? selectedTicker.tickerType : "other",
           isInternational: selectedTicker ? selectedTicker.isInternational : undefined,
         });
       } else if (isInvestment && investmentType === "balance") {

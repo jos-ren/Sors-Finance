@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, PiggyBank, TrendingUp, Home, CreditCard } from "lucide-react";
+import { Plus, PiggyBank, TrendingUp, Home, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   BucketType,
@@ -11,11 +11,20 @@ import {
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
-import { formatCurrency } from "@/lib/formatters";
+
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
+import { SectionHeader, RowGroup } from "@/components/ui/section";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 interface BucketPageProps {
   bucket: BucketType;
@@ -45,7 +54,12 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
   const [syncResult, setSyncResult] = useState<{
     accountsUpdated: number;
     accountsFailed: number;
+    pricesUpdated: number;
+    pricesFailed: number;
     errors: string[];
+    priceErrors: Array<{ ticker: string; itemName: string; error: string }>;
+    syncedAccounts: Array<{ accountId: string; name: string; balance: number }>;
+    syncedPrices: Array<{ ticker: string; itemName: string; price: number; currency: string }>;
   } | null>(null);
 
   // Header actions
@@ -66,14 +80,19 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Button variant="ghost" size="sm" className="gap-2" asChild>
-              <Link href="/portfolio">
-                <ArrowLeft className="h-4 w-4" />
-                Portfolio
-              </Link>
-            </Button>
-          </div>
+          <Breadcrumb className="mb-2">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/portfolio">Portfolio</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{bucket}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <div className="flex items-center gap-3">
             <Icon className={`h-8 w-8 ${config.color}`} />
             <div>
@@ -97,7 +116,12 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
         <PlaidSyncBanner
           accountsUpdated={syncResult.accountsUpdated}
           accountsFailed={syncResult.accountsFailed}
+          pricesUpdated={syncResult.pricesUpdated}
+          pricesFailed={syncResult.pricesFailed}
           errors={syncResult.errors}
+          priceErrors={syncResult.priceErrors}
+          syncedAccounts={syncResult.syncedAccounts}
+          syncedPrices={syncResult.syncedPrices}
           onDismiss={() => setSyncResult(null)}
         />
       )}
@@ -111,23 +135,22 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
       {bucket === "Investments" && <ApiKeyBanner />}
 
       {/* Accounts */}
-      <div className="space-y-4">
-        {accounts && accounts.length > 0 ? (
-          accounts.map((account) => (
-            <AccountSection key={account.id} account={account} />
-          ))
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
-            <Icon className={`h-12 w-12 mx-auto mb-4 ${config.color} opacity-50`} />
-            <p className="text-lg font-medium">No accounts yet</p>
-            <p className="text-sm mt-1">Create an account to start tracking your {bucket.toLowerCase()}.</p>
-            <Button className="mt-4" onClick={() => setShowAddAccount(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Account
-            </Button>
-          </div>
-        )}
-      </div>
+      {accounts && accounts.length > 0 ? (
+        <div>
+          <SectionHeader label="Accounts" />
+          <RowGroup>
+            {accounts.map((account) => (
+              <AccountSection key={account.id} account={account} />
+            ))}
+          </RowGroup>
+        </div>
+      ) : (
+        <div className="text-center py-12 text-muted-foreground">
+          <Icon className={`h-12 w-12 mx-auto mb-4 ${config.color} opacity-50`} />
+          <p className="text-lg font-medium">No accounts yet</p>
+          <p className="text-sm mt-1">Create an account to start tracking your {bucket.toLowerCase()}.</p>
+        </div>
+      )}
 
       {showAddAccount && (
         <AddAccountDialog

@@ -7,3 +7,4 @@ export { AccountSection } from "./AccountSection";
 export { BucketCard } from "./BucketCard";
 export { BucketPage } from "./BucketPage";
 export { ApiKeyBanner } from "./ApiKeyBanner";
+export { ItemHistoryDialog } from "./ItemHistoryDialog";

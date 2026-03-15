@@ -84,3 +84,17 @@ export function getBankLogo(institutionName: string): { path: string; bg: string
   }
   return null;
 }
+
+/**
+ * Normalize a bank source name to its canonical display name.
+ * e.g. "amex" → "American Express", "td" → "TD Bank"
+ * Returns the original name if no match is found.
+ */
+export function normalizeBankName(source: string): string {
+  for (let i = 0; i < BANK_LOGO_PATTERNS.length; i++) {
+    if (BANK_LOGO_PATTERNS[i].patterns.some((p) => p.test(source))) {
+      return BANK_LOGOS_DISPLAY[i].name;
+    }
+  }
+  return source;
+}

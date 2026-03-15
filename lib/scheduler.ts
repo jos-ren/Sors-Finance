@@ -240,7 +240,7 @@ async function refreshTickerPricesForUser(userId: number, userCurrency: string):
         const upperTicker = item.ticker.toUpperCase();
         // Use the first tickerType we find for each unique ticker
         if (!tickerMap.has(upperTicker)) {
-          tickerMap.set(upperTicker, item.tickerType || "stock");
+          tickerMap.set(upperTicker, item.type || "stock");
         }
       }
     }

@@ -211,8 +211,10 @@ export function formatPercentWithSign(value: number, decimals: number = 1): stri
  */
 export function formatDate(
   date: Date,
-  format: "display" | "short" | "full" | "monthYear" | "iso" = "display"
+  format: "display" | "short" | "full" | "monthYear" | "iso" = "display",
+  timezone?: string
 ): string {
+  const tz = timezone ? { timeZone: timezone } : {};
   switch (format) {
     case "iso":
       return date.toISOString().split("T")[0];
@@ -221,17 +223,20 @@ export function formatDate(
         month: "2-digit",
         day: "2-digit",
         year: "2-digit",
+        ...tz,
       }).format(date);
     case "full":
       return new Intl.DateTimeFormat(DEFAULT_LOCALE, {
         month: "long",
         day: "numeric",
         year: "numeric",
+        ...tz,
       }).format(date);
     case "monthYear":
       return new Intl.DateTimeFormat(DEFAULT_LOCALE, {
         month: "short",
         year: "numeric",
+        ...tz,
       }).format(date);
     case "display":
     default:
@@ -239,8 +244,28 @@ export function formatDate(
         month: "short",
         day: "numeric",
         year: "numeric",
+        ...tz,
       }).format(date);
   }
+}
+
+/**
+ * Format a date with time for display (e.g., "3/14/2026, 11:21:51 AM")
+ *
+ * @param date - Date to format
+ * @param timezone - IANA timezone string (e.g., "America/New_York")
+ * @returns Formatted date+time string
+ */
+export function formatDateTime(date: Date, timezone?: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    ...(timezone ? { timeZone: timezone } : {}),
+  }).format(date);
 }
 
 /**

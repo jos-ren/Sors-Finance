@@ -62,23 +62,17 @@ import {
 } from "@/components/ui/tooltip";
 import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
+import { normalizeBankName } from "@/lib/bank-logos";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency, useTimezone } from "@/lib/settings-context";
+import { formatDate } from "@/lib/formatters";
 
 interface TransactionDataTableProps {
   transactions: DbTransaction[];
   categories: DbCategory[];
   onDeleteTransaction?: (id: number) => void;
   onBulkDeleteTransactions?: (ids: number[]) => void;
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  }).format(date);
 }
 
 export function TransactionDataTable({
@@ -108,6 +102,7 @@ export function TransactionDataTable({
   // Privacy mode and user currency
   const { formatAmount, isPrivacyMode } = usePrivacy();
   const userCurrency = useCurrency();
+  const userTimezone = useTimezone();
 
   // Get category name by ID
   const getCategoryName = (categoryId: number | null): string => {
@@ -142,12 +137,12 @@ export function TransactionDataTable({
     };
   }, [transactions]);
 
-  // Get available sources from transactions
+  // Get available sources from transactions (normalized to canonical bank names)
   const availableSources = useMemo(() => {
     const sources = new Set<string>();
     transactions.forEach((t) => {
       if (t.source) {
-        sources.add(t.source);
+        sources.add(normalizeBankName(t.source));
       }
     });
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
@@ -190,7 +185,7 @@ export function TransactionDataTable({
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         ),
-        cell: ({ row }) => formatDate(row.getValue("date")),
+        cell: ({ row }) => formatDate(row.getValue("date"), "display", userTimezone),
         sortingFn: (rowA, rowB) => {
           const dateA = rowA.original.date.getTime();
           const dateB = rowB.original.date.getTime();
@@ -330,9 +325,9 @@ export function TransactionDataTable({
       }
     }
 
-    // Source filter
+    // Source filter (compare normalized names)
     if (sourceFilter !== "all") {
-      filtered = filtered.filter((t) => t.source === sourceFilter);
+      filtered = filtered.filter((t) => t.source && normalizeBankName(t.source) === sourceFilter);
     }
 
     // Unified date filter

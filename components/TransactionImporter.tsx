@@ -56,6 +56,8 @@ import {
 } from "@/lib/hooks";
 import { addTransactionsBulk, addImport, updateImport, deleteImport, findDuplicateSignatures, saveImportDraft, deleteImportDraft } from "@/lib/db/client";
 import { SYSTEM_CATEGORIES } from "@/lib/db";
+import { formatDateTime } from "@/lib/formatters";
+import { useTimezone } from "@/lib/settings-context";
 import type { ImportDraftData, DbImportDraft } from "@/lib/db/types";
 
 interface TransactionImporterProps {
@@ -85,6 +87,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   const [draftUuid, setDraftUuid] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const importDrafts = useImportDrafts();
+  const userTimezone = useTimezone();
 
   const handleDismissCategoryInfo = () => {
     localStorage.setItem(CATEGORY_INFO_DISMISSED_KEY, "true");
@@ -888,7 +891,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           <span>{draft.transactionCount} transactions</span>
                           <span>Step: {draft.currentStep}</span>
-                          <span>Saved {new Date(draft.updatedAt).toLocaleDateString()}</span>
+                          <span>Saved {formatDateTime(new Date(draft.updatedAt), userTimezone)}</span>
                         </div>
                       </div>
                     </div>

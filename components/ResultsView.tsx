@@ -27,7 +27,8 @@ import { Badge } from "@/components/ui/badge";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { Transaction, DateFilter } from "@/lib/types";
 import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency, useTimezone } from "@/lib/settings-context";
+import { formatDate } from "@/lib/formatters";
 import { DbCategory } from "@/lib/db";
 import {
   getTransactionsByCategory,
@@ -61,14 +62,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
   const [dateFilter, setDateFilter] = useState<DateFilter>({ type: "all" });
   const { formatAmount, isPrivacyMode } = usePrivacy();
   const userCurrency = useCurrency();
-
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(date);
-  };
+  const userTimezone = useTimezone();
 
   // Get available years and months from transactions
   const availableYears = useMemo(
@@ -247,7 +241,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                       {duplicateTransactions.map((transaction) => (
                         <TableRow key={transaction.id}>
                           <TableCell className="w-[120px] whitespace-nowrap">
-                            {formatDate(transaction.date)}
+                            {formatDate(transaction.date, "display", userTimezone)}
                           </TableCell>
                           <TableCell className="min-w-[300px]">
                             <p className="truncate">{transaction.description}</p>
@@ -306,7 +300,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                       {transactions.map((transaction) => (
                         <TableRow key={transaction.id}>
                           <TableCell className="w-[120px] whitespace-nowrap">
-                            {formatDate(transaction.date)}
+                            {formatDate(transaction.date, "display", userTimezone)}
                           </TableCell>
                           <TableCell className="min-w-[300px]">
                             <p className="truncate">{transaction.description}</p>
@@ -370,7 +364,7 @@ export function ResultsView({ transactions, categories }: ResultsViewProps) {
                       {uncategorizedTransactions.map((transaction) => (
                         <TableRow key={transaction.id}>
                           <TableCell className="w-[120px] whitespace-nowrap">
-                            {formatDate(transaction.date)}
+                            {formatDate(transaction.date, "display", userTimezone)}
                           </TableCell>
                           <TableCell className="min-w-[300px]">
                             <p className="truncate">{transaction.description}</p>

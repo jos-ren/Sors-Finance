@@ -2,9 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Link as LinkIcon, CloudSync } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, CloudSync, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,14 +14,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
+import { ItemHistoryDialog } from "./ItemHistoryDialog";
 import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
-
-interface PortfolioItemProps {
-  item: DbPortfolioItem;
-  bucket?: BucketType;
-}
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -42,8 +37,15 @@ function getTimeAgo(date: Date): string {
   return `${diffDays} days ago`;
 }
 
+interface PortfolioItemProps {
+  item: DbPortfolioItem;
+  bucket?: BucketType;
+}
+
+
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const userCurrency = useCurrency();
   const apiKeyConfigured = useHasFinnhubApiKey();
@@ -65,7 +67,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
     if (!item.ticker) return;
 
     // Only require API key for stocks (metals and crypto don't need it)
-    if (item.tickerType !== "metal" && item.tickerType !== "crypto" && !apiKeyConfigured) {
+    if (item.type !== "metal" && item.type !== "crypto" && !apiKeyConfigured) {
       toast.error("Finnhub API key not configured. Go to Settings to add your API key.");
       return;
     }
@@ -75,12 +77,12 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       let quote: { price: number; currency: string; name?: string } | null = null;
 
       // Fetch from the appropriate API based on tickerType
-      if (item.tickerType === "metal") {
+      if (item.type === "metal") {
         const response = await fetch(`/api/metals/${encodeURIComponent(item.ticker)}`);
         if (response.ok) {
           quote = await response.json();
         }
-      } else if (item.tickerType === "crypto") {
+      } else if (item.type === "crypto") {
         const response = await fetch(`/api/crypto/${encodeURIComponent(item.ticker)}`);
         if (response.ok) {
           quote = await response.json();
@@ -108,7 +110,8 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           currency: effectiveCurrency,
           currentValue: newValue,
           lastPriceUpdate: new Date(),
-        });
+          source: "price_refresh",
+        } as Record<string, unknown>);
 
         toast.success("Price updated");
       } else {
@@ -122,66 +125,85 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
     }
   };
 
+  // Determine icon for left column
+  const renderIcon = () => {
+    if (item.plaidAccountId) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <img
+              src="/logos/plaid.png"
+              alt="Plaid"
+              className="h-full w-full object-contain p-2 cursor-help"
+            />
+          </TooltipTrigger>
+          <TooltipContent>
+            Balance synced via Plaid.
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+    if (hasTicker) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center justify-center h-full w-full cursor-help">
+              <CloudSync className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            {item.type === "crypto" && "Price synced via CoinGecko"}
+            {item.type === "metal" && "Price synced via Gold API"}
+            {(!item.type || item.type === "stock") && "Price synced via Finnhub"}
+          </TooltipContent>
+        </Tooltip>
+      );
+    }
+    return <Circle className="h-3 w-3 text-muted-foreground" />;
+  };
+
   return (
     <>
-      <div className="flex items-center justify-between py-2 px-3 hover:bg-muted/50 rounded-md group">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            {item.plaidAccountId && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <img
-                    src="/logos/plaid.png"
-                    alt="Plaid"
-                    className="h-3.5 w-auto object-contain shrink-0 cursor-help"
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  Balance synced via Plaid.
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {!item.plaidAccountId && hasTicker && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <CloudSync className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {item.tickerType === "crypto" && "Price synced via CoinGecko"}
-                  {item.tickerType === "metal" && "Price synced via Gold API"}
-                  {(!item.tickerType || item.tickerType === "stock") && "Price synced via Finnhub"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <p className="font-medium truncate">{item.name}</p>
+      <div className="flex items-center gap-3 px-4 py-3 group">
+        {/* Left icon column */}
+        <div className="flex w-9 shrink-0 justify-center">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted/60 overflow-hidden">
+            {renderIcon()}
           </div>
+        </div>
+
+        {/* Name + subtitle */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{item.name}</p>
           {hasTicker ? (
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
               {item.ticker}
               {item.quantity !== undefined && ` · ${item.quantity} ${item.quantity === 1 ? "share" : "shares"}`}
               {item.pricePerUnit !== undefined && item.currency && ` @ ${formatAmount(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
           ) : item.plaidAccountId && item.updatedAt ? (
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
               Synced {getTimeAgo(new Date(item.updatedAt))}
             </p>
           ) : item.notes ? (
-            <p className="text-sm text-muted-foreground truncate">{item.notes}</p>
+            <p className="text-xs text-muted-foreground truncate mt-0.5">{item.notes}</p>
           ) : null}
         </div>
-        <div className="flex items-center gap-2 ml-4">
+
+        {/* Right: refresh + amount + dropdown */}
+        <div className="flex items-center gap-1 shrink-0">
           {hasTicker && (
             <Button
               variant="ghost"
               size="icon"
               className={`h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity ${
-                !apiKeyConfigured && item.tickerType !== "metal" && item.tickerType !== "crypto" ? "text-muted-foreground" : ""
+                !apiKeyConfigured && item.type !== "metal" && item.type !== "crypto" ? "text-muted-foreground" : ""
               }`}
               onClick={handleRefreshPrice}
               disabled={isRefreshing}
               title={
-                item.tickerType === "metal" || item.tickerType === "crypto" || apiKeyConfigured
+                item.type === "metal" || item.type === "crypto" || apiKeyConfigured
                   ? "Refresh price"
                   : "API key not configured - Go to Settings"
               }
@@ -189,7 +211,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
           )}
-          <span className="font-semibold tabular-nums">
+          <span className="text-sm font-semibold tabular-nums mr-1">
             {formatAmount(item.currentValue, userCurrency)}
           </span>
           <DropdownMenu>
@@ -207,6 +229,10 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowHistory(true)}>
+                <History className="h-4 w-4 mr-2" />
+                View History
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleDelete} className="text-destructive">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
@@ -221,6 +247,14 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           open={showEdit}
           onOpenChange={setShowEdit}
           bucket={bucket}
+        />
+      )}
+      {showHistory && (
+        <ItemHistoryDialog
+          item={item}
+          bucket={bucket}
+          open={showHistory}
+          onOpenChange={setShowHistory}
         />
       )}
     </>
