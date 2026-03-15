@@ -99,7 +99,7 @@ export function AccordionRow({
 
         {/* Expanded children */}
         <CollapsibleContent>
-          <div className="border-t bg-muted/20 divide-y divide-border">
+          <div className="border-t bg-muted/40 divide-y divide-border">
             {visibleChildren}
 
             {/* Footer — only when maxItems is set */}

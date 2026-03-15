@@ -877,3 +877,31 @@ export async function findDuplicateSignatures(
 ): Promise<Set<string>> {
   return api.findDuplicateSignatures(transactions);
 }
+
+// ============================================
+// Plaid Institution Status Hook
+// ============================================
+
+/** Maps plaid account ID → institution status ('active' | 'login_required' | 'error') */
+export function usePlaidAccountStatuses(): Map<number, string> {
+  const { data } = useSWR(
+    "plaid/institution-statuses",
+    async () => {
+      const response = await fetch("/api/plaid/institutions");
+      if (!response.ok) return [];
+      const json = await response.json();
+      return json.institutions || [];
+    },
+    { ...swrConfig, revalidateOnFocus: false }
+  );
+
+  const map = new Map<number, string>();
+  if (data) {
+    for (const institution of data) {
+      for (const account of institution.accounts) {
+        map.set(account.id, institution.status);
+      }
+    }
+  }
+  return map;
+}

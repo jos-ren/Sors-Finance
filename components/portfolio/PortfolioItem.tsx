@@ -18,11 +18,6 @@ import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
 
-interface PortfolioItemProps {
-  item: DbPortfolioItem;
-  bucket?: BucketType;
-}
-
 function getTimeAgo(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -40,6 +35,12 @@ function getTimeAgo(date: Date): string {
   if (diffDays === 1) return "1 day ago";
   return `${diffDays} days ago`;
 }
+
+interface PortfolioItemProps {
+  item: DbPortfolioItem;
+  bucket?: BucketType;
+}
+
 
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);

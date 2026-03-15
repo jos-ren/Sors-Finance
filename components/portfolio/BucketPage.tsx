@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, PiggyBank, TrendingUp, Home, CreditCard } from "lucide-react";
+import { Plus, PiggyBank, TrendingUp, Home, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   BucketType,
@@ -17,6 +17,14 @@ import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/por
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
 import { SectionHeader, RowGroup } from "@/components/ui/section";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 interface BucketPageProps {
   bucket: BucketType;
@@ -72,14 +80,19 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Button variant="ghost" size="sm" className="gap-2" asChild>
-              <Link href="/portfolio">
-                <ArrowLeft className="h-4 w-4" />
-                Portfolio
-              </Link>
-            </Button>
-          </div>
+          <Breadcrumb className="mb-2">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/portfolio">Portfolio</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{bucket}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <div className="flex items-center gap-3">
             <Icon className={`h-8 w-8 ${config.color}`} />
             <div>

@@ -254,7 +254,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
               </div>
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="px-4 pb-4 space-y-4 border-t bg-muted/20">
+              <div className="px-4 pb-4 space-y-4 border-t bg-muted/40">
                 <div className="pt-4 space-y-3">
                   <InfoCard variant="info" title="Production API Keys Required">
                     <div className="space-y-2 text-xs">
@@ -557,7 +557,7 @@ PLAID_SECRET=your_secret_here`}
 
                       {/* Accounts */}
                       <CollapsibleContent>
-                        <div className="border-t bg-muted/20 divide-y divide-border">
+                        <div className="border-t bg-muted/40 divide-y divide-border">
                           {institution.accounts.length === 0 ? (
                             <p className="px-6 py-4 text-sm text-muted-foreground">
                               No accounts found

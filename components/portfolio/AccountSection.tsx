@@ -4,12 +4,6 @@ import { useState } from "react";
 import { ChevronDown, Plus, MoreHorizontal, Pencil, Trash2, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -21,15 +15,23 @@ import {
   usePortfolioAccountTotal,
   deletePortfolioAccount,
   updatePortfolioAccount,
+  usePlaidAccountStatuses,
 } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PortfolioItem } from "./PortfolioItem";
 import { AddItemDialog } from "./AddItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { getBankLogo } from "@/lib/bank-logos";
+import { getAccountIcon } from "@/lib/account-icons";
 
 interface AccountSectionProps {
   account: DbPortfolioAccount;
@@ -52,6 +54,20 @@ export function AccountSection({
   const userCurrency = useCurrency();
 
   const itemCount = items?.length ?? 0;
+  const plaidStatuses = usePlaidAccountStatuses();
+
+  // Derive Plaid status for this account from its items' linked plaid accounts
+  const plaidStatus = (() => {
+    if (!items) return null;
+    const plaidIds = items.filter((i) => i.plaidAccountId).map((i) => i.plaidAccountId!);
+    if (plaidIds.length === 0) return null;
+    // If any linked institution needs attention, show that status
+    for (const id of plaidIds) {
+      const status = plaidStatuses.get(id);
+      if (status && status !== "active") return status;
+    }
+    return "active";
+  })();
 
   const handleDelete = async () => {
     try {
@@ -95,15 +111,17 @@ export function AccountSection({
         <div>
           {/* Parent row */}
           <div className="flex items-center gap-3 p-4">
-            {/* Account icon — bank logo or generic */}
+            {/* Account icon — bank logo → keyword icon → generic fallback */}
             <CollapsibleTrigger asChild>
               {(() => {
                 const logoData = getBankLogo(account.name);
+                const iconData = !logoData ? getAccountIcon(account.name) : null;
+                const IconComponent = iconData?.icon ?? Building2;
                 return (
                   <div
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
-                      logoData ? logoData.bg : "bg-muted"
+                      logoData ? logoData.bg : iconData ? iconData.bg : "bg-muted"
                     )}
                   >
                     {logoData ? (
@@ -114,7 +132,7 @@ export function AccountSection({
                         className="h-full w-full object-contain p-1.5"
                       />
                     ) : (
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                      <IconComponent className={cn("h-5 w-5", iconData ? iconData.color : "text-muted-foreground")} />
                     )}
                   </div>
                 );
@@ -137,7 +155,27 @@ export function AccountSection({
             ) : (
               <CollapsibleTrigger asChild>
                 <div className="flex-1 min-w-0 cursor-pointer">
-                  <p className="text-sm font-medium">{account.name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{account.name}</p>
+                    {plaidStatus && (
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 text-xs font-medium",
+                          plaidStatus === "active"
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            plaidStatus === "active" ? "bg-green-500" : "bg-red-500"
+                          )}
+                        />
+                        {plaidStatus === "active" ? "Linked" : "Link Error"}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {itemCount} {itemCount === 1 ? "item" : "items"}
                   </p>
@@ -188,7 +226,7 @@ export function AccountSection({
 
           {/* Expanded content */}
           <CollapsibleContent>
-            <div className="border-t bg-muted/20 divide-y divide-border">
+            <div className="border-t bg-muted/40 divide-y divide-border">
               {items && items.length > 0 ? (
                 items.map((item) => (
                   <PortfolioItem key={item.id} item={item} bucket={account.bucket} />
