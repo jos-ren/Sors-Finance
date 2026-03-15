@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import type { HistoryChange } from "@/lib/db/schema";
 
 // GET /api/portfolio/items?accountId=1&includeInactive=false
 export async function GET(request: NextRequest) {
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
       lastPriceUpdate: row.lastPriceUpdate,
       priceMode: row.priceMode,
       tickerType: row.tickerType,
+      type: row.type,
       isInternational: row.isInternational,
       plaidAccountId: row.plaidAccountId,
       createdAt: row.createdAt,
@@ -119,6 +121,7 @@ export async function POST(request: NextRequest) {
         lastPriceUpdate: body.lastPriceUpdate ? new Date(body.lastPriceUpdate) : null,
         priceMode,
         tickerType: body.tickerType || null,
+        type: body.type || body.tickerType || (body.plaidAccountId ? "bank" : "other"),
         isInternational: body.isInternational || null,
         userId,
         createdAt: now,
@@ -126,7 +129,31 @@ export async function POST(request: NextRequest) {
       })
       .returning({ id: schema.portfolioItems.id });
 
-    return NextResponse.json({ data: { id: result[0].id }, success: true });
+    // Record creation history
+    const itemId = result[0].id;
+    const changes: HistoryChange[] = [
+      { field: "name", oldValue: null, newValue: body.name },
+    ];
+    if (body.currentValue) {
+      changes.push({ field: "currentValue", oldValue: null, newValue: body.currentValue });
+    }
+    if (body.quantity) {
+      changes.push({ field: "quantity", oldValue: null, newValue: body.quantity });
+    }
+    if (body.pricePerUnit) {
+      changes.push({ field: "pricePerUnit", oldValue: null, newValue: body.pricePerUnit });
+    }
+
+    await db.insert(schema.portfolioItemHistory).values({
+      itemId,
+      source: "created",
+      type: body.type || body.tickerType || (body.plaidAccountId ? "bank" : "other"),
+      changes,
+      userId,
+      createdAt: now,
+    });
+
+    return NextResponse.json({ data: { id: itemId }, success: true });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(

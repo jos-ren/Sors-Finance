@@ -295,6 +295,7 @@ export async function POST(request: NextRequest) {
             lastPriceUpdate: item.lastPriceUpdate ? new Date(item.lastPriceUpdate) : null,
             priceMode: item.priceMode || null,
             tickerType: item.tickerType || null,
+            type: item.type || item.tickerType || (item.plaidAccountId ? "bank" : "other"),
             isInternational: item.isInternational || null,
             // plaidAccountId intentionally omitted — Plaid data is not exported
             userId,

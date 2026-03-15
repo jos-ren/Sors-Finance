@@ -61,7 +61,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
       name: item.name,
       price: item.pricePerUnit || 0,
       currency: item.currency || "USD",
-      tickerType: item.tickerType || "stock",
+      tickerType: (item.type as "stock" | "crypto" | "metal") || "stock",
     } : null
   );
 
@@ -85,7 +85,7 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
         name: item.name,
         price: item.pricePerUnit || 0,
         currency: item.currency || "USD",
-        tickerType: item.tickerType || "stock",
+        tickerType: (item.type as "stock" | "crypto" | "metal") || "stock",
       } : null
     );
     setQuantity(item.quantity?.toString() || "");
@@ -159,7 +159,8 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
           currency,
           lastPriceUpdate: priceMode === "ticker" && selectedTicker ? new Date() : undefined,
           priceMode,
-        });
+          source: "manual",
+        } as Record<string, unknown>);
       } else {
         await updatePortfolioItem(item.id!, {
           name: name.trim(),
@@ -171,7 +172,8 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
           currency: undefined,
           lastPriceUpdate: undefined,
           priceMode: "manual",
-        });
+          source: "manual",
+        } as Record<string, unknown>);
       }
 
       toast.success("Item updated successfully");

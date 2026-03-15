@@ -153,6 +153,8 @@ export type BucketType = (typeof BUCKET_TYPES)[number];
 
 export type PriceMode = "manual" | "ticker";
 export type TickerType = "stock" | "crypto" | "metal";
+export type ItemType = "stock" | "crypto" | "metal" | "bank" | "other";
+export type HistorySource = "manual" | "plaid_sync" | "price_refresh" | "created" | "deleted";
 
 export interface DbPortfolioAccount {
   id?: number;
@@ -182,6 +184,7 @@ export interface DbPortfolioItem {
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
   tickerType?: TickerType;
+  type?: ItemType;
   isInternational?: boolean;
   plaidAccountId?: number; // Links to Plaid account for auto-sync
 }
@@ -232,5 +235,15 @@ export interface AddPortfolioItemData {
   lastPriceUpdate?: Date;
   priceMode?: PriceMode;
   tickerType?: TickerType;
+  type?: ItemType;
   isInternational?: boolean;
+}
+
+export interface DbPortfolioItemHistory {
+  id?: number;
+  itemId: number;
+  source: HistorySource;
+  type?: ItemType;
+  changes: Array<{ field: string; oldValue: string | number | null; newValue: string | number | null }>;
+  createdAt: Date;
 }

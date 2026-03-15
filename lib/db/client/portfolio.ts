@@ -6,6 +6,7 @@ import type {
   DbPortfolioAccount,
   DbPortfolioItem,
   DbPortfolioSnapshot,
+  DbPortfolioItemHistory,
   BucketType,
   AddPortfolioItemData,
 } from "../types";
@@ -291,4 +292,28 @@ export async function getNetWorthChange(): Promise<{
   if (!res.ok) throw new Error("Failed to fetch net worth change");
   const { data } = await res.json();
   return data;
+}
+
+// History operations
+export async function getPortfolioItemHistory(itemId: number): Promise<DbPortfolioItemHistory[]> {
+  const res = await fetch(`/api/portfolio/items/${itemId}/history`);
+  if (!res.ok) throw new Error("Failed to fetch item history");
+  const { data } = await res.json();
+  return data.map((h: DbPortfolioItemHistory) => ({
+    ...h,
+    createdAt: new Date(h.createdAt),
+  }));
+}
+
+export async function getPortfolioHistory(bucket?: string): Promise<
+  (DbPortfolioItemHistory & { itemName: string; itemType?: string; accountBucket: string; accountName: string })[]
+> {
+  const params = bucket ? `?bucket=${bucket}` : "";
+  const res = await fetch(`/api/portfolio/history${params}`);
+  if (!res.ok) throw new Error("Failed to fetch portfolio history");
+  const { data } = await res.json();
+  return data.map((h: DbPortfolioItemHistory & { itemName: string }) => ({
+    ...h,
+    createdAt: new Date(h.createdAt),
+  }));
 }

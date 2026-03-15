@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useEffect, useState, useRef, useCallback } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -8,6 +8,7 @@ import {
   Wallet,
   CreditCard,
   Loader2,
+  FileClock,
   History,
   Trash2,
   Pencil,
@@ -27,7 +28,6 @@ import {
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -58,6 +58,7 @@ import { formatDateTime } from "@/lib/formatters";
 import { useSetPageHeader } from "@/lib/page-header-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
 import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
+import { NavigateRow } from "@/components/settings/SettingsShared";
 import { cn } from "@/lib/utils";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
@@ -587,6 +588,19 @@ export default function PortfolioPage() {
         </div>
       </div>
 
+            {/* Change History */}
+      <section className="space-y-2">
+        <SectionHeader label="Change History" />
+        <RowGroup>
+          <NavigateRow
+            icon={<FileClock className="h-4 w-4" />}
+            title="Portfolio Change History"
+            description="View all edits, syncs, and price refreshes of your portfolio items"
+            href="/portfolio/history"
+          />
+        </RowGroup>
+      </section>
+
       {/* Snapshot History */}
       <section className="space-y-2">
         <SectionHeader label="Snapshot History" />
@@ -679,6 +693,8 @@ export default function PortfolioPage() {
           )}
         </RowGroup>
       </section>
+
+
 
       {/* Edit Snapshot Dialog */}
       {editingSnapshot && (

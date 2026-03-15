@@ -40,7 +40,7 @@ interface AccountSectionProps {
 
 export function AccountSection({
   account,
-  defaultOpen = true,
+  defaultOpen = false,
 }: AccountSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [showAddItem, setShowAddItem] = useState(false);

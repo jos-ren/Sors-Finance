@@ -9,7 +9,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/api-helper";
 import { db } from "@/lib/db/connection";
-import { plaidItems, plaidAccounts, portfolioItems, settings } from "@/lib/db/schema";
+import { plaidItems, plaidAccounts, portfolioItems, portfolioItemHistory, settings } from "@/lib/db/schema";
+import type { HistoryChange } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
 import { PLAID_SETTINGS_KEYS } from "@/lib/plaid/types";
@@ -88,7 +89,7 @@ async function refreshTickerPricesForUser(
     if (item.ticker) {
       const upperTicker = item.ticker.toUpperCase();
       if (!tickerMap.has(upperTicker)) {
-        tickerMap.set(upperTicker, item.tickerType || "stock");
+        tickerMap.set(upperTicker, item.type || item.tickerType || "stock");
       }
     }
   }
@@ -230,6 +231,15 @@ async function refreshTickerPricesForUser(
     // Calculate new value using the correct exchange rate
     const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
+    // Record history if price or value changed (sub-cent tolerance)
+    const priceChanges: HistoryChange[] = [];
+    if (Math.abs((item.pricePerUnit ?? 0) - quote.price) >= 0.005) {
+      priceChanges.push({ field: "pricePerUnit", oldValue: item.pricePerUnit ?? null, newValue: quote.price });
+    }
+    if (Math.abs((item.currentValue ?? 0) - newValue) >= 0.005) {
+      priceChanges.push({ field: "currentValue", oldValue: item.currentValue, newValue: newValue });
+    }
+
     // Update the item
     await db
       .update(portfolioItems)
@@ -241,6 +251,17 @@ async function refreshTickerPricesForUser(
         updatedAt: new Date(),
       })
       .where(eq(portfolioItems.id, item.id!));
+
+    if (priceChanges.length > 0) {
+      await db.insert(portfolioItemHistory).values({
+        itemId: item.id!,
+        source: "price_refresh",
+        type: item.type || item.tickerType || "stock",
+        changes: priceChanges,
+        userId,
+        createdAt: new Date(),
+      });
+    }
 
     updated++;
     synced.push({
@@ -397,6 +418,7 @@ export async function POST(request: NextRequest) {
 
           if (linkedAccount) {
             const balance = account.balances.current || 0;
+            const oldValue = linkedAccount.portfolioItem.currentValue;
 
             // Update portfolio item balance and ensure plaidAccountId link is set
             await db
@@ -407,6 +429,21 @@ export async function POST(request: NextRequest) {
                 updatedAt: new Date(),
               })
               .where(eq(portfolioItems.id, linkedAccount.portfolioItem.id));
+
+            // Record history if value changed (sub-cent tolerance)
+            if (Math.abs((oldValue ?? 0) - balance) >= 0.005) {
+              const changes: HistoryChange[] = [
+                { field: "currentValue", oldValue: oldValue, newValue: balance },
+              ];
+              await db.insert(portfolioItemHistory).values({
+                itemId: linkedAccount.portfolioItem.id,
+                source: "plaid_sync",
+                type: linkedAccount.portfolioItem.type || "bank",
+                changes,
+                userId,
+                createdAt: new Date(),
+              });
+            }
 
             result.accountsUpdated++;
             result.syncedAccounts.push({

@@ -92,6 +92,13 @@
       "when": 1773512447955,
       "tag": "0012_clear_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1773549101661,
+      "tag": "0013_naive_psynapse",
+      "breakpoints": true
     }
   ]
 }

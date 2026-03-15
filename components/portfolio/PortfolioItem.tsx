@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, CloudSync } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, CloudSync, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
+import { ItemHistoryDialog } from "./ItemHistoryDialog";
 import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
@@ -44,6 +45,7 @@ interface PortfolioItemProps {
 
 export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const userCurrency = useCurrency();
   const apiKeyConfigured = useHasFinnhubApiKey();
@@ -65,7 +67,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
     if (!item.ticker) return;
 
     // Only require API key for stocks (metals and crypto don't need it)
-    if (item.tickerType !== "metal" && item.tickerType !== "crypto" && !apiKeyConfigured) {
+    if (item.type !== "metal" && item.type !== "crypto" && !apiKeyConfigured) {
       toast.error("Finnhub API key not configured. Go to Settings to add your API key.");
       return;
     }
@@ -75,12 +77,12 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       let quote: { price: number; currency: string; name?: string } | null = null;
 
       // Fetch from the appropriate API based on tickerType
-      if (item.tickerType === "metal") {
+      if (item.type === "metal") {
         const response = await fetch(`/api/metals/${encodeURIComponent(item.ticker)}`);
         if (response.ok) {
           quote = await response.json();
         }
-      } else if (item.tickerType === "crypto") {
+      } else if (item.type === "crypto") {
         const response = await fetch(`/api/crypto/${encodeURIComponent(item.ticker)}`);
         if (response.ok) {
           quote = await response.json();
@@ -108,7 +110,8 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           currency: effectiveCurrency,
           currentValue: newValue,
           lastPriceUpdate: new Date(),
-        });
+          source: "price_refresh",
+        } as Record<string, unknown>);
 
         toast.success("Price updated");
       } else {
@@ -149,9 +152,9 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            {item.tickerType === "crypto" && "Price synced via CoinGecko"}
-            {item.tickerType === "metal" && "Price synced via Gold API"}
-            {(!item.tickerType || item.tickerType === "stock") && "Price synced via Finnhub"}
+            {item.type === "crypto" && "Price synced via CoinGecko"}
+            {item.type === "metal" && "Price synced via Gold API"}
+            {(!item.type || item.type === "stock") && "Price synced via Finnhub"}
           </TooltipContent>
         </Tooltip>
       );
@@ -195,12 +198,12 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               variant="ghost"
               size="icon"
               className={`h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity ${
-                !apiKeyConfigured && item.tickerType !== "metal" && item.tickerType !== "crypto" ? "text-muted-foreground" : ""
+                !apiKeyConfigured && item.type !== "metal" && item.type !== "crypto" ? "text-muted-foreground" : ""
               }`}
               onClick={handleRefreshPrice}
               disabled={isRefreshing}
               title={
-                item.tickerType === "metal" || item.tickerType === "crypto" || apiKeyConfigured
+                item.type === "metal" || item.type === "crypto" || apiKeyConfigured
                   ? "Refresh price"
                   : "API key not configured - Go to Settings"
               }
@@ -226,6 +229,10 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowHistory(true)}>
+                <History className="h-4 w-4 mr-2" />
+                View History
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleDelete} className="text-destructive">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete
@@ -240,6 +247,14 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
           open={showEdit}
           onOpenChange={setShowEdit}
           bucket={bucket}
+        />
+      )}
+      {showHistory && (
+        <ItemHistoryDialog
+          item={item}
+          bucket={bucket}
+          open={showHistory}
+          onOpenChange={setShowHistory}
         />
       )}
     </>

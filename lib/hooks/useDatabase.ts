@@ -17,12 +17,15 @@ import type {
   DbPortfolioAccount,
   DbPortfolioItem,
   DbPortfolioSnapshot,
+  DbPortfolioItemHistory,
   BucketType,
   RecategorizeMode,
   RecategorizeResult,
   UpdateCategoryResult,
   AddPortfolioItemData,
   PriceMode,
+  ItemType,
+  HistorySource,
 } from "../db/types";
 import { SYSTEM_CATEGORIES, BUCKET_TYPES } from "../db/types";
 
@@ -837,8 +840,8 @@ export async function getBudgetForCategory(
 
 // Re-export constants and types
 export { SYSTEM_CATEGORIES, BUCKET_TYPES };
-export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData };
-export type { DbCategory, DbTransaction, DbBudget, DbImport, DbPortfolioAccount, DbPortfolioItem, DbPortfolioSnapshot };
+export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData, ItemType, HistorySource };
+export type { DbCategory, DbTransaction, DbBudget, DbImport, DbPortfolioAccount, DbPortfolioItem, DbPortfolioSnapshot, DbPortfolioItemHistory };
 
 // Re-export from useStockPrice (this will need to be updated separately)
 export { createSnapshotWithPriceRefresh } from "./useStockPrice";

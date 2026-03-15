@@ -216,7 +216,8 @@ export const portfolioItems = sqliteTable(
     currency: text("currency"),
     lastPriceUpdate: integer("last_price_update", { mode: "timestamp" }),
     priceMode: text("price_mode"), // 'manual' | 'ticker'
-    tickerType: text("ticker_type"), // 'stock' | 'crypto' | 'metal'
+    tickerType: text("ticker_type"), // legacy — use `type` instead
+    type: text("type"), // 'stock' | 'crypto' | 'metal' | 'bank' | 'other'
     isInternational: integer("is_international", { mode: "boolean" }),
     plaidAccountId: integer("plaid_account_id").references(() => plaidAccounts.id, { onDelete: "set null" }), // Link to Plaid account for syncing
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -229,6 +230,38 @@ export const portfolioItems = sqliteTable(
     index("portfolio_items_order_idx").on(table.order),
     index("portfolio_items_user_idx").on(table.userId),
     index("portfolio_items_plaid_idx").on(table.plaidAccountId),
+  ]
+);
+
+// ============================================
+// Portfolio Item History Table
+// ============================================
+
+export interface HistoryChange {
+  field: string;
+  oldValue: string | number | null;
+  newValue: string | number | null;
+}
+
+export const portfolioItemHistory = sqliteTable(
+  "portfolio_item_history",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => portfolioItems.id, { onDelete: "cascade" }),
+    source: text("source").notNull(), // 'manual' | 'plaid_sync' | 'price_refresh'
+    type: text("type"), // item's type at time of change
+    changes: text("changes", { mode: "json" }).$type<HistoryChange[]>().notNull(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("portfolio_item_history_item_idx").on(table.itemId),
+    index("portfolio_item_history_user_idx").on(table.userId),
+    index("portfolio_item_history_created_idx").on(table.createdAt),
   ]
 );
 
@@ -357,6 +390,9 @@ export type PortfolioItemInsert = typeof portfolioItems.$inferInsert;
 
 export type PortfolioSnapshotRow = typeof portfolioSnapshots.$inferSelect;
 export type PortfolioSnapshotInsert = typeof portfolioSnapshots.$inferInsert;
+
+export type PortfolioItemHistoryRow = typeof portfolioItemHistory.$inferSelect;
+export type PortfolioItemHistoryInsert = typeof portfolioItemHistory.$inferInsert;
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

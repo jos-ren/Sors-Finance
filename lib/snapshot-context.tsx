@@ -83,7 +83,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
 
         if (tickerItems.length > 0) {
           // Check if we have any stocks that require API key
-          const hasStocks = tickerItems.some(item => (!item.tickerType || item.tickerType === "stock"));
+          const hasStocks = tickerItems.some(item => (!item.type || item.type === "stock"));
           
           // Only proceed with price refresh if we don't need API key or if we have it
           if (!hasStocks || hasApiKey) {
@@ -93,7 +93,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
               if (item.ticker) {
                 const upperTicker = item.ticker.toUpperCase();
                 if (!tickerMap.has(upperTicker)) {
-                  tickerMap.set(upperTicker, item.tickerType || "stock");
+                  tickerMap.set(upperTicker, item.type || "stock");
                 }
               }
             }

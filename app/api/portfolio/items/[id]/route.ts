@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import type { HistoryChange } from "@/lib/db/schema";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -54,6 +55,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
+// Fields to track in history
+const TRACKED_FIELDS = ["currentValue", "quantity", "pricePerUnit", "name"] as const;
+
 // PUT /api/portfolio/items/[id]
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
@@ -69,8 +73,23 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const updates = await request.json();
+    const body = await request.json();
+    const source = body.source || "manual";
+    // Strip source from updates before DB write
+    const { source: _source, ...updates } = body;
     const now = new Date();
+
+    // Fetch current item for history diff
+    const [currentItem] = await db
+      .select()
+      .from(schema.portfolioItems)
+      .where(
+        and(
+          eq(schema.portfolioItems.id, itemId),
+          eq(schema.portfolioItems.userId, userId)
+        )
+      )
+      .limit(1);
 
     const updateValues: Record<string, unknown> = { updatedAt: now };
 
@@ -85,6 +104,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       updateValues.lastPriceUpdate = updates.lastPriceUpdate ? new Date(updates.lastPriceUpdate) : null;
     if (updates.priceMode !== undefined) updateValues.priceMode = updates.priceMode;
     if (updates.tickerType !== undefined) updateValues.tickerType = updates.tickerType;
+    if (updates.type !== undefined) updateValues.type = updates.type;
     if (updates.isInternational !== undefined) updateValues.isInternational = updates.isInternational;
     if (updates.isActive !== undefined) updateValues.isActive = updates.isActive;
 
@@ -97,6 +117,32 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           eq(schema.portfolioItems.userId, userId)
         )
       );
+
+    // Record history if tracked fields changed (with sub-cent tolerance for numeric fields)
+    if (currentItem) {
+      const changes: HistoryChange[] = [];
+      const NUMERIC_FIELDS = new Set(["currentValue", "quantity", "pricePerUnit"]);
+      for (const field of TRACKED_FIELDS) {
+        const oldVal = currentItem[field] ?? null;
+        const newVal = updates[field] ?? null;
+        if (newVal === undefined) continue;
+        if (NUMERIC_FIELDS.has(field)) {
+          if (Math.abs((Number(newVal) || 0) - (Number(oldVal) || 0)) < 0.005) continue;
+        } else if (oldVal === newVal) continue;
+        changes.push({ field, oldValue: oldVal, newValue: newVal });
+      }
+
+      if (changes.length > 0) {
+        await db.insert(schema.portfolioItemHistory).values({
+          itemId,
+          source,
+          type: currentItem.type || null,
+          changes,
+          userId,
+          createdAt: now,
+        });
+      }
+    }
 
     return NextResponse.json({ data: { updated: true }, success: true });
   } catch (error) {
@@ -130,8 +176,20 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // Fetch item before deleting for history
+    const [currentItem] = await db
+      .select()
+      .from(schema.portfolioItems)
+      .where(
+        and(
+          eq(schema.portfolioItems.id, itemId),
+          eq(schema.portfolioItems.userId, userId)
+        )
+      )
+      .limit(1);
+
     if (hard) {
-      // Hard delete
+      // Record history before hard delete (since cascade will remove history too, skip)
       await db
         .delete(schema.portfolioItems)
         .where(
@@ -152,6 +210,25 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
             eq(schema.portfolioItems.userId, userId)
           )
         );
+
+      // Record deletion history
+      if (currentItem) {
+        const changes: HistoryChange[] = [
+          { field: "name", oldValue: currentItem.name, newValue: null },
+        ];
+        if (currentItem.currentValue) {
+          changes.push({ field: "currentValue", oldValue: currentItem.currentValue, newValue: null });
+        }
+
+        await db.insert(schema.portfolioItemHistory).values({
+          itemId,
+          source: "deleted",
+          type: currentItem.type || null,
+          changes,
+          userId,
+          createdAt: now,
+        });
+      }
     }
 
     return NextResponse.json({ data: { deleted: true }, success: true });
