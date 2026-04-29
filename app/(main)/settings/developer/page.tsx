@@ -33,7 +33,7 @@ import {
   RowGroup,
   ActionRow,
 } from "@/components/settings/SettingsShared";
-import { BANK_LOGOS_DISPLAY } from "@/lib/bank-logos";
+import { BANK_LOGOS_DISPLAY, getBankOnlineLogoUrl } from "@/lib/bank-logos";
 
 const DEV_COLORS = [
   { name: "Background", var: "--background", class: "bg-background" },
@@ -60,6 +60,42 @@ const DEV_CHART_COLORS = [
   { name: "Alt Blue", var: "--alt-blue", class: "bg-[var(--alt-blue)]" },
   { name: "Alt Amber", var: "--alt-amber", class: "bg-[var(--alt-amber)]" },
 ];
+
+/* eslint-disable @next/next/no-img-element */
+function BankOnlineLogoTile({
+  bank,
+}: {
+  bank: { name: string; domain: string; bg: string };
+}) {
+  const [imgError, setImgError] = useState(false);
+  const src = getBankOnlineLogoUrl(bank.domain);
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className={`flex h-12 w-12 items-center justify-center rounded-xl ${bank.bg} shrink-0 overflow-hidden`}
+      >
+        {!imgError ? (
+          <img
+            src={src}
+            alt={bank.name}
+            className="h-full w-full object-contain p-2 rounded-[14px]"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <span className="text-[10px] font-semibold">
+            {bank.name
+              .split(" ")
+              .slice(0, 2)
+              .map((w) => w[0])
+              .join("")
+              .toUpperCase()}
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground text-center leading-tight">{bank.name}</p>
+    </div>
+  );
+}
 
 export default function DeveloperSettingsPage() {
   const sentinelRef = useSetPageHeader("Developer Tools");
@@ -361,24 +397,23 @@ export default function DeveloperSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Supported Banks</CardTitle>
-            <CardDescription>Logo assets available for institution matching</CardDescription>
+            <CardDescription>
+              {BANK_LOGOS_DISPLAY.length} institutions with keyword detection · logos via Logo.dev
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-              {BANK_LOGOS_DISPLAY.map((bank) => (
-                <div key={bank.name} className="flex flex-col items-center gap-2">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${bank.bg} shrink-0 overflow-hidden`}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={bank.path}
-                      alt={bank.name}
-                      className="h-full w-full object-contain p-2"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center leading-tight">{bank.name}</p>
+          <CardContent className="space-y-6">
+            {(["CA", "US", "INTL", "CRYPTO"] as const).map((country) => (
+              <div key={country} className="space-y-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {country === "CA" ? "Canada" : country === "US" ? "United States" : country === "INTL" ? "International" : "Crypto Exchanges"}
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                  {BANK_LOGOS_DISPLAY.filter((b) => b.country === country).map((bank) => (
+                    <BankOnlineLogoTile key={bank.name} bank={bank} />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </section>

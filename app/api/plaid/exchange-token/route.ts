@@ -142,7 +142,11 @@ export async function POST(req: NextRequest) {
 
     for (const account of accounts) {
       // Calculate suggested bucket for UI (but don't create portfolio account yet)
-      const suggestedBucket = mapPlaidTypeToPortfolioBucket(account.type, account.subtype || "");
+      const suggestedBucket = mapPlaidTypeToPortfolioBucket(
+        account.type,
+        account.subtype || "",
+        account.official_name || account.name
+      );
 
       // Create plaid_accounts record without portfolio link
       const [plaidAccount] = await db

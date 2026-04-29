@@ -30,8 +30,37 @@ import { AddItemDialog } from "./AddItemDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { getBankLogo } from "@/lib/bank-logos";
+import { getBankLogo, resolveBankLogoSrc } from "@/lib/bank-logos";
 import { getAccountIcon } from "@/lib/account-icons";
+
+/* eslint-disable @next/next/no-img-element */
+function AccountLogoIcon({ name }: { name: string }) {
+  const [imgError, setImgError] = useState(false);
+  const logoData = getBankLogo(name);
+  const iconData = !logoData ? getAccountIcon(name) : null;
+  const IconComponent = iconData?.icon ?? Building2;
+  return (
+    <div
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
+        logoData && !imgError ? logoData.bg : iconData ? iconData.bg : "bg-muted"
+      )}
+    >
+      {logoData && !imgError ? (
+        <img
+          src={resolveBankLogoSrc(logoData)}
+          alt={name}
+          className="h-full w-full object-contain p-1.5 rounded-[10px]"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <IconComponent
+          className={cn("h-5 w-5", iconData && !logoData ? iconData.color : "text-muted-foreground")}
+        />
+      )}
+    </div>
+  );
+}
 
 interface AccountSectionProps {
   account: DbPortfolioAccount;
@@ -110,33 +139,10 @@ export function AccountSection({
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <div>
           {/* Parent row */}
-          <div className="flex items-center gap-3 p-4">
+          <div className="group flex items-center gap-3 p-4">
             {/* Account icon — bank logo → keyword icon → generic fallback */}
             <CollapsibleTrigger asChild>
-              {(() => {
-                const logoData = getBankLogo(account.name);
-                const iconData = !logoData ? getAccountIcon(account.name) : null;
-                const IconComponent = iconData?.icon ?? Building2;
-                return (
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
-                      logoData ? logoData.bg : iconData ? iconData.bg : "bg-muted"
-                    )}
-                  >
-                    {logoData ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={logoData.path}
-                        alt={account.name}
-                        className="h-full w-full object-contain p-1.5"
-                      />
-                    ) : (
-                      <IconComponent className={cn("h-5 w-5", iconData ? iconData.color : "text-muted-foreground")} />
-                    )}
-                  </div>
-                );
-              })()}
+              <AccountLogoIcon name={account.name} />
             </CollapsibleTrigger>
 
             {/* Name + item count */}
@@ -183,23 +189,24 @@ export function AccountSection({
               </CollapsibleTrigger>
             )}
 
-            {/* Right: total + dropdown + chevron */}
+            {/* Right: actions + total + chevron */}
             <div className="flex items-center gap-1 shrink-0">
-              <span className="text-sm font-semibold tabular-nums mr-1">
-                {formatAmount(total ?? 0, userCurrency)}
-              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => { e.stopPropagation(); setShowAddItem(true); }}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setShowAddItem(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Item
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setIsEditing(true)}>
                     <Pencil className="h-4 w-4 mr-2" />
                     Rename
@@ -210,6 +217,10 @@ export function AccountSection({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <span className="text-sm font-semibold tabular-nums mx-1">
+                {formatAmount(total ?? 0, userCurrency)}
+              </span>
 
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="icon" className="cursor-pointer">

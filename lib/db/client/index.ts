@@ -62,7 +62,6 @@ export {
   deleteTransactionsBulk,
   addTransactionsBulk,
   categorizeTransaction,
-  recategorizeTransactions,
   findDuplicateSignatures,
   getSpendingByCategory,
   getYTDSpendingByCategory,

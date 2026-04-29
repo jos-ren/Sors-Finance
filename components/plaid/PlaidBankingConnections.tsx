@@ -46,13 +46,14 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
 import { usePrivacy } from "@/lib/privacy-context";
-import { getBankLogo } from "@/lib/bank-logos";
+import { getBankLogo, resolveBankLogoSrc } from "@/lib/bank-logos";
 import { formatDateTime } from "@/lib/formatters";
 import { useTimezone } from "@/lib/settings-context";
 import { SectionHeader, RowGroup } from "@/components/ui/section";
 import { PlaidLinkButton } from "./PlaidLinkButton";
 import { PlaidSyncButton } from "./PlaidSyncButton";
 import { PlaidBucketSelector } from "./PlaidBucketSelector";
+import { IconBadge } from "@/components/ui/icon-badge";
 
 interface PlaidInstitution {
   id: number;
@@ -100,6 +101,39 @@ function bankAvatarColor(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function InstitutionAvatar({
+  name,
+  initials,
+  fallbackClass,
+}: {
+  name: string;
+  initials: string;
+  fallbackClass: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const logoData = getBankLogo(name);
+  return (
+    <div
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
+        logoData && !imgError ? logoData.bg : fallbackClass
+      )}
+    >
+      {logoData && !imgError ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={resolveBankLogoSrc(logoData)}
+          alt={name}
+          className="h-full w-full object-contain p-1.5 rounded-[10px]"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <span className="text-sm font-bold">{initials}</span>
+      )}
+    </div>
+  );
 }
 
 interface PlaidBankingConnectionsProps {
@@ -194,9 +228,9 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
         <RowGroup>
           {/* Status row */}
           <div className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <IconBadge size="lg" radius="lg" bg="muted">
               <img src="/logos/plaid.png" alt="Plaid" className="h-5 w-auto object-contain" />
-            </div>
+            </IconBadge>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium">API Credentials</p>
@@ -231,9 +265,9 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
           <Collapsible open={effectiveSetupOpen} onOpenChange={setSetupOpen}>
             <CollapsibleTrigger asChild>
               <div className="flex items-center gap-3 py-4 pl-4 pr-5 cursor-pointer hover:bg-muted/40 transition-colors border-t">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <IconBadge size="lg" radius="lg" bg="muted">
                   <Monitor className="h-4 w-4 text-muted-foreground" />
-                </div>
+                </IconBadge>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Setup Instructions</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
@@ -354,9 +388,9 @@ PLAID_SECRET=your_secret_here`}
           <RowGroup>
             {/* Environment + Add Bank row */}
             <div className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <IconBadge size="lg" radius="lg" bg="muted">
                 <Plus className="h-4 w-4 text-muted-foreground" />
-              </div>
+              </IconBadge>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium">Add a Bank</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -426,27 +460,11 @@ PLAID_SECRET=your_secret_here`}
                       <div className="flex items-center gap-3 p-4">
                         {/* Bank avatar / logo */}
                         <CollapsibleTrigger asChild>
-                          {(() => {
-                            const logoData = getBankLogo(institution.institutionName);
-                            return (
-                              <div
-                                className={cn(
-                                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg cursor-pointer select-none overflow-hidden",
-                                  logoData ? logoData.bg : avatarColor
-                                )}
-                              >
-                                {logoData ? (
-                                  <img
-                                    src={logoData.path}
-                                    alt={institution.institutionName}
-                                    className="h-full w-full object-contain p-1.5"
-                                  />
-                                ) : (
-                                  <span className="text-sm font-bold">{initials}</span>
-                                )}
-                              </div>
-                            );
-                          })()}
+                          <InstitutionAvatar
+                            name={institution.institutionName}
+                            initials={initials}
+                            fallbackClass={avatarColor}
+                          />
                         </CollapsibleTrigger>
 
                         {/* Bank name + meta */}
@@ -581,13 +599,13 @@ PLAID_SECRET=your_secret_here`}
                                 >
                                   {/* Bucket type icon */}
                                   <div className="flex w-9 shrink-0 justify-center">
-                                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted/60">
-                                    {BucketIcon ? (
-                                      <BucketIcon className={`h-4 w-4 ${bucketConfig.color}`} />
-                                    ) : (
-                                      <CreditCard className="h-4 w-4 text-muted-foreground" />
-                                    )}
-                                  </div>
+                                    <IconBadge>
+                                      {BucketIcon ? (
+                                        <BucketIcon className={`h-4 w-4 ${bucketConfig.color}`} />
+                                      ) : (
+                                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                                      )}
+                                    </IconBadge>
                                   </div>
 
                                   {/* Name + subtitle */}

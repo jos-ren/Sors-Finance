@@ -1,65 +1,15 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { Building2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-// Map of bank sources to their logo paths
-// Keys match Plaid institutionName values and/or CSV template names
-const BANK_LOGOS: Record<string, string> = {
-  // TD
-  "TD": "/logos/banks/td.png",
-  "TD Bank": "/logos/banks/td.png",
-  "TD Canada Trust": "/logos/banks/td.png",
-
-  // RBC
-  "RBC": "/logos/banks/rbc.png",
-  "Royal Bank of Canada": "/logos/banks/rbc.png",
-  "RBC Royal Bank": "/logos/banks/rbc.png",
-
-  // CIBC
-  "CIBC": "/logos/banks/cibc.png",
-
-  // BMO
-  "BMO": "/logos/banks/bmo.png",
-  "Bank of Montreal": "/logos/banks/bmo.png",
-  "BMO Bank of Montreal": "/logos/banks/bmo.png",
-
-  // Scotiabank
-  "Scotiabank": "/logos/banks/scotiabank.svg",
-  "Bank of Nova Scotia": "/logos/banks/scotiabank.svg",
-
-  // National Bank
-  "National Bank": "/logos/banks/nationalbank.png",
-  "National Bank of Canada": "/logos/banks/nationalbank.png",
-
-  // Wealthsimple
-  "Wealthsimple": "/logos/banks/wealthsimple.png",
-
-  // Tangerine
-  "Tangerine": "/logos/banks/tangerine.png",
-
-  // American Express
-  "Amex": "/logos/banks/amex.png",
-  "American Express": "/logos/banks/amex.png",
-
-  // ATB Financial
-  "ATB": "/logos/banks/atb.png",
-  "ATB Financial": "/logos/banks/atb.png",
-
-  // Desjardins
-  "Desjardins": "/logos/banks/desjardins.jpg",
-
-  // Vancity
-  "Vancity": "/logos/banks/vancity.jpg",
-  "Vancouver City Savings": "/logos/banks/vancity.jpg",
-};
+import { IconBadge } from "@/components/ui/icon-badge";
+import { getBankLogo, getBankFallbackColor, resolveBankLogoSrc } from "@/lib/bank-logos";
 
 interface BankSourceBadgeProps {
   source: string;
@@ -69,6 +19,16 @@ interface BankSourceBadgeProps {
   showTooltip?: boolean;
 }
 
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 1) return name.slice(0, 2).toUpperCase();
+  return words
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
+
 export function BankSourceBadge({
   source,
   sourceMethod,
@@ -76,56 +36,52 @@ export function BankSourceBadge({
   size = "md",
   showTooltip = true,
 }: BankSourceBadgeProps) {
-  const logoPath = BANK_LOGOS[source];
+  const [imgError, setImgError] = useState(false);
+  const badgeSizes = { sm: "sm", md: "md", lg: "lg" } as const;
+  const logoData = getBankLogo(source);
+  const useTextFallback = !logoData || sourceMethod === "Manual" || imgError;
 
-  const imageSizes = {
-    sm: { width: 16, height: 16, className: "h-4 w-auto" },
-    md: { width: 20, height: 20, className: "h-5 w-auto" },
-    lg: { width: 24, height: 24, className: "h-6 w-auto" },
-  };
+  let badgeClassName: string;
+  let inner: React.ReactNode;
 
-  const iconSizes = {
-    sm: "h-4 w-4",
-    md: "h-5 w-5",
-    lg: "h-6 w-6",
-  };
+  const imgRadius = { sm: "rounded-md", md: "rounded-[8px]", lg: "rounded-[10px]" }[size];
 
-  // For banks with logos, just show the logo without a container
-  const content = logoPath ? (
-    <img
-      src={logoPath}
-      alt={`${source} logo`}
-      className={`${imageSizes[size].className} w-auto object-contain`}
-    />
-  ) : (
-    // For banks without logos, show a badge with icon and text
-    <Badge variant="outline" className="flex items-center gap-1">
-      <Building2 className={iconSizes[size]} />
-      <span className="text-xs">{source}</span>
-    </Badge>
+  if (!useTextFallback && logoData) {
+    badgeClassName = logoData.bg;
+    inner = (
+      <img
+        src={resolveBankLogoSrc(logoData)}
+        alt={`${source} logo`}
+        className={`h-full w-full object-contain p-1.5 ${imgRadius}`}
+        onError={() => setImgError(true)}
+      />
+    );
+  } else {
+    const label = sourceMethod === "Manual" ? "Manual" : source;
+    badgeClassName = getBankFallbackColor(label);
+    inner = (
+      <span className="text-[10px] font-semibold leading-none select-none">
+        {sourceMethod === "Manual" ? "M" : getInitials(source)}
+      </span>
+    );
+  }
+
+  const badge = (
+    <IconBadge size={badgeSizes[size]} className={badgeClassName}>
+      {inner}
+    </IconBadge>
   );
 
-  if (!showTooltip) {
-    return content;
-  }
+  if (!showTooltip) return badge;
 
-  // Build tooltip content
   const tooltipLines: string[] = [source];
-  if (sourceMethod) {
-    tooltipLines.push(`Imported via ${sourceMethod}`);
-  }
-  if (sourceAccountName) {
-    tooltipLines.push(`Account: ${sourceAccountName}`);
-  }
+  if (sourceMethod) tooltipLines.push(`Imported via ${sourceMethod}`);
+  if (sourceAccountName) tooltipLines.push(`Account: ${sourceAccountName}`);
 
   return (
     <TooltipProvider>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex items-center">
-            {content}
-          </span>
-        </TooltipTrigger>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
         <TooltipContent>
           <div className="flex flex-col gap-0.5">
             {tooltipLines.map((line, i) => (

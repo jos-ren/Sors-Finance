@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -43,6 +44,7 @@ export function AddTransactionDialog({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
+  const [note, setNote] = useState<string>("");
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,6 +54,7 @@ export function AddTransactionDialog({
     setDescription("");
     setAmount("");
     setCategoryId("");
+    setNote("");
     setTransactionType("expense");
   };
 
@@ -82,6 +85,7 @@ export function AddTransactionDialog({
         amountIn: transactionType === "income" ? amountNum : 0,
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source: "Manual",
+        note: note.trim() || null,
         categoryId: categoryId ? parseInt(categoryId) : null,
         importId: null,
       });
@@ -189,6 +193,19 @@ export function AddTransactionDialog({
                   ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Note */}
+          <div className="space-y-2">
+            <Label htmlFor="note">Note (optional)</Label>
+            <Textarea
+              id="note"
+              placeholder="e.g. Rent for May, Nike running shoes..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="resize-none"
+              rows={2}
+            />
           </div>
         </div>
 

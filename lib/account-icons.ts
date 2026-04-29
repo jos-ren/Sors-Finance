@@ -2,7 +2,6 @@ import {
   Car,
   Home,
   Building,
-  Building2,
   Landmark,
   Gem,
   Watch,

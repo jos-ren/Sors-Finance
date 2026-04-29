@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { findMatchingCategories } from "@/lib/categorizer";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -101,7 +102,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.amountIn !== undefined) updateValues.amountIn = updates.amountIn;
     if (updates.netAmount !== undefined) updateValues.netAmount = updates.netAmount;
     if (updates.source !== undefined) updateValues.source = updates.source;
+    if (updates.note !== undefined) updateValues.note = updates.note;
     if (updates.categoryId !== undefined) updateValues.categoryId = updates.categoryId;
+    if (updates.categoryLocked !== undefined) updateValues.categoryLocked = updates.categoryLocked;
+
+    // When unlocking without an explicit categoryId, re-run keyword matching
+    if (updates.categoryLocked === false && updates.categoryId === undefined) {
+      const cats = await db.select().from(schema.categories)
+        .where(eq(schema.categories.userId, userId));
+      const matchable = cats.filter((c) => !c.isSystem || c.name === "Income");
+      const matches = findMatchingCategories(existing[0].matchField, matchable);
+      updateValues.categoryId = matches.length === 1 ? matches[0].id : null;
+    }
 
     await db
       .update(schema.transactions)

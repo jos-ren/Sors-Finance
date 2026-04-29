@@ -42,7 +42,9 @@ export interface DbTransaction {
   source: string;
   sourceMethod?: string | null; // "Plaid", "CSV", or "Manual"
   sourceAccountName?: string | null; // Specific account name for tooltip
+  note?: string | null;
   categoryId: number | null;
+  categoryLocked: boolean;
   importId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -212,14 +214,6 @@ export interface DbPortfolioSnapshot {
 export interface UpdateCategoryResult {
   assigned: number;
   uncategorized: number;
-  conflicts: number;
-}
-
-export type RecategorizeMode = "uncategorized" | "all";
-
-export interface RecategorizeResult {
-  processed: number;
-  updated: number;
   conflicts: number;
 }
 

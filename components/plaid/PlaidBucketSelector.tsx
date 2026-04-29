@@ -106,18 +106,23 @@ export function PlaidBucketSelector({
     if (open && accounts.length > 0) {
       setAccountSelections(
         new Map(accounts.map(acc => {
-          // Use existing mapping if in edit mode, otherwise use defaults
           const existing = existingMappings?.get(acc.id);
           return [
             acc.id,
             existing || {
               bucket: acc.suggestedBucket,
-              accountName: '', // Default to empty - user must select
-              itemName: acc.officialName || acc.name // Pre-fill with official name or fallback to name
+              accountName: institutionName, // Default to creating a new account named after the institution
+              itemName: acc.officialName || acc.name,
             }
           ];
         }))
       );
+
+      // Default all new accounts to "create new" mode
+      const newAccountIds = accounts
+        .filter(acc => !existingMappings?.has(acc.id))
+        .map(acc => acc.id);
+      setCreatingNewAccounts(new Set(newAccountIds));
     }
   }, [open, accounts, institutionName, existingMappings]);
 
@@ -154,31 +159,21 @@ export function PlaidBucketSelector({
   };
 
   const handleBucketChange = (accountId: number, bucket: BucketType) => {
-    console.log('handleBucketChange called:', { accountId, bucket });
-    
-    // Remove from create-new mode when bucket changes (forces re-selection)
-    setCreatingNewAccounts(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(accountId);
-      return newSet;
-    });
-    
+    const wasCreatingNew = creatingNewAccounts.has(accountId);
     setAccountSelections(prev => {
       const newMap = new Map(prev);
       const current = newMap.get(accountId)!;
-      // Reset account selection when bucket changes
       newMap.set(accountId, {
         ...current,
         bucket,
-        accountName: '', // Clear account selection
+        // If creating new, reset name to institution name; if mapped to existing, clear so user re-picks
+        accountName: wasCreatingNew ? institutionName : '',
       });
       return newMap;
     });
   };
 
   const handleAccountSelectionChange = (accountId: number, value: string) => {
-    console.log('handleAccountSelectionChange:', { accountId, value });
-    
     if (value === '__CREATE_NEW__') {
       // Track that this account is in create-new mode
       setCreatingNewAccounts(prev => new Set(prev).add(accountId));
@@ -215,15 +210,10 @@ export function PlaidBucketSelector({
   };
 
   const handleAccountNameChange = (accountId: number, value: string) => {
-    console.log('handleAccountNameChange called:', { accountId, value });
     setAccountSelections(prev => {
       const newMap = new Map(prev);
       const current = newMap.get(accountId)!;
-      newMap.set(accountId, {
-        ...current,
-        accountName: value,
-      });
-      console.log('Updated accountName to:', value);
+      newMap.set(accountId, { ...current, accountName: value });
       return newMap;
     });
   };
@@ -425,8 +415,6 @@ export function PlaidBucketSelector({
           {accounts.map((account) => {
             const selection = accountSelections.get(account.id);
             if (!selection) return null; // Skip if not initialized yet
-            
-            console.log(`Rendering account ${account.id}, selection.accountName:`, selection.accountName);
             
             const availableAccounts = getAccountsForBucket(selection.bucket);
 

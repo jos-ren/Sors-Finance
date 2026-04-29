@@ -19,8 +19,6 @@ import type {
   DbPortfolioSnapshot,
   DbPortfolioItemHistory,
   BucketType,
-  RecategorizeMode,
-  RecategorizeResult,
   UpdateCategoryResult,
   AddPortfolioItemData,
   PriceMode,
@@ -686,14 +684,6 @@ export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   invalidateTransactions();
 }
 
-export async function recategorizeTransactions(
-  mode: RecategorizeMode = "uncategorized"
-): Promise<RecategorizeResult> {
-  const result = await api.recategorizeTransactions(mode);
-  invalidateTransactions();
-  return result;
-}
-
 // Budgets
 export async function setBudget(
   categoryId: number,
@@ -840,7 +830,7 @@ export async function getBudgetForCategory(
 
 // Re-export constants and types
 export { SYSTEM_CATEGORIES, BUCKET_TYPES };
-export type { RecategorizeMode, RecategorizeResult, UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData, ItemType, HistorySource };
+export type { UpdateCategoryResult, BucketType, PriceMode, AddPortfolioItemData, ItemType, HistorySource };
 export type { DbCategory, DbTransaction, DbBudget, DbImport, DbPortfolioAccount, DbPortfolioItem, DbPortfolioSnapshot, DbPortfolioItemHistory };
 
 // Re-export from useStockPrice (this will need to be updated separately)
