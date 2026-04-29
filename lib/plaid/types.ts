@@ -95,8 +95,34 @@ export interface PlaidBalance {
  */
 export function mapPlaidTypeToPortfolioBucket(
   type: string,
-  _subtype: string
+  subtype: string,
+  name?: string
 ): "Savings" | "Investments" | "Assets" | "Debt" {
+  const nameLower = (name || "").toLowerCase();
+
+  // Name-based keyword matching — catches cases where Plaid's type is too generic
+  // (e.g. Canadian RRSP/TFSA returned as type="depository")
+  const debtKeywords = [
+    "credit card", "line of credit", "heloc", "mortgage", "loan",
+    "visa", "mastercard", "amex", "american express",
+  ];
+  const investmentKeywords = [
+    "rrsp", "tfsa", "resp", "fhsa", "rrif", "lira",
+    "ira", "401k", "403b", "roth", "brokerage", "investment",
+  ];
+  const savingsKeywords = ["savings", "chequing", "checking", "hisa", "high interest"];
+
+  if (debtKeywords.some((k) => nameLower.includes(k))) return "Debt";
+  if (investmentKeywords.some((k) => nameLower.includes(k))) return "Investments";
+  if (savingsKeywords.some((k) => nameLower.includes(k))) return "Savings";
+
+  // Subtype-based mapping
+  const subtypeLower = subtype.toLowerCase();
+  if (["credit card", "paypal"].includes(subtypeLower)) return "Debt";
+  if (["checking", "savings", "money market", "cd", "prepaid"].includes(subtypeLower)) return "Savings";
+  if (["401k", "403b", "ira", "roth", "rrsp", "tfsa", "resp", "fhsa"].includes(subtypeLower)) return "Investments";
+
+  // Type-based fallback
   switch (type) {
     case "depository":
       return "Savings";
@@ -107,7 +133,6 @@ export function mapPlaidTypeToPortfolioBucket(
     case "loan":
       return "Debt";
     default:
-      // Default to Assets for other types (e.g., property, vehicle)
       return "Assets";
   }
 }

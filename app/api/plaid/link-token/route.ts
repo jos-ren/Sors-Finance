@@ -51,9 +51,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("Link token creation error:", error);
-    const err = error as { message?: string };
+    const err = error as {
+      response?: { data?: { error_message?: string; error_code?: string } };
+      message?: string;
+    };
+    const errorMessage =
+      err?.response?.data?.error_message ||
+      err?.response?.data?.error_code ||
+      err.message ||
+      "Failed to create link token";
     return NextResponse.json(
-      { error: err.message || "Failed to create link token" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

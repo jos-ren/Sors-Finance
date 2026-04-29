@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Plus, PiggyBank, TrendingUp, Home, CreditCard } from "lucide-react";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { Button } from "@/components/ui/button";
 import {
   BucketType,
@@ -34,11 +35,12 @@ interface BucketPageProps {
 const BUCKET_CONFIG: Record<BucketType, {
   icon: typeof PiggyBank;
   color: string;
+  bg: string;
 }> = {
-  Savings: { icon: PiggyBank, color: "text-emerald-500" },
-  Investments: { icon: TrendingUp, color: "text-blue-500" },
-  Assets: { icon: Home, color: "text-amber-500" },
-  Debt: { icon: CreditCard, color: "text-red-500" },
+  Savings:     { icon: PiggyBank,  color: "text-emerald-500", bg: "bg-emerald-500/10" },
+  Investments: { icon: TrendingUp, color: "text-blue-500",    bg: "bg-blue-500/10" },
+  Assets:      { icon: Home,       color: "text-amber-500",   bg: "bg-amber-500/10" },
+  Debt:        { icon: CreditCard, color: "text-red-500",     bg: "bg-red-500/10" },
 };
 
 export function BucketPage({ bucket, description }: BucketPageProps) {
@@ -94,7 +96,9 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
             </BreadcrumbList>
           </Breadcrumb>
           <div className="flex items-center gap-3">
-            <Icon className={`h-8 w-8 ${config.color}`} />
+            <IconBadge size="xl" radius="xl" className={config.bg}>
+              <Icon className={`h-6 w-6 ${config.color}`} />
+            </IconBadge>
             <div>
               <h1 className="text-3xl font-bold tracking-tight">{bucket}</h1>
               <p className="text-muted-foreground">{description}</p>
@@ -146,7 +150,9 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
-          <Icon className={`h-12 w-12 mx-auto mb-4 ${config.color} opacity-50`} />
+          <IconBadge size="xl" radius="xl" className={`mx-auto mb-4 ${config.bg} opacity-60`}>
+            <Icon className={`h-6 w-6 ${config.color}`} />
+          </IconBadge>
           <p className="text-lg font-medium">No accounts yet</p>
           <p className="text-sm mt-1">Create an account to start tracking your {bucket.toLowerCase()}.</p>
         </div>

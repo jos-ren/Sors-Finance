@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, CloudSync, History } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType } from "@/lib/hooks/useDatabase";
 import { usePrivacy } from "@/lib/privacy-context";
 import { EditItemDialog } from "./EditItemDialog";
@@ -18,6 +19,9 @@ import { ItemHistoryDialog } from "./ItemHistoryDialog";
 import { toast } from "sonner";
 import { lookupTicker } from "@/lib/hooks/useStockPrice";
 import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
+import { getTickerLogoUrl, getCryptoLogoUrl } from "@/lib/bank-logos";
+import { getStockBg } from "@/lib/stock-logos";
+import { getCryptoBg } from "@/lib/crypto-logos";
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -47,6 +51,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const [showEdit, setShowEdit] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tickerImgError, setTickerImgError] = useState(false);
   const userCurrency = useCurrency();
   const apiKeyConfigured = useHasFinnhubApiKey();
   const { formatAmount } = usePrivacy();
@@ -144,18 +149,42 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       );
     }
     if (hasTicker) {
+      const isMetal = item.type === "metal";
+      const isCrypto = item.type === "crypto";
+      const logoSrc = isCrypto
+        ? getCryptoLogoUrl(item.ticker!)
+        : !isMetal
+        ? getTickerLogoUrl(item.ticker!)
+        : null;
+
+      const tooltipText = isCrypto
+        ? "Price synced via CoinGecko"
+        : isMetal
+        ? "Price synced via Gold API"
+        : "Price synced via Finnhub";
+
+      const innerIcon =
+        logoSrc && !tickerImgError ? (
+          <img
+            src={logoSrc}
+            alt={item.ticker!}
+            className="h-full w-full object-contain p-1.5 rounded-md"
+            onError={() => setTickerImgError(true)}
+          />
+        ) : (
+          <span className="text-[9px] font-bold leading-none select-none text-muted-foreground">
+            {(item.ticker ?? item.name).slice(0, 3).toUpperCase()}
+          </span>
+        );
+
       return (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center justify-center h-full w-full cursor-help">
-              <CloudSync className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center justify-center h-full w-full cursor-help overflow-hidden">
+              {innerIcon}
             </div>
           </TooltipTrigger>
-          <TooltipContent>
-            {item.type === "crypto" && "Price synced via CoinGecko"}
-            {item.type === "metal" && "Price synced via Gold API"}
-            {(!item.type || item.type === "stock") && "Price synced via Finnhub"}
-          </TooltipContent>
+          <TooltipContent>{tooltipText}</TooltipContent>
         </Tooltip>
       );
     }
@@ -167,9 +196,20 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
       <div className="flex items-center gap-3 px-4 py-3 group">
         {/* Left icon column */}
         <div className="flex w-9 shrink-0 justify-center">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted/60 overflow-hidden">
+          <IconBadge
+            size="sm"
+            className={
+              hasTicker && item.ticker
+                ? (item.type === "crypto"
+                    ? (getCryptoBg(item.ticker) ?? undefined)
+                    : item.type !== "metal"
+                    ? (getStockBg(item.ticker) ?? undefined)
+                    : undefined)
+                : undefined
+            }
+          >
             {renderIcon()}
-          </div>
+          </IconBadge>
         </div>
 
         {/* Name + subtitle */}

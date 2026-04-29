@@ -744,7 +744,23 @@ export default function DashboardPage() {
                   <PieChart>
                     <ChartTooltip
                       cursor={false}
-                      content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), userCurrency)} />}
+                      content={
+                        <ChartTooltipContent
+                          nameKey="category"
+                          labelFormatter={(_, payload) => payload?.[0]?.name ?? ""}
+                          formatter={(value) => {
+                            const pct = totalCategorySpending > 0
+                              ? ((Number(value) / totalCategorySpending) * 100).toFixed(1)
+                              : "0";
+                            return (
+                              <span className="flex items-center justify-between gap-6 w-full">
+                                <span>{formatAmount(Number(value), userCurrency)}</span>
+                                <span className="text-muted-foreground">{pct}%</span>
+                              </span>
+                            );
+                          }}
+                        />
+                      }
                     />
                     <Pie
                       data={categorySpendingData}
@@ -766,10 +782,6 @@ export default function DashboardPage() {
                         />
                       ))}
                     </Pie>
-                    <ChartLegend
-                      content={<ChartLegendContent nameKey="category" />}
-                      className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
-                    />
                   </PieChart>
                 </ChartContainer>
                 <div className="mt-4 text-center">

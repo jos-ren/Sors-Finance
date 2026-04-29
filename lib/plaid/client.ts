@@ -11,12 +11,20 @@ import { getPlaidEnvironment, type PlaidEnvironmentType } from "./types";
  * Get Plaid credentials from environment variables
  * @throws Error if credentials are not configured
  */
-export function getPlaidCredentialsFromEnv(): {
+export function getPlaidCredentialsFromEnv(
+  environment: PlaidEnvironmentType = "sandbox"
+): {
   clientId: string;
   secret: string;
 } {
   const clientId = process.env.PLAID_CLIENT_ID;
-  const secret = process.env.PLAID_SECRET;
+
+  // Check for environment-specific secret first, fall back to PLAID_SECRET
+  // Plaid issues different secrets per environment (sandbox vs production)
+  const secret =
+    environment === "sandbox"
+      ? (process.env.PLAID_SECRET_SANDBOX ?? process.env.PLAID_SECRET)
+      : (process.env.PLAID_SECRET_PRODUCTION ?? process.env.PLAID_SECRET);
 
   if (!clientId || !secret) {
     throw new Error(
@@ -41,7 +49,7 @@ export function isPlaidConfigured(): boolean {
 export function createPlaidClient(
   environment: PlaidEnvironmentType = "sandbox"
 ): PlaidApi {
-  const { clientId, secret } = getPlaidCredentialsFromEnv();
+  const { clientId, secret } = getPlaidCredentialsFromEnv(environment);
 
   const configuration = new Configuration({
     basePath: getPlaidEnvironment(environment),
