@@ -1,0 +1,1 @@
+ALTER TABLE `transactions` ADD `category_locked` integer DEFAULT false NOT NULL;

@@ -87,7 +87,9 @@ export const transactions = sqliteTable(
     source: text("source").notNull(),
     sourceMethod: text("source_method"), // "Plaid", "CSV", or "Manual"
     sourceAccountName: text("source_account_name"), // Specific account name for tooltip
+    note: text("note"),
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    categoryLocked: integer("category_locked", { mode: "boolean" }).notNull().default(false),
     importId: integer("import_id").references(() => imports.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,6 +64,7 @@ import { EditTransactionDialog } from "@/components/EditTransactionDialog";
 import { BankSourceBadge } from "@/components/BankSourceBadge";
 import { normalizeBankName } from "@/lib/bank-logos";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
+import { updateTransaction } from "@/lib/hooks";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency, useTimezone } from "@/lib/settings-context";
 import { formatDate } from "@/lib/formatters";
@@ -98,11 +99,21 @@ export function TransactionDataTable({
 
   // Edit state
   const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
+  const [resettingId, setResettingId] = useState<number | null>(null);
 
   // Privacy mode and user currency
   const { formatAmount, isPrivacyMode } = usePrivacy();
   const userCurrency = useCurrency();
   const userTimezone = useTimezone();
+
+  const handleResetCategory = useCallback(async (id: number) => {
+    setResettingId(id);
+    try {
+      await updateTransaction(id, { categoryLocked: false });
+    } finally {
+      setResettingId(null);
+    }
+  }, []);
 
   // Get category name by ID
   const getCategoryName = (categoryId: number | null): string => {
@@ -204,20 +215,37 @@ export function TransactionDataTable({
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         ),
-        cell: ({ row }) => (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="max-w-[300px] truncate cursor-default">
-                  {row.getValue("description")}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[400px] break-words">
-                {row.getValue("description")}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ),
+        cell: ({ row }) => {
+          const note = row.original.note;
+          return (
+            <div className="flex items-center gap-1.5">
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="max-w-[300px] truncate cursor-default">
+                      {row.getValue("description")}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[400px] break-words">
+                    {row.getValue("description")}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {note && (
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <StickyNote className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-default" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[300px] break-words">
+                      {note}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "netAmount",
@@ -254,14 +282,27 @@ export function TransactionDataTable({
         cell: ({ row }) => {
           const categoryId = row.getValue("categoryId") as number | null;
           const categoryName = getCategoryName(categoryId);
+          const locked = row.original.categoryLocked;
           return (
-            <Badge
-              variant="secondary"
-              className={categoryId === null ? "text-amber-900 dark:text-amber-200" : ""}
-              style={categoryId === null ? { backgroundColor: "oklch(0.77 0.16 70 / 0.4)" } : undefined}
-            >
-              {categoryName}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge
+                variant="secondary"
+                className={categoryId === null ? "text-amber-900 dark:text-amber-200" : ""}
+                style={categoryId === null ? { backgroundColor: "oklch(0.77 0.16 70 / 0.4)" } : undefined}
+              >
+                {categoryName}
+              </Badge>
+              {locked && (
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Lock className="h-3 w-3 text-muted-foreground shrink-0 cursor-default" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Manually set</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
           );
         },
       },
@@ -294,6 +335,15 @@ export function TransactionDataTable({
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </DropdownMenuItem>
+              {row.original.categoryLocked && (
+                <DropdownMenuItem
+                  onClick={() => handleResetCategory(row.original.id!)}
+                  disabled={resettingId === row.original.id}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset to auto-category
+                </DropdownMenuItem>
+              )}
               {onDeleteTransaction && (
                 <DropdownMenuItem
                   onClick={() => onDeleteTransaction(row.original.id!)}
@@ -308,7 +358,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [categories, formatAmount, isPrivacyMode, onDeleteTransaction, userCurrency]
+    [categories, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency]
   );
 
   // Apply filters to transactions
@@ -388,7 +438,8 @@ export function TransactionDataTable({
         (t) =>
           t.description.toLowerCase().includes(searchLower) ||
           t.matchField.toLowerCase().includes(searchLower) ||
-          getCategoryName(t.categoryId).toLowerCase().includes(searchLower)
+          getCategoryName(t.categoryId).toLowerCase().includes(searchLower) ||
+          (t.note?.toLowerCase().includes(searchLower) ?? false)
       );
     }
 

@@ -22,6 +22,7 @@ import { useHasFinnhubApiKey, useCurrency } from "@/lib/settings-context";
 import { getTickerLogoUrl, getCryptoLogoUrl } from "@/lib/bank-logos";
 import { getStockBg } from "@/lib/stock-logos";
 import { getCryptoBg } from "@/lib/crypto-logos";
+import { getAssetIcon } from "@/lib/asset-icons";
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -188,6 +189,11 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
         </Tooltip>
       );
     }
+    const assetIcon = getAssetIcon(item.name);
+    if (assetIcon) {
+      const AssetIconComp = assetIcon.icon;
+      return <AssetIconComp className={`h-4 w-4 ${assetIcon.color}`} />;
+    }
     return <Circle className="h-3 w-3 text-muted-foreground" />;
   };
 
@@ -205,7 +211,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
                     : item.type !== "metal"
                     ? (getStockBg(item.ticker) ?? undefined)
                     : undefined)
-                : undefined
+                : (getAssetIcon(item.name)?.bg ?? undefined)
             }
           >
             {renderIcon()}

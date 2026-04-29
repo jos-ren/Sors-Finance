@@ -21,8 +21,6 @@ export type {
   PriceMode,
   AddPortfolioItemData,
   UpdateCategoryResult,
-  RecategorizeMode,
-  RecategorizeResult,
 } from "./types";
 
 export { SYSTEM_CATEGORIES, BUCKET_TYPES } from "./types";

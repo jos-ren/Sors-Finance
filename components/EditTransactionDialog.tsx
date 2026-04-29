@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -42,13 +43,16 @@ export function EditTransactionDialog({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
+  const [categoryChanged, setCategoryChanged] = useState(false);
   const [source, setSource] = useState<string>("Manual");
+  const [note, setNote] = useState<string>("");
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Populate form when transaction changes
   useEffect(() => {
     if (transaction) {
+      setCategoryChanged(false);
       // Format date for input
       const dateStr = transaction.date.toISOString().split("T")[0];
       setDate(dateStr);
@@ -65,6 +69,7 @@ export function EditTransactionDialog({
 
       setCategoryId(transaction.categoryId?.toString() || "");
       setSource(transaction.source);
+      setNote(transaction.note || "");
     }
   }, [transaction]);
 
@@ -97,7 +102,9 @@ export function EditTransactionDialog({
         amountIn: transactionType === "income" ? amountNum : 0,
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source,
+        note: note.trim() || null,
         categoryId: categoryId ? parseInt(categoryId) : null,
+        ...(categoryChanged && { categoryLocked: true }),
       });
 
       toast.success("Transaction updated successfully");
@@ -180,7 +187,7 @@ export function EditTransactionDialog({
           {/* Category */}
           <div className="space-y-2">
             <Label htmlFor="edit-category">Category</Label>
-            <Select value={categoryId || "uncategorized"} onValueChange={(value) => setCategoryId(value === "uncategorized" ? "" : value)}>
+            <Select value={categoryId || "uncategorized"} onValueChange={(value) => { setCategoryChanged(true); setCategoryId(value === "uncategorized" ? "" : value); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a category" />
               </SelectTrigger>
@@ -205,6 +212,19 @@ export function EditTransactionDialog({
               value={source}
               onChange={(e) => setSource(e.target.value)}
               placeholder="e.g., My Bank, CSV Import, Plaid"
+            />
+          </div>
+
+          {/* Note */}
+          <div className="space-y-2">
+            <Label htmlFor="edit-note">Note (optional)</Label>
+            <Textarea
+              id="edit-note"
+              placeholder="e.g. Rent for May, Nike running shoes..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="resize-none"
+              rows={2}
             />
           </div>
         </div>

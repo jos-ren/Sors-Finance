@@ -2,7 +2,7 @@
  * Client-side API wrapper for transaction operations
  */
 
-import type { DbTransaction, RecategorizeResult, RecategorizeMode } from "../types";
+import type { DbTransaction } from "../types";
 
 interface GetTransactionsOptions {
   startDate?: Date;
@@ -93,17 +93,6 @@ export async function addTransactionsBulk(
 
 export async function categorizeTransaction(id: number, categoryId: number | null): Promise<void> {
   await updateTransaction(id, { categoryId });
-}
-
-export async function recategorizeTransactions(mode: RecategorizeMode = "uncategorized"): Promise<RecategorizeResult> {
-  const res = await fetch("/api/transactions/recategorize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  });
-  if (!res.ok) throw new Error("Failed to recategorize transactions");
-  const { data } = await res.json();
-  return data;
 }
 
 export async function findDuplicateSignatures(

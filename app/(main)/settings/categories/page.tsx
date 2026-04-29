@@ -2,26 +2,17 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { CategoryManager } from "@/components/CategoryManager";
 import {
   useCategories,
-  useTransactionCount,
   useTransactions,
   addCategory,
   updateCategory,
   deleteCategory,
   reorderCategories,
-  recategorizeTransactions,
   invalidateBudgets,
-  type RecategorizeMode,
   type DbCategory,
 } from "@/lib/hooks";
 import { useSetPageHeader } from "@/lib/page-header-context";
@@ -33,9 +24,7 @@ import {
 export default function CategoriesSettingsPage() {
   const sentinelRef = useSetPageHeader("Categories");
   const categories = useCategories();
-  const transactionCount = useTransactionCount();
   const transactions = useTransactions();
-  const [isRecategorizing, setIsRecategorizing] = useState(false);
   const [isAddCategoryOpen, setIsAddCategoryOpen] = useState(false);
 
   const getTransactionCountByCategory = (categoryUuid: string): number => {
@@ -44,27 +33,6 @@ export default function CategoriesSettingsPage() {
       const category = categories?.find((c) => c.id === t.categoryId);
       return category?.uuid === categoryUuid;
     }).length;
-  };
-
-  const handleRecategorize = async (mode: RecategorizeMode) => {
-    setIsRecategorizing(true);
-    try {
-      const result = await recategorizeTransactions(mode);
-      if (result.updated > 0) {
-        toast.success(
-          `Re-categorized ${result.updated} transaction${result.updated !== 1 ? "s" : ""}` +
-            (result.conflicts > 0 ? ` (${result.conflicts} conflicts skipped)` : "")
-        );
-      } else if (result.conflicts > 0) {
-        toast.warning(`No transactions updated. ${result.conflicts} had keyword conflicts.`);
-      } else {
-        toast.info("No transactions needed re-categorization.");
-      }
-    } catch {
-      toast.error("Failed to re-categorize transactions");
-    } finally {
-      setIsRecategorizing(false);
-    }
   };
 
   const handleAddCategory = async (name: string, keywords: string[]) => {
@@ -134,34 +102,10 @@ export default function CategoriesSettingsPage() {
         title="Categories"
         description="Manage your transaction categories and keywords for auto-categorization."
         action={
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setIsAddCategoryOpen(true)}>
-              <Plus className="h-3 w-3 mr-1.5" />
-              Add Category
-            </Button>
-            {(transactionCount ?? 0) > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={isRecategorizing}>
-                    <RefreshCw className={`h-3 w-3 mr-1.5 ${isRecategorizing ? "animate-spin" : ""}`} />
-                    Re-categorize
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  <DropdownMenuItem onClick={() => handleRecategorize("uncategorized")}>
-                    Uncategorized only
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      Safe — won&apos;t change existing
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleRecategorize("all")}>
-                    All transactions
-                    <span className="ml-2 text-xs text-muted-foreground">Re-applies all keywords</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+          <Button size="sm" onClick={() => setIsAddCategoryOpen(true)}>
+            <Plus className="h-3 w-3 mr-1.5" />
+            Add Category
+          </Button>
         }
       />
 

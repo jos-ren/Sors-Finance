@@ -18,11 +18,8 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -93,13 +90,6 @@ const netWorthChartConfig = {
     label: "Debt",
     color: "var(--alt-red)",
   },
-} satisfies ChartConfig;
-
-const bucketChartConfig = {
-  Savings: { label: "Savings", color: "var(--alt-emerald)" },
-  Investments: { label: "Investments", color: "var(--alt-blue)" },
-  Assets: { label: "Assets", color: "var(--alt-amber)" },
-  Debt: { label: "Debt", color: "var(--alt-red)" },
 } satisfies ChartConfig;
 
 type TrendPeriod = "all" | "year";
@@ -253,26 +243,6 @@ export default function PortfolioPage() {
       debt: s.totalDebt,
     }));
   }, [allSnapshots, trendPeriod, trendYear]);
-
-  // Bucket breakdown for pie chart
-  const bucketData = useMemo(() => {
-    if (!summary) return [];
-    return [
-      { name: "Savings", value: summary.totalSavings, fill: BUCKET_COLORS.Savings },
-      { name: "Investments", value: summary.totalInvestments, fill: BUCKET_COLORS.Investments },
-      { name: "Assets", value: summary.totalAssets, fill: BUCKET_COLORS.Assets },
-    ].filter(b => b.value > 0);
-  }, [summary]);
-
-  // Assets vs Debt for bar chart
-  const comparisonData = useMemo(() => {
-    if (!summary) return [];
-    const totalPositive = summary.totalSavings + summary.totalInvestments + summary.totalAssets;
-    return [
-      { name: "Assets", value: totalPositive, fill: "var(--alt-emerald)" },
-      { name: "Debt", value: summary.totalDebt, fill: "var(--alt-red)" },
-    ];
-  }, [summary]);
 
   const netWorth = summary?.netWorth ?? 0;
   const totalAssets = (summary?.totalSavings ?? 0) + (summary?.totalInvestments ?? 0) + (summary?.totalAssets ?? 0);
@@ -479,114 +449,11 @@ export default function PortfolioPage() {
         </CardContent>
       </Card>
 
-      {/* Charts Row */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Bucket Breakdown Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Asset Allocation</CardTitle>
-            <CardDescription>Breakdown by bucket type</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {bucketData.length === 0 ? (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Add items to see your asset allocation.
-              </div>
-            ) : (
-              <ChartContainer config={bucketChartConfig} className="h-[300px] w-full">
-                <PieChart>
-                  <ChartTooltip
-                    cursor={false}
-                    content={<ChartTooltipContent hideLabel formatter={(value) => formatAmount(Number(value), userCurrency)} />}
-                  />
-                  <Pie
-                    data={bucketData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                  >
-                    {bucketData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.fill}
-                        fillOpacity={0.7}
-                        stroke={entry.fill}
-                        strokeWidth={2}
-                      />
-                    ))}
-                  </Pie>
-                  <ChartLegend
-                    content={<ChartLegendContent nameKey="name" />}
-                    className="-translate-y-2 flex-wrap gap-2"
-                  />
-                </PieChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Assets vs Debt Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Assets vs Debt</CardTitle>
-            <CardDescription>Compare your assets to liabilities</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {totalAssets === 0 && totalDebt === 0 ? (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                Add items to compare assets and debt.
-              </div>
-            ) : (
-              <ChartContainer config={bucketChartConfig} className="h-[300px] w-full">
-                <BarChart data={comparisonData} layout="vertical" margin={{ left: 12, right: 12 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    width={60}
-                  />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) => formatAmount(value, userCurrency, false)}
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), userCurrency)} />}
-                  />
-                  <Bar dataKey="value" radius={4}>
-                    {comparisonData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.fill}
-                        fillOpacity={0.7}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Bucket Cards */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Buckets</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {BUCKET_TYPES.map((bucket) => (
-            <BucketCard key={bucket} bucket={bucket} />
-          ))}
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {BUCKET_TYPES.map((bucket) => (
+          <BucketCard key={bucket} bucket={bucket} />
+        ))}
       </div>
 
             {/* Change History */}
