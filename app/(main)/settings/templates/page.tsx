@@ -26,14 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FileText, Pencil, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import {
   SettingsBreadcrumb,
   SettingsPageHeader,
   SectionHeader,
   RowGroup,
   SettingsItemRow,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 interface TemplateItem {
   id: number;

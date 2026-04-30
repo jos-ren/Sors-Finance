@@ -13,14 +13,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { InfoCard } from "@/components/ui/info-card";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import {
   SettingsBreadcrumb,
   SettingsPageHeader,
   SectionHeader,
   RowGroup,
   ActionRow,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 export default function FinnhubSettingsPage() {
   const sentinelRef = useSetPageHeader("Finnhub");

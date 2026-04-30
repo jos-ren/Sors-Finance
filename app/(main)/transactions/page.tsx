@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useState, useMemo } from "react";
 import { Plus, FileSpreadsheet, FileX, Upload, FileClock, Trash2 } from "lucide-react";
-import { useSetPageHeader, useIsInHeader } from "@/lib/page-header-context";
+import { useSetPageHeader, useIsInHeader } from "@/contexts/page-header-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,15 +15,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { TransactionImporter } from "@/components/TransactionImporter";
-import { TransactionDataTable } from "@/components/TransactionDataTable";
-import { AddTransactionDialog } from "@/components/AddTransactionDialog";
-import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/lib/hooks";
+import { TransactionImporter } from "@/components/features/transactions/transaction-importer";
+import { TransactionDataTable } from "@/components/features/transactions/transaction-data-table";
+import { AddTransactionDialog } from "@/components/features/transactions/add-transaction-dialog";
+import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/hooks";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { deleteImportDraft } from "@/lib/db/client";
-import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency, useTimezone } from "@/lib/settings-context";
-import { formatDateTime } from "@/lib/formatters";
+import { usePrivacy } from "@/contexts/privacy-context";
+import { useCurrency, useTimezone } from "@/contexts/settings-context";
+import { formatDateTime } from "@/lib/utils/formatters";
 import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
 import type { DbImport } from "@/lib/db";
 import type { DbImportDraft } from "@/lib/db/types";

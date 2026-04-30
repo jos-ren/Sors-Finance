@@ -58,13 +58,13 @@ import {
   invalidateBudgets,
   invalidateCategories,
   updateCategory,
-} from "@/lib/hooks";
+} from "@/hooks";
 import { setBudget, getBudgetForCategory, deleteBudget, findPreviousMonthWithBudgets, copyBudgetToMonth, getSetting, setSetting } from "@/lib/db/client";
-import { usePrivacy } from "@/lib/privacy-context";
-import { useSetPageHeader } from "@/lib/page-header-context";
-import { useUnsavedChanges } from "@/lib/unsaved-changes-context";
+import { usePrivacy } from "@/contexts/privacy-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useUnsavedChanges } from "@/contexts/unsaved-changes-context";
 import { cn } from "@/lib/utils";
-import { useCurrency } from "@/lib/settings-context";
+import { useCurrency } from "@/contexts/settings-context";
 import { toast } from "sonner";
 
 // ============================================

@@ -24,16 +24,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Database, Download, Upload, Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/lib/auth-context";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useAuth } from "@/contexts/auth-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import {
   SettingsBreadcrumb,
   SettingsPageHeader,
   SectionHeader,
   RowGroup,
   ActionRow,
-} from "@/components/settings/SettingsShared";
-import { BANK_LOGOS_DISPLAY, getBankOnlineLogoUrl } from "@/lib/bank-logos";
+} from "@/components/features/settings/settings-shared";
+import { BANK_LOGOS_DISPLAY, getBankOnlineLogoUrl } from "@/lib/icons/bank-logos";
 
 const DEV_COLORS = [
   { name: "Background", var: "--background", class: "bg-background" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { BucketPage } from "@/components/portfolio";
+import { BucketPage } from "@/components/features/portfolio";
 
 export default function AssetsPage() {
   return (

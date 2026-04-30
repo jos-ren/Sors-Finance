@@ -30,14 +30,14 @@ import {
 } from "@/components/ui/breadcrumb";
 import { getPortfolioHistory } from "@/lib/db/client/portfolio";
 import type { DbPortfolioItemHistory } from "@/lib/db/types";
-import { useCurrency } from "@/lib/settings-context";
-import { usePrivacy } from "@/lib/privacy-context";
-import { useSetPageHeader } from "@/lib/page-header-context";
-import { getAssetIcon } from "@/lib/asset-icons";
-import { getAccountIcon } from "@/lib/account-icons";
-import { getBankLogo, getBankOnlineLogoUrl, getTickerLogoUrl, getCryptoLogoUrl } from "@/lib/bank-logos";
-import { getStockBg } from "@/lib/stock-logos";
-import { getCryptoBg } from "@/lib/crypto-logos";
+import { useCurrency } from "@/contexts/settings-context";
+import { usePrivacy } from "@/contexts/privacy-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
+import { getAssetIcon } from "@/lib/icons/asset-icons";
+import { getAccountIcon } from "@/lib/icons/account-icons";
+import { getBankLogo, getBankOnlineLogoUrl, getTickerLogoUrl, getCryptoLogoUrl } from "@/lib/icons/bank-logos";
+import { getStockBg } from "@/lib/icons/stock-logos";
+import { getCryptoBg } from "@/lib/icons/crypto-logos";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Calendar, Clock, RefreshCw, Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import { InfoCard } from "@/components/ui/info-card";
 import {
   SettingsBreadcrumb,
@@ -13,7 +13,7 @@ import {
   RowGroup,
   ToggleRow,
   ActionRow,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 export default function SnapshotsSettingsPage() {
   const sentinelRef = useSetPageHeader("Snapshot Schedule");

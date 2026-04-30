@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
-import { CategoryManager } from "@/components/CategoryManager";
+import { CategoryManager } from "@/components/features/settings/category-manager";
 import {
   useCategories,
   useTransactions,
@@ -14,12 +14,12 @@ import {
   reorderCategories,
   invalidateBudgets,
   type DbCategory,
-} from "@/lib/hooks";
-import { useSetPageHeader } from "@/lib/page-header-context";
+} from "@/hooks";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import {
   SettingsBreadcrumb,
   SettingsPageHeader,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 export default function CategoriesSettingsPage() {
   const sentinelRef = useSetPageHeader("Categories");

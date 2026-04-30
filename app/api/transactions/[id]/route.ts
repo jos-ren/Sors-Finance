@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
-import { findMatchingCategories } from "@/lib/categorizer";
+import { findMatchingCategories } from "@/lib/categories/categorizer";
 
 type RouteContext = { params: Promise<{ id: string }> };
 

@@ -1,4 +1,4 @@
-import { PageLoader } from "@/components/PageLoader";
+import { PageLoader } from "@/components/page-loader";
 
 export default function BudgetLoading() {
   return <PageLoader />;
