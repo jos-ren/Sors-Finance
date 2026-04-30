@@ -43,13 +43,13 @@ import { toast } from "sonner";
 import {
   SUPPORTED_CURRENCIES,
   type Currency,
-} from "@/lib/settingsStore";
+} from '@/lib/settings-store';
 import {
   getSetting,
   setSetting,
 } from "@/lib/db/client";
-import { useSetPageHeader } from "@/lib/page-header-context";
-import { useAuth } from "@/lib/auth-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
+import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import {
   SectionHeader,
@@ -58,7 +58,7 @@ import {
   ToggleRow,
   ActionRow,
   SettingsPageHeader,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 // ─── Timezone helpers (unchanged) ────────────────────────────────────────────
 

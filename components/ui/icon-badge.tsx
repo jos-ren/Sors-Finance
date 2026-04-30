@@ -32,9 +32,25 @@ const iconBadgeVariants = cva(
 
 export interface IconBadgeProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof iconBadgeVariants> {}
+    VariantProps<typeof iconBadgeVariants> {
+  pip?: React.ReactNode;
+}
 
-export function IconBadge({ size, radius, bg, className, children, ...props }: IconBadgeProps) {
+export function IconBadge({ size, radius, bg, className, pip, children, ...props }: IconBadgeProps) {
+  if (pip) {
+    return (
+      <div className="relative shrink-0">
+        <div
+          className={cn(iconBadgeVariants({ size, radius, bg }), className)}
+          {...props}
+        >
+          {children}
+        </div>
+        <div className="absolute -bottom-1 -right-1">{pip}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(iconBadgeVariants({ size, radius, bg }), className)}
@@ -42,5 +58,5 @@ export function IconBadge({ size, radius, bg, className, children, ...props }: I
     >
       {children}
     </div>
-  )
+  );
 }

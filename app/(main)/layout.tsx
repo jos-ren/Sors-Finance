@@ -2,15 +2,15 @@
 
 import { useEffect, useRef } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
+import { AppSidebar } from "@/components/features/layout/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PrivacyToggle } from "@/components/privacy-toggle";
-import { PageHeaderProvider, usePageHeader } from "@/lib/page-header-context";
-import { UnsavedChangesProvider } from "@/lib/unsaved-changes-context";
-import { SettingsProvider } from "@/lib/settings-context";
-import { SnapshotProvider } from "@/lib/snapshot-context";
-import { useAuth } from "@/lib/auth-context";
+import { PageHeaderProvider, usePageHeader, InHeaderProvider } from "@/contexts/page-header-context";
+import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
+import { SettingsProvider } from "@/contexts/settings-context";
+import { SnapshotProvider } from "@/contexts/snapshot-context";
+import { useAuth } from "@/contexts/auth-context";
 import {
   Tooltip,
   TooltipContent,
@@ -48,7 +48,7 @@ function HeaderContent() {
             isScrolled && actions ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          {actions}
+          <InHeaderProvider>{actions}</InHeaderProvider>
         </div>
 
         <Separator

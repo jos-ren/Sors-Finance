@@ -48,17 +48,17 @@ import {
   deletePortfolioSnapshot,
   BUCKET_TYPES,
   type DbPortfolioSnapshot,
-} from "@/lib/hooks/useDatabase";
-import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency, useTimezone } from "@/lib/settings-context";
-import { formatDateTime } from "@/lib/formatters";
-import { useSetPageHeader } from "@/lib/page-header-context";
-import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
+} from '@/hooks/use-database';
+import { usePrivacy } from "@/contexts/privacy-context";
+import { useCurrency, useTimezone } from "@/contexts/settings-context";
+import { formatDateTime } from "@/lib/utils/formatters";
+import { useSetPageHeader, useIsInHeader } from "@/contexts/page-header-context";
+import { BucketCard, EditSnapshotDialog } from "@/components/features/portfolio";
 import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
-import { NavigateRow } from "@/components/settings/SettingsShared";
+import { NavigateRow } from "@/components/features/settings/settings-shared";
 import { cn } from "@/lib/utils";
-import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
-import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
+import { PlaidSyncButton } from "@/components/features/plaid/plaid-sync-button";
+import { PlaidSyncBanner } from "@/components/features/plaid/plaid-sync-banner";
 import { toast } from "sonner";
 import { IconBadge } from "@/components/ui/icon-badge";
 
@@ -93,6 +93,11 @@ const netWorthChartConfig = {
 } satisfies ChartConfig;
 
 type TrendPeriod = "all" | "year";
+
+function PortfolioHeaderActions({ onSyncComplete }: { onSyncComplete: Parameters<typeof PlaidSyncButton>[0]["onSyncComplete"] }) {
+  const isInHeader = useIsInHeader();
+  return <PlaidSyncButton variant={isInHeader ? "ghost" : "secondary"} size={isInHeader ? "icon-sm" : "sm"} onSyncComplete={onSyncComplete} />;
+}
 
 export default function PortfolioPage() {
   const { formatAmount, isPrivacyMode } = usePrivacy();
@@ -199,7 +204,7 @@ export default function PortfolioPage() {
   }, []);
 
   const headerActions = useMemo(() => (
-    <PlaidSyncButton onSyncComplete={setSyncResult} />
+    <PortfolioHeaderActions onSyncComplete={setSyncResult} />
   ), []);
 
   const sentinelRef = useSetPageHeader("Portfolio", headerActions);

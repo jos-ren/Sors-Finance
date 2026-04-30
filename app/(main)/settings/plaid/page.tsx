@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { PlaidBankingConnections } from "@/components/plaid/PlaidBankingConnections";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { PlaidBankingConnections } from "@/components/features/plaid/plaid-banking-connections";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import {
   SettingsBreadcrumb,
   SettingsPageHeader,
-} from "@/components/settings/SettingsShared";
+} from "@/components/features/settings/settings-shared";
 
 export default function PlaidSettingsPage() {
   const sentinelRef = useSetPageHeader("Plaid Banking");

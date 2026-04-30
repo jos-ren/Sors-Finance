@@ -1,0 +1,411 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { RefreshCw, Info } from "lucide-react";
+import Link from "next/link";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { updatePortfolioItem, DbPortfolioItem, BucketType, PriceMode } from '@/hooks/use-database';
+import { getExchangeRate } from '@/hooks/use-stock-price';
+import { useSettings } from "@/contexts/settings-context";
+import { usePrivacy } from "@/contexts/privacy-context";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { InfoCard } from "@/components/ui/info-card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { TickerSearch, SelectedTicker } from "./ticker-search";
+
+interface EditItemDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: DbPortfolioItem;
+  bucket?: BucketType;
+}
+
+export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDialogProps) {
+  const isInvestment = bucket === "Investments";
+  const { hasFinnhubApiKey, isLoading: settingsLoading, settings } = useSettings();
+  const userCurrency = settings.currency;
+  const { formatAmount } = usePrivacy();
+  // Only show warning after settings have loaded and there's no key
+  const showApiKeyWarning = !settingsLoading && !hasFinnhubApiKey;
+
+  // Basic fields
+  const [name, setName] = useState(item.name);
+  const [notes, setNotes] = useState(item.notes || "");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Price mode toggle (ticker = auto-fetch, manual = user-entered)
+  const [priceMode, setPriceMode] = useState<PriceMode>(item.priceMode || "ticker");
+
+  // Selected ticker from search
+  const [selectedTicker, setSelectedTicker] = useState<SelectedTicker | null>(
+    item.ticker ? {
+      symbol: item.ticker,
+      name: item.name,
+      price: item.pricePerUnit || 0,
+      currency: item.currency || "USD",
+      tickerType: (item.type as "stock" | "crypto" | "metal") || "stock",
+    } : null
+  );
+
+  // Investment-specific fields
+  const [quantity, setQuantity] = useState(item.quantity?.toString() || "");
+  const [pricePerUnit, setPricePerUnit] = useState(item.pricePerUnit != null ? item.pricePerUnit.toFixed(2) : "");
+  const [currency, setCurrency] = useState<string>(item.currency || userCurrency);
+  const [exchangeRate, setExchangeRate] = useState(1);
+
+  // For non-investment items
+  const [value, setValue] = useState(item.currentValue.toString());
+
+  // Reset form when item changes
+  useEffect(() => {
+    setName(item.name);
+    setNotes(item.notes || "");
+    setPriceMode(item.priceMode || "ticker");
+    setSelectedTicker(
+      item.ticker ? {
+        symbol: item.ticker,
+        name: item.name,
+        price: item.pricePerUnit || 0,
+        currency: item.currency || "USD",
+        tickerType: (item.type as "stock" | "crypto" | "metal") || "stock",
+      } : null
+    );
+    setQuantity(item.quantity?.toString() || "");
+    setPricePerUnit(item.pricePerUnit != null ? item.pricePerUnit.toFixed(2) : "");
+    setCurrency(item.currency || userCurrency);
+    setValue(item.currentValue.toString());
+
+    // Fetch exchange rate if currency is not user's currency
+    if (item.currency && item.currency !== userCurrency) {
+      getExchangeRate(item.currency, userCurrency).then(setExchangeRate);
+    } else {
+      setExchangeRate(1);
+    }
+  }, [item, userCurrency]);
+
+  // When ticker is selected, populate fields
+  useEffect(() => {
+    if (selectedTicker) {
+      setName(selectedTicker.name);
+      setPricePerUnit(selectedTicker.price.toFixed(2));
+      setCurrency(selectedTicker.currency);
+
+      // Fetch exchange rate if not user's currency
+      if (selectedTicker.currency !== userCurrency) {
+        getExchangeRate(selectedTicker.currency, userCurrency).then(setExchangeRate);
+      } else {
+        setExchangeRate(1);
+      }
+    }
+  }, [selectedTicker, userCurrency]);
+
+  // Calculate total value in user's currency
+  const calculateTotal = useCallback(() => {
+    if (isInvestment) {
+      const qty = parseFloat(quantity) || 0;
+      const price = parseFloat(pricePerUnit) || 0;
+      return qty * price * exchangeRate;
+    }
+    return parseFloat(value) || 0;
+  }, [isInvestment, quantity, pricePerUnit, exchangeRate, value]);
+
+  const totalValue = calculateTotal();
+
+  // Handle ticker selection from search
+  const handleTickerSelect = (ticker: SelectedTicker | null) => {
+    setSelectedTicker(ticker);
+    if (!ticker) {
+      // Clear fields when ticker is deselected
+      setName("");
+      setPricePerUnit("");
+      setCurrency(userCurrency);
+      setExchangeRate(1);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsSubmitting(true);
+
+    try {
+      if (isInvestment) {
+        await updatePortfolioItem(item.id!, {
+          name: name.trim(),
+          currentValue: totalValue,
+          notes: notes.trim() || undefined,
+          ticker: priceMode === "ticker" && selectedTicker ? selectedTicker.symbol : undefined,
+          quantity: parseFloat(quantity) || 0,
+          pricePerUnit: parseFloat(pricePerUnit) || 0,
+          currency,
+          lastPriceUpdate: priceMode === "ticker" && selectedTicker ? new Date() : undefined,
+          priceMode,
+          source: "manual",
+        } as Record<string, unknown>);
+      } else {
+        await updatePortfolioItem(item.id!, {
+          name: name.trim(),
+          currentValue: parseFloat(value) || 0,
+          notes: notes.trim() || undefined,
+          ticker: undefined,
+          quantity: undefined,
+          pricePerUnit: undefined,
+          currency: undefined,
+          lastPriceUpdate: undefined,
+          priceMode: "manual",
+          source: "manual",
+        } as Record<string, unknown>);
+      }
+
+      toast.success("Item updated successfully");
+      onOpenChange(false);
+    } catch (error) {
+      toast.error("Failed to update item");
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>
+            {isInvestment ? "Edit Investment" : "Edit Item"}
+          </DialogTitle>
+          <DialogDescription>
+            Update the details for this item.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="grid gap-4 py-4">
+            {/* Price mode toggle for investments */}
+            {isInvestment && (
+              <div className="grid gap-2">
+                <Label>Price Mode</Label>
+                <div className="flex rounded-lg border p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPriceMode("ticker")}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                      priceMode === "ticker"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    Ticker (Auto)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPriceMode("manual")}
+                    className={cn(
+                      "flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                      priceMode === "manual"
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted"
+                    )}
+                  >
+                    Manual
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {priceMode === "ticker"
+                    ? "Price updates automatically via Finnhub (requires API key)"
+                    : "You enter and update the price manually"}
+                </p>
+                {priceMode === "ticker" && showApiKeyWarning && (
+                  <InfoCard variant="warning" className="mt-2">
+                    <strong>API key required.</strong> Ticker lookup won&apos;t work without a Finnhub API key.{" "}
+                    <Link href="/settings" className="underline font-medium">
+                      Add API key in Settings
+                    </Link>{" "}
+                    or switch to Manual mode.
+                  </InfoCard>
+                )}
+              </div>
+            )}
+
+            {/* Ticker search for investments in ticker mode */}
+            {isInvestment && priceMode === "ticker" && (
+              <div className="grid gap-2">
+                <Label>Search Ticker</Label>
+                <TickerSearch
+                  value={selectedTicker}
+                  onSelect={handleTickerSelect}
+                />
+              </div>
+            )}
+
+            {/* Name */}
+            <div className="grid gap-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Apple Inc., Bitcoin"
+                autoFocus={!isInvestment || priceMode === "manual"}
+                disabled={isInvestment && priceMode === "ticker" && !!selectedTicker}
+              />
+            </div>
+
+            {/* Investment-specific fields */}
+            {isInvestment ? (
+              <>
+                {/* Quantity */}
+                <div className="grid gap-2">
+                  <Label htmlFor="quantity">Quantity</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="Number of shares/units"
+                  />
+                </div>
+
+                {/* Price per unit */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="price">Price per Unit</Label>
+                    <CurrencyInput
+                      id="price"
+                      value={pricePerUnit}
+                      onChange={setPricePerUnit}
+                      placeholder="0.00"
+                      disabled={priceMode === "ticker" && !!selectedTicker}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center gap-1">
+                      <Label htmlFor="currency">Currency</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[220px]">
+                            <p className="text-xs">
+                              The currency the stock trades in. You can change this if the auto-detected value is incorrect.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        id="currency"
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+                        onBlur={async () => {
+                          // Fetch exchange rate when user is done typing
+                          if (currency && currency !== userCurrency) {
+                            const rate = await getExchangeRate(currency, userCurrency);
+                            setExchangeRate(rate);
+                          } else {
+                            setExchangeRate(1);
+                          }
+                        }}
+                        placeholder="USD"
+                        className="flex-1"
+                      />
+                      {currency !== userCurrency && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={async () => {
+                            const rate = await getExchangeRate(currency, userCurrency);
+                            setExchangeRate(rate);
+                          }}
+                          title="Refresh exchange rate"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exchange rate info */}
+                {currency !== userCurrency && exchangeRate !== 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Exchange rate: 1 {currency} = {exchangeRate.toFixed(4)} {userCurrency}
+                  </p>
+                )}
+
+                {/* Total value */}
+                <div className="rounded-lg bg-muted p-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total Value ({userCurrency})</span>
+                    <span className="text-lg font-semibold">{formatAmount(totalValue, userCurrency)}</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Non-investment: simple value field */
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="value">Current Value ($)</Label>
+                  <CurrencyInput
+                    id="value"
+                    value={value}
+                    onChange={setValue}
+                    placeholder="0.00"
+                    allowNegative={bucket === "Debt"}
+                  />
+                </div>
+
+                {/* Notes - only for non-investments */}
+                <div className="grid gap-2">
+                  <Label htmlFor="notes">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any additional notes..."
+                    rows={2}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || !name.trim()}
+            >
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

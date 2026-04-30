@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
         history: schema.portfolioItemHistory,
         itemName: schema.portfolioItems.name,
         itemType: schema.portfolioItems.type,
+        itemTicker: schema.portfolioItems.ticker,
+        plaidAccountId: schema.portfolioItems.plaidAccountId,
         accountId: schema.portfolioItems.accountId,
         accountBucket: schema.portfolioAccounts.bucket,
         accountName: schema.portfolioAccounts.name,
@@ -43,6 +45,8 @@ export async function GET(request: NextRequest) {
       ...row.history,
       itemName: row.itemName,
       itemType: row.itemType,
+      itemTicker: row.itemTicker,
+      plaidAccountId: row.plaidAccountId,
       accountBucket: row.accountBucket,
       accountName: row.accountName,
     }));

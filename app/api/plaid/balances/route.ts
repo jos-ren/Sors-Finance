@@ -522,7 +522,7 @@ export async function POST(request: NextRequest) {
 
       // Pre-warm currency cache before price refresh
       try {
-        const { warmCurrencyCache } = await import('@/lib/currency-cache');
+        const { warmCurrencyCache } = await import('@/lib/services/currency-cache');
         const cacheResult = await warmCurrencyCache(userId, cookies);
         console.log(`[Sync All] Currency cache warmed: ${cacheResult.refreshed} rates refreshed, ${cacheResult.failed} failed`);
       } catch (error) {

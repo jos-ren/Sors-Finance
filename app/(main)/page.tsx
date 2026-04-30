@@ -59,10 +59,10 @@ import {
   useAllTimeTotals,
   useAllTimeSpendingByCategory,
   useAllTimeMonthlyTrend,
-} from "@/lib/hooks";
-import { usePrivacy } from "@/lib/privacy-context";
-import { useCurrency } from "@/lib/settings-context";
-import { useSetPageHeader } from "@/lib/page-header-context";
+} from "@/hooks";
+import { usePrivacy } from "@/contexts/privacy-context";
+import { useCurrency } from "@/contexts/settings-context";
+import { useSetPageHeader } from "@/contexts/page-header-context";
 import { cn } from "@/lib/utils";
 
 const areaChartConfig = {

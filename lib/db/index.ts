@@ -3,7 +3,7 @@
  *
  * Central export for database types.
  * NOTE: All database operations now go through API routes.
- * Use @/lib/hooks for data access in components.
+ * Use @/hooks for data access in components.
  * Use @/lib/db/client for direct API calls.
  */
 
