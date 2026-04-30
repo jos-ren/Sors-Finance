@@ -96,10 +96,10 @@ async function isPriceRefreshEnabledForUser(userId: number): Promise<boolean> {
 async function syncPlaidBalancesForUser(userId: number): Promise<{ success: boolean; accountsUpdated: number; errors: string[] }> {
   try {
     // Import dynamically to avoid circular dependencies
-    const { db: dbInstance } = await import("./db/connection");
-    const { plaidItems, plaidAccounts, portfolioItems } = await import("./db/schema");
+    const { db: dbInstance } = await import("../db/connection");
+    const { plaidItems, plaidAccounts, portfolioItems } = await import("../db/schema");
     const { eq, and } = await import("drizzle-orm");
-    const { createPlaidClient, isPlaidConfigured } = await import("./plaid/client");
+    const { createPlaidClient, isPlaidConfigured } = await import("../plaid/client");
 
     // Check if Plaid is configured
     if (!isPlaidConfigured()) {
@@ -214,7 +214,7 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
 async function refreshTickerPricesForUser(userId: number, userCurrency: string): Promise<{ success: boolean; updated: number; failed: Array<{ ticker: string; itemName: string; error: string }> }> {
   try {
     // Import dependencies
-    const { db: dbInstance, schema } = await import("./db/connection");
+    const { db: dbInstance, schema } = await import("../db/connection");
     const { eq, and } = await import("drizzle-orm");
 
     // Get ticker items for this user

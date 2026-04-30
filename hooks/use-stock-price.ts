@@ -267,7 +267,7 @@ export interface SnapshotResult {
 // Returns success only if ALL tickers are fetched successfully
 export async function refreshAllTickerPrices(targetCurrency: string): Promise<RefreshAllResult> {
   // Import dynamically to avoid circular dependencies
-  const { getTickerModeItems, updatePortfolioItem } = await import { useDatabase }');
+  const { getTickerModeItems, updatePortfolioItem } = await import("@/hooks/use-database");
 
   const items = await getTickerModeItems();
 
@@ -400,7 +400,7 @@ export async function createSnapshotWithPriceRefresh(targetCurrency: string, opt
   const { forceUpdate = false } = options || {};
 
   // Import dynamically to avoid circular dependencies
-  const { hasSnapshotToday, getTodaySnapshot, deletePortfolioSnapshot, createPortfolioSnapshot, getTickerModeItems } = await import { useDatabase }');
+  const { hasSnapshotToday, getTodaySnapshot, deletePortfolioSnapshot, createPortfolioSnapshot, getTickerModeItems } = await import("@/hooks/use-database");
 
   // Check if we already have a snapshot today
   const existsToday = await hasSnapshotToday();

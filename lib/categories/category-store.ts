@@ -1,4 +1,5 @@
 import { Category, CategoryStore } from "@/types";
+import { generateId } from "@/lib/utils/generate-id";
 
 const STORAGE_KEY = "bank-categorizer-categories";
 
@@ -7,12 +8,12 @@ const STORAGE_KEY = "bank-categorizer-categories";
  */
 const DEFAULT_CATEGORIES: Category[] = [
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Groceries",
     keywords: ["LOBLAWS", "METRO", "SOBEYS", "FARM BOY", "WALMART", "COSTCO"],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Dining & Restaurants",
     keywords: [
       "RESTAURANT",
@@ -24,7 +25,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     ],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Gas & Transportation",
     keywords: [
       "SHELL",
@@ -37,7 +38,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     ],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Subscriptions",
     keywords: [
       "NETFLIX",
@@ -49,12 +50,12 @@ const DEFAULT_CATEGORIES: Category[] = [
     ],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Shopping",
     keywords: ["AMAZON", "AMZN MKTP", "BEST BUY", "HOME DEPOT", "IKEA"],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Utilities & Bills",
     keywords: [
       "ROGERS",
@@ -66,7 +67,7 @@ const DEFAULT_CATEGORIES: Category[] = [
     ],
   },
   {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name: "Healthcare",
     keywords: [
       "PHARMACY",
@@ -129,7 +130,7 @@ export function addCategory(
   keywords: string[] = []
 ): Category[] {
   const newCategory: Category = {
-    id: crypto.randomUUID(),
+    id: generateId(),
     name,
     keywords,
   };

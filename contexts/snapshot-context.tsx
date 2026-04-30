@@ -75,8 +75,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         toast.info("Refreshing investment prices...");
         
         // Import dynamically to avoid circular dependencies
-        const { getTickerModeItems, updatePortfolioItem } = await import { useDatabase }");
-        const { lookupTicker, getExchangeRate } = await import("./hooks/useStockPrice");
+        const { getTickerModeItems, updatePortfolioItem } = await import("@/hooks/use-database");
+        const { lookupTicker, getExchangeRate } = await import("@/hooks/use-stock-price");
 
         // Get ticker items
         const tickerItems = await getTickerModeItems();
@@ -189,7 +189,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         getTodaySnapshot,
         deletePortfolioSnapshot,
         createPortfolioSnapshot,
-      } = await import { useDatabase }");
+      } = await import("@/hooks/use-database");
 
       // Check if we already have a snapshot today
       const existsToday = await hasSnapshotToday();

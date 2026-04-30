@@ -11,7 +11,7 @@ export async function register() {
     try {
       // Import dynamically to avoid issues in edge runtime
       const { runMigrations } = await import("./lib/db/migrate");
-      const { initScheduler } = await import("./lib/scheduler");
+      const { initScheduler } = await import("./lib/services/scheduler");
 
       // Run migrations
       await runMigrations();

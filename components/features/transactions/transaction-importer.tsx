@@ -1,15 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-
-// Generate unique IDs safely (works during SSR and in browsers)
-let idCounter = 0;
-function generateId(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `temp-${Date.now()}-${++idCounter}`;
-}
+import { generateId } from "@/lib/utils/generate-id";
 
 /**
  * Normalize a date to YYYY-MM-DD format using local timezone
@@ -626,7 +618,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       // Create import records FIRST so we have importIds to link transactions
       const sources = [...new Set(allToImport.map(t => t.source))];
-      const batchId = sources.length > 1 ? crypto.randomUUID() : null;
+      const batchId = sources.length > 1 ? generateId() : null;
       const importIdMap = new Map<string, number>();
 
       for (const source of sources) {

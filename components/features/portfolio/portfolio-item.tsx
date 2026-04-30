@@ -105,7 +105,7 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
         // Get exchange rate
         let exchangeRate = 1;
         if (effectiveCurrency !== userCurrency) {
-          const { getExchangeRate } = await import("@/hooks/useStockPrice");
+          const { getExchangeRate } = await import("@/hooks/use-stock-price");
           exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
         }
 

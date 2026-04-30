@@ -7,7 +7,7 @@
 
 import useSWR, { mutate } from "swr";
 import { useEffect, useState } from "react";
-import * as api from "../db/client";
+import * as api from "@/lib/db/client";
 import type {
   DbCategory,
   DbTransaction,
@@ -24,8 +24,8 @@ import type {
   PriceMode,
   ItemType,
   HistorySource,
-} from "../db/types";
-import { SYSTEM_CATEGORIES, BUCKET_TYPES } from "../db/types";
+} from "@/lib/db/types";
+import { SYSTEM_CATEGORIES, BUCKET_TYPES } from "@/lib/db/types";
 
 // ============================================
 // SWR Configuration
