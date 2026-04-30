@@ -87,6 +87,7 @@ export function AddTransactionDialog({
         source: "Manual",
         note: note.trim() || null,
         categoryId: categoryId ? parseInt(categoryId) : null,
+        categoryLocked: false,
         importId: null,
       });
 

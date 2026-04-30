@@ -20,6 +20,7 @@ import {
   // Miscellaneous
   LockKeyhole, Stamp, PawPrint, Disc3,
   type LucideIcon,
+  Box,
 } from "lucide-react";
 
 interface AssetIconEntry {
@@ -54,6 +55,7 @@ const ASSET_ICON_PATTERNS: AssetIconEntry[] = [
     /\bpc\b/i, /computer/i, /\bworkstation\b/i, /custom.?build/i,
   ], icon: Monitor, bg: "bg-slate-500/10", color: "text-slate-500" },
   { patterns: [/\bkeyboard\b/i, /\bmouse\b/i, /trackpad/i], icon: Keyboard, bg: "bg-slate-500/10", color: "text-slate-500" },
+  { patterns: [/\b3d.?printer\b/i, /\bbambulabs\b/i], icon: Box, bg: "bg-amber-500/10", color: "text-amber-600" },
   { patterns: [/printer/i], icon: Printer, bg: "bg-slate-500/10", color: "text-slate-500" },
   { patterns: [
     /phone/i, /iphone/i, /\bmobile\b/i, /\bandroid\b/i, /\bpixel\b/i, /galaxy/i, /smartphone/i,

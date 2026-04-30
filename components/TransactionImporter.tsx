@@ -670,6 +670,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             sourceMethod: t.sourceMethod,
             sourceAccountName: t.sourceAccountName,
             categoryId: category?.id ?? null,
+            categoryLocked: false,
             importId: importIdMap.get(t.source) ?? null,
           };
         });
