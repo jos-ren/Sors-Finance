@@ -52,7 +52,7 @@ import {
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency, useTimezone } from "@/lib/settings-context";
 import { formatDateTime } from "@/lib/formatters";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader, useIsInHeader } from "@/lib/page-header-context";
 import { BucketCard, EditSnapshotDialog } from "@/components/portfolio";
 import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
 import { NavigateRow } from "@/components/settings/SettingsShared";
@@ -93,6 +93,11 @@ const netWorthChartConfig = {
 } satisfies ChartConfig;
 
 type TrendPeriod = "all" | "year";
+
+function PortfolioHeaderActions({ onSyncComplete }: { onSyncComplete: Parameters<typeof PlaidSyncButton>[0]["onSyncComplete"] }) {
+  const isInHeader = useIsInHeader();
+  return <PlaidSyncButton variant={isInHeader ? "ghost" : "secondary"} size={isInHeader ? "icon-sm" : "sm"} onSyncComplete={onSyncComplete} />;
+}
 
 export default function PortfolioPage() {
   const { formatAmount, isPrivacyMode } = usePrivacy();
@@ -199,7 +204,7 @@ export default function PortfolioPage() {
   }, []);
 
   const headerActions = useMemo(() => (
-    <PlaidSyncButton onSyncComplete={setSyncResult} />
+    <PortfolioHeaderActions onSyncComplete={setSyncResult} />
   ), []);
 
   const sentinelRef = useSetPageHeader("Portfolio", headerActions);

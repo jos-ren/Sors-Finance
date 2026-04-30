@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { invalidatePortfolio } from "@/lib/hooks/useDatabase";
 
 interface PlaidSyncButtonProps {
   variant?: "default" | "secondary" | "ghost" | "outline";
-  size?: "default" | "sm" | "lg" | "icon";
+  size?: "default" | "sm" | "lg" | "icon" | "icon-sm" | "icon-lg";
   className?: string;
   itemId?: number;
   bankName?: string;
@@ -148,16 +149,29 @@ export function PlaidSyncButton({
     }
   };
 
-  return (
+  const isIconOnly = size?.startsWith("icon");
+
+  const button = (
     <Button
       variant={variant}
-      size={size}
+      size={size as "default" | "sm" | "lg" | "icon"}
       onClick={handleSync}
       disabled={isSyncing}
       className={className}
     >
-      <RefreshCw className={`h-4 w-4 ${size === "icon" ? "" : "mr-2 "}${isSyncing ? 'animate-spin' : ''}`} />
-      {size !== "icon" && "Sync All"}
+      <RefreshCw className={`h-4 w-4 ${isIconOnly ? "" : "mr-2 "}${isSyncing ? "animate-spin" : ""}`} />
+      {!isIconOnly && "Sync All"}
     </Button>
   );
+
+  if (isIconOnly) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="bottom">Sync All</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return button;
 }

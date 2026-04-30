@@ -8,7 +8,6 @@ import {
   TrendingUp,
   Bitcoin,
   Coins,
-  Landmark,
   Circle,
   ArrowDown,
   Plus,
@@ -19,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section";
+import { IconBadge } from "@/components/ui/icon-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Breadcrumb,
@@ -33,6 +33,11 @@ import type { DbPortfolioItemHistory } from "@/lib/db/types";
 import { useCurrency } from "@/lib/settings-context";
 import { usePrivacy } from "@/lib/privacy-context";
 import { useSetPageHeader } from "@/lib/page-header-context";
+import { getAssetIcon } from "@/lib/asset-icons";
+import { getAccountIcon } from "@/lib/account-icons";
+import { getBankLogo, getBankOnlineLogoUrl, getTickerLogoUrl, getCryptoLogoUrl } from "@/lib/bank-logos";
+import { getStockBg } from "@/lib/stock-logos";
+import { getCryptoBg } from "@/lib/crypto-logos";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +46,8 @@ import { useSetPageHeader } from "@/lib/page-header-context";
 interface HistoryEntry extends DbPortfolioItemHistory {
   itemName: string;
   itemType?: string;
+  itemTicker?: string | null;
+  plaidAccountId?: string | null;
   accountBucket: string;
   accountName: string;
 }
@@ -52,6 +59,7 @@ interface HistoryEntry extends DbPortfolioItemHistory {
 interface ActionStyle {
   icon: LucideIcon;
   iconColor: string;
+  iconSize?: string;
   pipBg: string;
   rowTint: string;
   tooltip: string;
@@ -74,7 +82,7 @@ const ACTION_STYLES: Record<string, ActionStyle> = {
   deposit: { icon: Plus, iconColor: "text-blue-400", pipBg: "bg-blue-500/20", rowTint: "bg-emerald-500/[0.02]", tooltip: "Deposit" },
   withdrawal: { icon: Minus, iconColor: "text-amber-400", pipBg: "bg-amber-500/20", rowTint: "bg-amber-500/[0.02]", tooltip: "Withdrawal" },
   payment: { icon: Minus, iconColor: "text-blue-400", pipBg: "bg-blue-500/20", rowTint: "bg-emerald-500/[0.02]", tooltip: "Payment" },
-  manual: { icon: Pencil, iconColor: "text-muted-foreground", pipBg: "bg-muted", rowTint: "", tooltip: "Manual edit" },
+  manual: { icon: Pencil, iconColor: "text-muted-foreground", iconSize: "h-2 w-2", pipBg: "bg-muted", rowTint: "", tooltip: "Manual edit" },
 };
 
 // ---------------------------------------------------------------------------
@@ -126,16 +134,92 @@ function getActionStyle(actionKey: string, deltaNum: number): ActionStyle {
 }
 
 // ---------------------------------------------------------------------------
-// Item type → icon
+// Item icon — uses the same logo/icon helpers as the portfolio views
 // ---------------------------------------------------------------------------
 
-const TYPE_ICONS: Record<string, { icon: LucideIcon; className: string }> = {
-  stock: { icon: TrendingUp, className: "text-blue-500" },
-  crypto: { icon: Bitcoin, className: "text-orange-500" },
-  metal: { icon: Coins, className: "text-yellow-500" },
-  bank: { icon: Landmark, className: "text-blue-700 dark:text-blue-400" },
-  other: { icon: Circle, className: "text-muted-foreground" },
-};
+
+function resolveItemIconBg(entry: HistoryEntry): string | undefined {
+  const type = entry.itemType;
+  const ticker = entry.itemTicker;
+  if (entry.plaidAccountId) return getBankLogo(entry.accountName)?.bg;
+  if (ticker && type === "stock") return getStockBg(ticker) ?? undefined;
+  if (ticker && type === "crypto") return getCryptoBg(ticker) ?? undefined;
+  if (type === "metal") return "bg-yellow-500/10";
+  if (entry.accountBucket === "Assets") {
+    const assetIcon = getAssetIcon(entry.itemName);
+    if (assetIcon) return assetIcon.bg;
+  }
+  return getAccountIcon(entry.itemName)?.bg ?? undefined;
+}
+
+function HistoryItemIcon({ entry }: { entry: HistoryEntry }) {
+  const [imgError, setImgError] = useState(false);
+  const type = entry.itemType;
+  const ticker = entry.itemTicker;
+
+  // Plaid-synced → bank logo
+  if (entry.plaidAccountId) {
+    const bankLogo = getBankLogo(entry.accountName);
+    if (bankLogo && !imgError) {
+      return (
+        <img
+          src={getBankOnlineLogoUrl(bankLogo.domain)}
+          alt={entry.accountName}
+          className="h-full w-full object-contain p-2 rounded-md"
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+  }
+
+  // Stock → ticker logo
+  if (ticker && type === "stock") {
+    if (!imgError) {
+      return (
+        <img
+          src={getTickerLogoUrl(ticker)}
+          alt={ticker}
+          className="h-full w-full object-contain p-2 rounded-md"
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+    return <TrendingUp className="h-4 w-4 text-blue-500" />;
+  }
+
+  // Crypto → coin logo
+  if (ticker && type === "crypto") {
+    if (!imgError) {
+      return (
+        <img
+          src={getCryptoLogoUrl(ticker)}
+          alt={ticker}
+          className="h-full w-full object-contain p-2 rounded-md"
+          onError={() => setImgError(true)}
+        />
+      );
+    }
+    return <Bitcoin className="h-4 w-4 text-orange-500" />;
+  }
+
+  if (type === "metal") return <Coins className="h-4 w-4 text-yellow-500" />;
+
+  if (entry.accountBucket === "Assets") {
+    const assetIcon = getAssetIcon(entry.itemName);
+    if (assetIcon) {
+      const Icon = assetIcon.icon;
+      return <Icon className={`h-4 w-4 ${assetIcon.color}`} />;
+    }
+  }
+
+  const accountIcon = getAccountIcon(entry.itemName);
+  if (accountIcon) {
+    const Icon = accountIcon.icon;
+    return <Icon className={`h-4 w-4 ${accountIcon.color}`} />;
+  }
+
+  return <Circle className="h-4 w-4 text-muted-foreground" />;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -329,13 +413,8 @@ export default function PortfolioHistoryPage() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="flex items-center gap-3">
-          <FileClock className="h-8 w-8 text-muted-foreground" />
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Change History</h1>
-            <p className="text-muted-foreground">Recent changes across all portfolio items</p>
-          </div>
-        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Change History</h1>
+        <p className="text-muted-foreground">Recent changes across all portfolio items</p>
         <div ref={sentinelRef} className="h-0" />
       </div>
 
@@ -359,9 +438,7 @@ export default function PortfolioHistoryPage() {
                 {entries.map((entry, idx) => {
                   const actionKey = getSourceKey(entry);
                   const date = new Date(entry.createdAt);
-                  const typeKey = entry.itemType || entry.type || "other";
-                  const typeInfo = TYPE_ICONS[typeKey] || TYPE_ICONS.other;
-                  const TypeIcon = typeInfo.icon;
+                  const iconBg = resolveItemIconBg(entry);
 
                   const summary = transactionSummary(entry, actionKey, fmtShort, userCurrency);
                   const impact = netChange(entry, formatAmount, userCurrency);
@@ -373,25 +450,15 @@ export default function PortfolioHistoryPage() {
                   return (
                     <div
                       key={entry.id}
-                      className={`grid grid-cols-[2fr_1.5fr_1fr] items-center gap-x-6 px-4 py-3 ${style.rowTint} ${
+                      className={`grid grid-cols-[2fr_1.5fr_1fr] items-center gap-x-6 px-4 py-3 ${
                         idx > 0 ? "border-t border-border/30" : ""
                       }`}
                     >
-                      {/* Col 1: Identity & Action */}
+                      {/* Col 1: Identity */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/60">
-                          <TypeIcon className={`h-4.5 w-4.5 ${typeInfo.className}`} />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={`absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full ${style.pipBg} border border-border/50 cursor-default`}>
-                                <ActionIcon className={`h-2.5 w-2.5 ${style.iconColor}`} />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="text-xs">
-                              {style.tooltip}
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
+                        <IconBadge size="lg" radius="lg" className={iconBg}>
+                          <HistoryItemIcon entry={entry} />
+                        </IconBadge>
                         <div className="min-w-0">
                           <span className="text-sm font-medium truncate block">{entry.itemName}</span>
                           <p className="text-[11px] text-muted-foreground/70 truncate">
@@ -406,24 +473,36 @@ export default function PortfolioHistoryPage() {
                       </div>
 
                       {/* Col 3: Financial Impact & Time (right-aligned) */}
-                      <div className="text-right">
-                        {impact ? (
-                          <>
-                            <p className={`text-sm font-semibold tabular-nums ${deltaColor(actionKey, impact.deltaNum)}`}>
-                              {impact.delta}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground/50 tabular-nums">
-                              {impact.balance}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground/40 tabular-nums">
+                      <div className="flex items-center justify-end gap-3">
+                        <div className="text-right">
+                          {impact ? (
+                            <>
+                              <p className={`text-sm font-semibold tabular-nums ${deltaColor(actionKey, impact.deltaNum)}`}>
+                                {impact.delta}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground/50 tabular-nums">
+                                {impact.balance}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground/40 tabular-nums">
+                                {time}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-[11px] text-muted-foreground/50">
                               {time}
                             </p>
-                          </>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground/50">
-                            {time}
-                          </p>
-                        )}
+                          )}
+                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${style.pipBg} border border-border/50 cursor-default`}>
+                              <ActionIcon className={`${style.iconSize ?? "h-2.5 w-2.5"} ${style.iconColor}`} />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs">
+                            {style.tooltip}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </div>
                   );

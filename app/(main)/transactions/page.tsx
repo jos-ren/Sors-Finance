@@ -3,7 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 import { useState, useMemo } from "react";
 import { Plus, FileSpreadsheet, FileX, Upload, FileClock, Trash2 } from "lucide-react";
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader, useIsInHeader } from "@/lib/page-header-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -39,6 +40,44 @@ function importIcon(record: DbImport) {
   );
 }
 
+function TransactionHeaderActions({ onAdd, onImport }: { onAdd: () => void; onImport: () => void }) {
+  const isInHeader = useIsInHeader();
+  if (isInHeader) {
+    return (
+      <>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={onAdd}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Add Transaction</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={onImport}>
+              <Upload className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Import</TooltipContent>
+        </Tooltip>
+      </>
+    );
+  }
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={onAdd}>
+        <Plus className="h-4 w-4 mr-2" />
+        Add Transaction
+      </Button>
+      <Button size="sm" onClick={onImport}>
+        <Upload className="h-4 w-4 mr-2" />
+        Import
+      </Button>
+    </>
+  );
+}
+
 export default function TransactionsPage() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -69,18 +108,7 @@ export default function TransactionsPage() {
 
   // Header actions for sticky header
   const headerActions = useMemo(
-    () => (
-      <>
-        <Button variant="outline" size="sm" onClick={() => setIsAddOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Transaction
-        </Button>
-        <Button size="sm" onClick={() => setIsImportOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" />
-          Import
-        </Button>
-      </>
-    ),
+    () => <TransactionHeaderActions onAdd={() => setIsAddOpen(true)} onImport={() => setIsImportOpen(true)} />,
     []
   );
 

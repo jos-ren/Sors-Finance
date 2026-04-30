@@ -13,7 +13,8 @@ import {
 import { usePrivacy } from "@/lib/privacy-context";
 import { useCurrency } from "@/lib/settings-context";
 
-import { useSetPageHeader } from "@/lib/page-header-context";
+import { useSetPageHeader, useIsInHeader } from "@/lib/page-header-context";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccountSection, AddAccountDialog, ApiKeyBanner } from "@/components/portfolio";
 import { PlaidSyncButton } from "@/components/plaid/PlaidSyncButton";
 import { PlaidSyncBanner } from "@/components/plaid/PlaidSyncBanner";
@@ -43,6 +44,37 @@ const BUCKET_CONFIG: Record<BucketType, {
   Debt:        { icon: CreditCard, color: "text-red-500",     bg: "bg-red-500/10" },
 };
 
+function BucketHeaderActions({ onAddAccount, onSyncComplete }: {
+  onAddAccount: () => void;
+  onSyncComplete: Parameters<typeof PlaidSyncButton>[0]["onSyncComplete"];
+}) {
+  const isInHeader = useIsInHeader();
+  if (isInHeader) {
+    return (
+      <div className="flex gap-2">
+        <PlaidSyncButton variant="ghost" size="icon-sm" onSyncComplete={onSyncComplete} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="icon-sm" onClick={onAddAccount}>
+              <Plus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Add Account</TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
+  return (
+    <div className="flex gap-2">
+      <PlaidSyncButton size="sm" onSyncComplete={onSyncComplete} />
+      <Button size="sm" onClick={onAddAccount}>
+        <Plus className="h-4 w-4 mr-2" />
+        Add Account
+      </Button>
+    </div>
+  );
+}
+
 export function BucketPage({ bucket, description }: BucketPageProps) {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const { formatAmount } = usePrivacy();
@@ -66,13 +98,7 @@ export function BucketPage({ bucket, description }: BucketPageProps) {
 
   // Header actions
   const headerActions = useMemo(() => (
-    <div className="flex gap-2">
-      <PlaidSyncButton onSyncComplete={setSyncResult} />
-      <Button size="sm" onClick={() => setShowAddAccount(true)}>
-        <Plus className="h-4 w-4 mr-2" />
-        Add Account
-      </Button>
-    </div>
+    <BucketHeaderActions onAddAccount={() => setShowAddAccount(true)} onSyncComplete={setSyncResult} />
   ), []);
 
   const sentinelRef = useSetPageHeader(bucket, headerActions);

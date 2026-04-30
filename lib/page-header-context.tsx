@@ -2,6 +2,14 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from "react";
 
+const InHeaderContext = createContext(false);
+export function InHeaderProvider({ children }: { children: ReactNode }) {
+  return <InHeaderContext.Provider value={true}>{children}</InHeaderContext.Provider>;
+}
+export function useIsInHeader() {
+  return useContext(InHeaderContext);
+}
+
 interface PageHeaderContextType {
   title: string;
   description: string;

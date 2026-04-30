@@ -6,7 +6,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Separator } from "@/components/ui/separator";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PrivacyToggle } from "@/components/privacy-toggle";
-import { PageHeaderProvider, usePageHeader } from "@/lib/page-header-context";
+import { PageHeaderProvider, usePageHeader, InHeaderProvider } from "@/lib/page-header-context";
 import { UnsavedChangesProvider } from "@/lib/unsaved-changes-context";
 import { SettingsProvider } from "@/lib/settings-context";
 import { SnapshotProvider } from "@/lib/snapshot-context";
@@ -48,7 +48,7 @@ function HeaderContent() {
             isScrolled && actions ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          {actions}
+          <InHeaderProvider>{actions}</InHeaderProvider>
         </div>
 
         <Separator
