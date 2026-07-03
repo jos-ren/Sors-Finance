@@ -93,7 +93,7 @@ function AmountCell({
         isIncome ? "text-green-600" : ""
       )}
     >
-      {formatAmount(parseFloat(value) || 0, currency, false)}
+      {formatAmount(parseFloat(value) || 0, currency)}
     </button>
   );
 }
