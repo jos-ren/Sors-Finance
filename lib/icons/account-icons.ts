@@ -54,6 +54,7 @@ import {
   Cat,
   Glasses,
   BookOpen,
+  Cpu,
   type LucideIcon,
 } from "lucide-react";
 
@@ -339,6 +340,12 @@ const ACCOUNT_ICON_PATTERNS: AccountIconMatch[] = [
     bg: "bg-purple-400/10",
     color: "text-purple-400",
     patterns: [/\bgaming/i, /\bgame\b/i, /\bconsole/i, /\bplaystation/i, /\bxbox/i, /\bnintendo/i, /\bsteam\b/i],
+  },
+  {
+    icon: Cpu,
+    bg: "bg-slate-400/10",
+    color: "text-slate-400",
+    patterns: [/\belectronic/i, /\btech\b/i, /\bgadget/i, /\bdevice/i, /\btablet/i, /\bipad/i, /\bwearable/i, /\bsmart\s?watch/i, /\bheadphone/i, /\bspeaker/i, /\baudio/i, /\brouter/i, /\bcharger/i, /\baccessor/i],
   },
 
   // ── Outdoor & lifestyle ──

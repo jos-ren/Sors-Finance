@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Wallet,
   Receipt,
@@ -15,6 +16,8 @@ import {
   Settings,
   EyeOff,
   Eye,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -91,32 +94,47 @@ interface PendingChange {
 }
 
 // ============================================
-// Month Picker Component
+// Period Navigator Component
 // ============================================
 
-function MonthPicker({
+function PeriodNavigator({
+  viewMode,
   selectedMonth,
-  onMonthSelect,
+  selectedYear,
   availableYears,
   availableMonthsByYear,
+  onMonthSelect,
+  onYearChange,
 }: {
+  viewMode: "month" | "year";
   selectedMonth: { year: number; month: number };
-  onMonthSelect: (year: number, month: number) => void;
+  selectedYear: number;
   availableYears: number[];
   availableMonthsByYear?: Map<number, number[]>;
+  onMonthSelect: (year: number, month: number) => void;
+  onYearChange: (value: string) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [displayYear, setDisplayYear] = useState(selectedMonth.year);
-
-  const selectedMonthDisplay = `${MONTH_NAMES_SHORT[selectedMonth.month]} ${selectedMonth.year}`;
 
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
-  const yearOptions = availableYears.length > 0
-    ? [...new Set([...availableYears, currentYear])].sort((a, b) => b - a)
-    : [currentYear];
+  const yearOptions = [...new Set([...availableYears, currentYear])].sort((a, b) => b - a);
+  const minYear = Math.min(...yearOptions);
+  const maxYear = Math.max(...yearOptions);
+
+  // Month view helpers
+  const goToPrevMonth = () => {
+    if (selectedMonth.month === 0) onMonthSelect(selectedMonth.year - 1, 11);
+    else onMonthSelect(selectedMonth.year, selectedMonth.month - 1);
+  };
+  const goToNextMonth = () => {
+    if (selectedMonth.month === 11) onMonthSelect(selectedMonth.year + 1, 0);
+    else onMonthSelect(selectedMonth.year, selectedMonth.month + 1);
+  };
+  const isAtCurrentMonth = selectedMonth.year === currentYear && selectedMonth.month === currentMonth;
 
   const isMonthEnabled = (year: number, month: number) => {
     if (year === currentYear && month === currentMonth) return true;
@@ -124,80 +142,149 @@ function MonthPicker({
     return availableMonthsByYear.get(year)?.includes(month) ?? false;
   };
 
-  const handleOpenChange = (open: boolean) => {
+  const handlePickerOpenChange = (open: boolean) => {
     if (open) setDisplayYear(selectedMonth.year);
-    setIsOpen(open);
+    setPickerOpen(open);
   };
 
   const handleMonthClick = (monthIndex: number) => {
     onMonthSelect(displayYear, monthIndex);
-    setIsOpen(false);
+    setPickerOpen(false);
   };
 
-  return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Calendar className="h-4 w-4" />
-          {selectedMonthDisplay}
+  // Year view helpers
+  const goToPrevYear = () => onYearChange(String(selectedYear - 1));
+  const goToNextYear = () => onYearChange(String(selectedYear + 1));
+
+  if (viewMode === "month") {
+    const label = `${MONTH_NAMES_SHORT[selectedMonth.month]} ${selectedMonth.year}`;
+    return (
+      <div className="flex items-center">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 rounded-r-none border-r-0"
+          onClick={goToPrevMonth}
+        >
+          <ChevronLeft className="h-4 w-4" />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-3" align="end">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
+        <Popover open={pickerOpen} onOpenChange={handlePickerOpenChange}>
+          <PopoverTrigger asChild>
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDisplayYear(y => y - 1)}
-              disabled={!yearOptions.includes(displayYear - 1)}
+              variant="outline"
+              className="rounded-none h-9 px-3 gap-1.5 font-normal min-w-[130px] justify-center"
             >
-              &lt;
+              <Calendar className="h-4 w-4" /> {label}
             </Button>
-            <Select
-              value={displayYear.toString()}
-              onValueChange={(v) => setDisplayYear(parseInt(v))}
-            >
-              <SelectTrigger className="w-24 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((year) => (
-                  <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDisplayYear(y => y + 1)}
-              disabled={!yearOptions.includes(displayYear + 1)}
-            >
-              &gt;
-            </Button>
-          </div>
-          <div className="grid grid-cols-3 gap-1">
-            {MONTH_NAMES_SHORT.map((monthName, idx) => {
-              const enabled = isMonthEnabled(displayYear, idx);
-              const isSelected = selectedMonth.year === displayYear && selectedMonth.month === idx;
-              return (
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3" align="end">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <Button
-                  key={monthName}
-                  variant={isSelected ? "default" : "ghost"}
-                  size="sm"
-                  disabled={!enabled}
-                  onClick={() => handleMonthClick(idx)}
-                  className="h-8"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setDisplayYear(y => y - 1)}
+                  disabled={!yearOptions.includes(displayYear - 1)}
                 >
-                  {monthName}
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
-              );
-            })}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+                <Select
+                  value={displayYear.toString()}
+                  onValueChange={(v) => setDisplayYear(parseInt(v))}
+                >
+                  <SelectTrigger className="w-24 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {yearOptions.map((year) => (
+                      <SelectItem key={year} value={year.toString()}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setDisplayYear(y => y + 1)}
+                  disabled={!yearOptions.includes(displayYear + 1)}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {MONTH_NAMES_SHORT.map((monthName, idx) => {
+                  const enabled = isMonthEnabled(displayYear, idx);
+                  const isSelected = selectedMonth.year === displayYear && selectedMonth.month === idx;
+                  return (
+                    <Button
+                      key={monthName}
+                      variant={isSelected ? "default" : "ghost"}
+                      size="sm"
+                      disabled={!enabled}
+                      onClick={() => handleMonthClick(idx)}
+                      className="h-8"
+                    >
+                      {monthName}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 rounded-l-none border-l-0"
+          onClick={goToNextMonth}
+          disabled={isAtCurrentMonth}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Year view
+  return (
+    <div className="flex items-center">
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-9 w-9 rounded-r-none border-r-0"
+        onClick={goToPrevYear}
+        disabled={selectedYear <= minYear}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      <Select value={selectedYear.toString()} onValueChange={onYearChange}>
+        <SelectTrigger className="w-28 h-9 rounded-none border-x-0 focus:ring-0 focus:ring-offset-0 [&>svg:last-child]:hidden">
+          <span className="flex items-center gap-1.5">
+            <Calendar className="h-4 w-4 shrink-0" />
+            <SelectValue />
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          {yearOptions.map((year) => (
+            <SelectItem key={year} value={year.toString()}>
+              {year}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="outline"
+        size="icon"
+        className="h-9 w-9 rounded-l-none border-l-0"
+        onClick={goToNextYear}
+        disabled={selectedYear >= maxYear}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 
@@ -278,6 +365,8 @@ function CategoryBudgetRow({
   onYearlyChange,
   onMonthlyBlur,
   onYearlyBlur,
+  href,
+  periodLabel,
 }: {
   row: BudgetCategoryRow;
   viewMode: "month" | "year";
@@ -289,7 +378,10 @@ function CategoryBudgetRow({
   onYearlyChange: (categoryId: number, value: string) => void;
   onMonthlyBlur: (categoryId: number) => void;
   onYearlyBlur: (categoryId: number) => void;
+  href: string;
+  periodLabel: string;
 }) {
+  const router = useRouter();
   // Get display values - use pending changes if available, otherwise use saved values
   const monthlyValue = pendingChange?.monthly !== undefined
     ? pendingChange.monthly
@@ -311,14 +403,25 @@ function CategoryBudgetRow({
 
   const isEdited = pendingChange !== undefined;
 
+  const handleRowClick = () => {
+    if (spent === 0) {
+      toast.info(`No transactions for ${row.categoryName} in ${periodLabel}`);
+      return;
+    }
+    router.push(href);
+  };
+
   return (
-    <div className={cn(
-      "flex items-center gap-4 py-3 px-4 border-b last:border-b-0 hover:bg-muted/30 transition-colors",
-      isEdited && "bg-primary/5"
-    )}>
+    <div
+      className={cn(
+        "group/row relative flex items-center gap-4 py-3 px-4 border-b last:border-b-0 hover:bg-muted/30 transition-colors cursor-pointer",
+        isEdited && "bg-primary/5"
+      )}
+      onClick={handleRowClick}
+    >
       {/* Category Name */}
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm truncate">{row.categoryName}</p>
+        <p className="font-medium text-sm truncate group-hover/row:underline group-hover/row:text-lime-500 group-hover/row:font-bold transition-colors">{row.categoryName}</p>
         {/* Rolling balance for yearly budgets in monthly view */}
         {viewMode === "month" && row.yearlyBudget !== null && row.rollingBalance !== null && (
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -369,7 +472,7 @@ function CategoryBudgetRow({
 
       {/* Budget Input - Monthly for month view, Yearly for year view */}
       {viewMode === "month" ? (
-        <div className="flex flex-col items-center gap-0.5">
+        <div className="relative z-10 flex flex-col items-start gap-0.5" onClick={(e) => e.stopPropagation()}>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Budget</span>
           <BudgetInput
             value={monthlyValue}
@@ -380,7 +483,7 @@ function CategoryBudgetRow({
           />
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-0.5">
+        <div className="relative z-10 flex flex-col items-start gap-0.5" onClick={(e) => e.stopPropagation()}>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Budget</span>
           <BudgetInput
             value={yearlyValue}
@@ -430,15 +533,22 @@ export default function BudgetPage() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
+  const searchParams = useSearchParams();
+
+  // Read initial state from URL params (set when navigating back from drill-down)
+  const initialViewMode = (searchParams.get("viewMode") === "year" ? "year" : "month") as "month" | "year";
+  const initialYear = searchParams.get("year") ? parseInt(searchParams.get("year")!) : currentYear;
+  const initialMonth = searchParams.get("month") !== null ? parseInt(searchParams.get("month")!) : currentMonth;
 
   // State
-  const [viewMode, setViewMode] = useState<"month" | "year">("month");
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedMonth, setSelectedMonth] = useState({ year: currentYear, month: currentMonth });
+  const [viewMode, setViewMode] = useState<"month" | "year">(initialViewMode);
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+  const [selectedMonth, setSelectedMonth] = useState({ year: initialYear, month: initialMonth });
 
   // Pending changes state
   const [pendingChanges, setPendingChanges] = useState<Map<number, PendingChange>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
+
 
   // Unsaved changes dialog state
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -742,11 +852,6 @@ export default function BudgetPage() {
     });
   }, [confirmNavigation]);
 
-  // Available years - always include current year
-  const yearOptions = useMemo(() => {
-    return [...new Set([...(availablePeriods?.years ?? []), currentYear])].sort((a, b) => b - a);
-  }, [availablePeriods?.years, currentYear]);
-
   // Calculate summary stats
   const summary = budgetData?.summary;
   const rows = budgetData?.rows ?? [];
@@ -786,41 +891,7 @@ export default function BudgetPage() {
 
   const hasChanges = pendingChanges.size > 0;
 
-  // Header actions
-  const headerActions = useMemo(() => (
-    <div className="flex items-center gap-2">
-      <Tabs value={viewMode} onValueChange={handleViewModeChange}>
-        <TabsList className="h-8">
-          <TabsTrigger value="month" className="text-xs px-3 h-6">Month</TabsTrigger>
-          <TabsTrigger value="year" className="text-xs px-3 h-6">Year</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {viewMode === "month" && (
-        <MonthPicker
-          selectedMonth={selectedMonth}
-          onMonthSelect={handleMonthSelect}
-          availableYears={availablePeriods?.years ?? []}
-          availableMonthsByYear={availablePeriods?.monthsByYear}
-        />
-      )}
-      {viewMode === "year" && (
-        <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
-          <SelectTrigger className="w-24 h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {yearOptions.map((year) => (
-              <SelectItem key={year} value={year.toString()}>
-                {year}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-    </div>
-  ), [viewMode, selectedMonth, selectedYear, availablePeriods?.years, availablePeriods?.monthsByYear, yearOptions, handleViewModeChange, handleMonthSelect, handleYearChange]);
-
-  const sentinelRef = useSetPageHeader("Budget", headerActions);
+  const sentinelRef = useSetPageHeader("Budget");
 
   return (
     <div className="p-6 space-y-6">
@@ -840,28 +911,15 @@ export default function BudgetPage() {
               <TabsTrigger value="year">Yearly</TabsTrigger>
             </TabsList>
           </Tabs>
-          {viewMode === "month" && (
-            <MonthPicker
-              selectedMonth={selectedMonth}
-              onMonthSelect={handleMonthSelect}
-              availableYears={availablePeriods?.years ?? []}
-              availableMonthsByYear={availablePeriods?.monthsByYear}
-            />
-          )}
-          {viewMode === "year" && (
-            <Select value={selectedYear.toString()} onValueChange={handleYearChange}>
-              <SelectTrigger className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((year) => (
-                  <SelectItem key={year} value={year.toString()}>
-                    {year}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+          <PeriodNavigator
+            viewMode={viewMode}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            availableYears={availablePeriods?.years ?? []}
+            availableMonthsByYear={availablePeriods?.monthsByYear}
+            onMonthSelect={handleMonthSelect}
+            onYearChange={handleYearChange}
+          />
         </div>
       </div>
 
@@ -964,77 +1022,77 @@ export default function BudgetPage() {
       )}
 
       {/* Budget Categories */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle>Categories</CardTitle>
-            <CardDescription>
-              Set monthly and yearly budgets for each category.
-              {viewMode === "month" && " Yearly budgets show rolling balance."}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasChanges && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancel}
-                  disabled={isSaving}
-                >
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Categories</h2>
+          <p className="text-sm text-muted-foreground">
+            Set monthly and yearly budgets for each category.
+            {viewMode === "month" && " Yearly budgets show rolling balance."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasChanges && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancel}
+                disabled={isSaving}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Check className="h-4 w-4 mr-1" />
+                {isSaving ? "Saving..." : "Save"}
+              </Button>
+            </>
+          )}
+          {hiddenCategories.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <EyeOff className="h-4 w-4" />
+                  {hiddenCategories.length} hidden
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  <Check className="h-4 w-4 mr-1" />
-                  {isSaving ? "Saving..." : "Save"}
-                </Button>
-              </>
-            )}
-            {hiddenCategories.length > 0 && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <EyeOff className="h-4 w-4" />
-                    {hiddenCategories.length} hidden
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-2" align="end">
-                  <p className="text-xs text-muted-foreground px-2 pb-2">
-                    Categories excluded from budget
-                  </p>
-                  <div className="space-y-1">
-                    {hiddenCategories.map((cat) => (
-                      <div key={cat.id} className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/50">
-                        <span className="text-sm">{cat.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs gap-1"
-                          onClick={() => handleReincludeCategory(cat.id!)}
-                        >
-                          <Eye className="h-3 w-3" />
-                          Show
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/settings/categories">
-                <Settings className="h-4 w-4 mr-1" />
-                Edit Categories
-              </Link>
-            </Button>
-          </div>
-        </CardHeader>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="end">
+                <p className="text-xs text-muted-foreground px-2 pb-2">
+                  Categories excluded from budget
+                </p>
+                <div className="space-y-1">
+                  {hiddenCategories.map((cat) => (
+                    <div key={cat.id} className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-muted/50">
+                      <span className="text-sm">{cat.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs gap-1"
+                        onClick={() => handleReincludeCategory(cat.id!)}
+                      >
+                        <Eye className="h-3 w-3" />
+                        Show
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/settings/categories">
+              <Settings className="h-4 w-4 mr-1" />
+              Edit Categories
+            </Link>
+          </Button>
+        </div>
+      </div>
+      <Card className="py-0">
         <CardContent className="p-0">
           {!budgetData ? (
             <div className="p-8 text-center text-muted-foreground">
@@ -1046,21 +1104,28 @@ export default function BudgetPage() {
             </div>
           ) : (
             <div className="divide-y">
-              {rows.map((row) => (
-                <CategoryBudgetRow
-                  key={row.categoryId}
-                  row={row}
-                  viewMode={viewMode}
-                  formatAmount={formatAmount}
-                  userCurrency={userCurrency}
-                  isPrivacyMode={isPrivacyMode}
-                  pendingChange={pendingChanges.get(row.categoryId)}
-                  onMonthlyChange={handleMonthlyChange}
-                  onYearlyChange={handleYearlyChange}
-                  onMonthlyBlur={handleMonthlyBlur}
-                  onYearlyBlur={handleYearlyBlur}
-                />
-              ))}
+              {rows.map((row) => {
+                const drillHref = viewMode === "month"
+                  ? `/budget/${row.categoryId}?viewMode=month&year=${selectedMonth.year}&month=${selectedMonth.month}`
+                  : `/budget/${row.categoryId}?viewMode=year&year=${selectedYear}`;
+                return (
+                  <CategoryBudgetRow
+                    key={row.categoryId}
+                    row={row}
+                    viewMode={viewMode}
+                    formatAmount={formatAmount}
+                    userCurrency={userCurrency}
+                    isPrivacyMode={isPrivacyMode}
+                    pendingChange={pendingChanges.get(row.categoryId)}
+                    onMonthlyChange={handleMonthlyChange}
+                    onYearlyChange={handleYearlyChange}
+                    onMonthlyBlur={handleMonthlyBlur}
+                    onYearlyBlur={handleYearlyBlur}
+                    href={drillHref}
+                    periodLabel={periodDisplay}
+                  />
+                );
+              })}
             </div>
           )}
         </CardContent>
