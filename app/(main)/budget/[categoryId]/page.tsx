@@ -93,7 +93,7 @@ function AmountCell({
         isIncome ? "text-green-600" : ""
       )}
     >
-      {formatAmount(parseFloat(value) || 0, currency, false)}
+      {formatAmount(parseFloat(value) || 0, currency)}
     </button>
   );
 }
@@ -400,7 +400,7 @@ export default function CategoryTransactionsPage({
           ) : (
             <div>
               {/* Header */}
-              <div className="grid grid-cols-[32px_minmax(0,1fr)_130px_120px_auto_32px] gap-3 px-6 py-4 border-b bg-muted/40">
+              <div className="grid grid-cols-[32px_minmax(0,1fr)_130px_120px_160px_32px] gap-3 px-6 py-4 border-b bg-muted/40">
                 <span className="w-8 shrink-0" />
                 <SortableHeader label="Title" col="description" active={effectiveSortCol} dir={sortDir} onClick={handleSort} />
                 <SortableHeader label="Date" col="date" active={effectiveSortCol} dir={sortDir} onClick={handleSort} />
@@ -424,7 +424,7 @@ export default function CategoryTransactionsPage({
                     <div
                       key={tx.id}
                       className={cn(
-                        "grid grid-cols-[32px_minmax(0,1fr)_130px_120px_auto_32px] gap-3 items-center px-6 py-2 transition-colors",
+                        "grid grid-cols-[32px_minmax(0,1fr)_130px_120px_160px_32px] gap-3 items-center px-6 py-2 transition-colors",
                         isDirty ? "bg-primary/5" : "hover:bg-muted/30"
                       )}
                     >
@@ -441,7 +441,7 @@ export default function CategoryTransactionsPage({
                           size="sm"
                           value={descValue}
                           onChange={(e) => updateEdit(tx.id!, { description: e.target.value })}
-                          className="max-w-[250px]"
+                          className="w-full"
                         />
                       </div>
                       {/* Date */}
