@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 interface BucketCardProps {
   bucket: BucketType;
+  className?: string;
 }
 
 const BUCKET_CONFIG: Record<BucketType, {
@@ -46,7 +47,7 @@ const BUCKET_CONFIG: Record<BucketType, {
   },
 };
 
-export function BucketCard({ bucket }: BucketCardProps) {
+export function BucketCard({ bucket, className }: BucketCardProps) {
   const total = useBucketTotal(bucket);
   const accounts = usePortfolioAccounts(bucket);
   const { formatAmount } = usePrivacy();
@@ -57,7 +58,7 @@ export function BucketCard({ bucket }: BucketCardProps) {
   const accountCount = accounts?.length ?? 0;
 
   return (
-    <Card className="group hover:shadow-md transition-shadow">
+    <Card className={cn("group hover:shadow-md transition-shadow", className)}>
       <CardContent className="p-4">
         <div className={cn("p-2 rounded-lg w-fit", config.bgColor)}>
           <Icon className={cn("h-5 w-5", config.color)} />

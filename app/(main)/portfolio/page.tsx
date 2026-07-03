@@ -4,9 +4,6 @@ import { useMemo, useState, useCallback } from "react";
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  Wallet,
-  CreditCard,
   Loader2,
   FileClock,
   History,
@@ -18,8 +15,11 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   XAxis,
   YAxis,
 } from "recharts";
@@ -45,6 +45,8 @@ import {
   useNetWorthSummary,
   useNetWorthChange,
   usePortfolioSnapshots,
+  usePortfolioAccounts,
+  usePortfolioItems,
   deletePortfolioSnapshot,
   BUCKET_TYPES,
   type DbPortfolioSnapshot,
@@ -255,6 +257,44 @@ export default function PortfolioPage() {
   const changeAmount = change?.change ?? 0;
   const changePercent = change?.changePercent ?? 0;
 
+  // Allocation chart
+  const [showAllocationAccounts, setShowAllocationAccounts] = useState(false);
+  const allAccounts = usePortfolioAccounts();
+  const allItems = usePortfolioItems();
+
+  const allocationData = useMemo(() => {
+    if (showAllocationAccounts) {
+      if (!allAccounts || !allItems) return [];
+      const accountTotals = new Map<number, number>();
+      for (const item of allItems) {
+        if (!item.isActive) continue;
+        accountTotals.set(item.accountId, (accountTotals.get(item.accountId) ?? 0) + item.currentValue);
+      }
+      return (["Savings", "Investments", "Assets", "Debt"] as const).flatMap((bucket) =>
+        allAccounts
+          .filter((a) => a.bucket === bucket)
+          .map((a) => ({ name: a.name, value: accountTotals.get(a.id!) ?? 0, color: BUCKET_COLORS[bucket] }))
+          .filter((a) => a.value > 0)
+      );
+    }
+    return ([
+      { name: "Savings",     value: summary?.totalSavings     ?? 0, color: BUCKET_COLORS.Savings },
+      { name: "Investments", value: summary?.totalInvestments  ?? 0, color: BUCKET_COLORS.Investments },
+      { name: "Assets",      value: summary?.totalAssets       ?? 0, color: BUCKET_COLORS.Assets },
+      { name: "Debt",        value: summary?.totalDebt         ?? 0, color: BUCKET_COLORS.Debt },
+    ] as const).filter((d) => d.value > 0);
+  }, [showAllocationAccounts, summary, allAccounts, allItems]);
+
+  const allocationTotal = useMemo(() => allocationData.reduce((s, d) => s + d.value, 0), [allocationData]);
+
+  const allocationConfig = useMemo(
+    () => allocationData.reduce((acc, item) => {
+      acc[item.name] = { label: item.name, color: item.color };
+      return acc;
+    }, {} as ChartConfig),
+    [allocationData]
+  );
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -282,18 +322,13 @@ export default function PortfolioPage() {
         />
       )}
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Worth</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatAmount(netWorth, userCurrency)}
-            </div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
+      {/* Net Worth Trend Chart */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div>
+            <CardDescription className="mb-1">Net Worth</CardDescription>
+            <CardTitle className="text-3xl font-bold">{formatAmount(netWorth, userCurrency)}</CardTitle>
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
               {changeAmount >= 0 ? (
                 <TrendingUp className="h-3 w-3 text-green-500" />
               ) : (
@@ -301,46 +336,6 @@ export default function PortfolioPage() {
               )}
               {changeAmount >= 0 ? "+" : ""}{formatAmount(changeAmount, userCurrency)}{!isPrivacyMode && ` (${changePercent.toFixed(1)}%)`}
             </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Assets</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatAmount(totalAssets, userCurrency)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Savings + Investments + Assets
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Debt</CardTitle>
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatAmount(totalDebt, userCurrency)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              All liabilities
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Net Worth Trend Chart */}
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between space-y-0">
-          <div>
-            <CardTitle>Portfolio Trend</CardTitle>
-            <CardDescription>Net worth and breakdown over time</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Tabs value={trendPeriod} onValueChange={(v) => setTrendPeriod(v as TrendPeriod)}>
@@ -454,14 +449,104 @@ export default function PortfolioPage() {
         </CardContent>
       </Card>
 
-      {/* Bucket Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {BUCKET_TYPES.map((bucket) => (
-          <BucketCard key={bucket} bucket={bucket} />
-        ))}
+      {/* Allocation Chart + Bucket Cards */}
+      <div className="grid grid-cols-[35fr_65fr] gap-4 items-stretch">
+        {/* Pie chart card */}
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between pb-2">
+            <div>
+              <CardTitle className="text-base">Allocation</CardTitle>
+              <CardDescription>
+                {showAllocationAccounts ? "By account" : "By bucket"}
+              </CardDescription>
+            </div>
+            <Tabs value={showAllocationAccounts ? "accounts" : "buckets"} onValueChange={(v) => setShowAllocationAccounts(v === "accounts")}>
+              <TabsList className="h-8">
+                <TabsTrigger value="buckets" className="text-xs px-3 h-6">Buckets</TabsTrigger>
+                <TabsTrigger value="accounts" className="text-xs px-3 h-6">Accounts</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center gap-4 pb-4">
+            {allocationData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">
+                No data yet
+              </div>
+            ) : (
+              <>
+                <ChartContainer config={allocationConfig} className="h-52 w-full">
+                  <PieChart>
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          nameKey="name"
+                          labelFormatter={(_, payload) => payload?.[0]?.name ?? ""}
+                          formatter={(value) => {
+                            const pct = allocationTotal > 0
+                              ? ((Number(value) / allocationTotal) * 100).toFixed(1)
+                              : "0";
+                            return (
+                              <span className="flex items-center justify-between gap-4 w-full">
+                                <span>{formatAmount(Number(value), userCurrency)}</span>
+                                <span className="text-muted-foreground">{pct}%</span>
+                              </span>
+                            );
+                          }}
+                        />
+                      }
+                    />
+                    <Pie
+                      data={allocationData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={95}
+                      paddingAngle={2}
+                    >
+                      {allocationData.map((entry, i) => (
+                        <Cell
+                          key={`alloc-${i}`}
+                          fill={entry.color}
+                          fillOpacity={0.6}
+                          stroke={entry.color}
+                          strokeWidth={1.5}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ChartContainer>
+                <div className="w-full space-y-1.5 max-h-36 overflow-y-auto rounded-md border border-border bg-muted/30 px-3 py-2">
+                  {allocationData.map((entry, i) => {
+                    const pct = allocationTotal > 0
+                      ? ((entry.value / allocationTotal) * 100).toFixed(1)
+                      : "0";
+                    return (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: entry.color }} />
+                        <span className="flex-1 truncate text-muted-foreground">{entry.name}</span>
+                        <span className="font-medium tabular-nums">{formatAmount(entry.value, userCurrency)}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums w-10 text-right">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 2×2 Bucket Cards */}
+        <div className="grid grid-cols-2 gap-4 h-full">
+          {BUCKET_TYPES.map((bucket) => (
+            <BucketCard key={bucket} bucket={bucket} className="h-full" />
+          ))}
+        </div>
       </div>
 
-            {/* Change History */}
+      {/* Change History */}
       <section className="space-y-2">
         <SectionHeader label="Change History" />
         <RowGroup>
