@@ -17,7 +17,7 @@ import { CurrencyInput } from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { updatePortfolioItem, DbPortfolioItem, BucketType, PriceMode } from '@/hooks/use-database';
-import { getExchangeRate } from '@/hooks/use-stock-price';
+import { getExchangeRate, lookupTicker } from '@/hooks/use-stock-price';
 import { useSettings } from "@/contexts/settings-context";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { toast } from "sonner";
@@ -74,6 +74,8 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
   // For non-investment items
   const [value, setValue] = useState(item.currentValue.toString());
 
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
   // Reset form when item changes
   useEffect(() => {
     setName(item.name);
@@ -128,6 +130,51 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
   }, [isInvestment, quantity, pricePerUnit, exchangeRate, value]);
 
   const totalValue = calculateTotal();
+
+  const handleFetchPrice = async () => {
+    if (!selectedTicker) return;
+
+    if (selectedTicker.tickerType !== "metal" && selectedTicker.tickerType !== "crypto" && !hasFinnhubApiKey) {
+      toast.error("Finnhub API key not configured. Go to Settings to add your API key.");
+      return;
+    }
+
+    setIsFetchingPrice(true);
+    try {
+      let quote: { price: number; currency: string; name?: string } | null = null;
+
+      if (selectedTicker.tickerType === "metal") {
+        const response = await fetch(`/api/metals/${encodeURIComponent(selectedTicker.symbol)}`);
+        if (response.ok) quote = await response.json();
+      } else if (selectedTicker.tickerType === "crypto") {
+        const response = await fetch(`/api/crypto/${encodeURIComponent(selectedTicker.symbol)}`);
+        if (response.ok) quote = await response.json();
+      } else {
+        quote = await lookupTicker(selectedTicker.symbol);
+      }
+
+      if (quote) {
+        setPricePerUnit(quote.price.toFixed(2));
+        setCurrency(quote.currency);
+
+        if (quote.currency !== userCurrency) {
+          const rate = await getExchangeRate(quote.currency, userCurrency);
+          setExchangeRate(rate);
+        } else {
+          setExchangeRate(1);
+        }
+
+        toast.success("Current price fetched");
+      } else {
+        toast.error("Failed to fetch current price");
+      }
+    } catch (error) {
+      toast.error("Failed to fetch current price");
+      console.error(error);
+    } finally {
+      setIsFetchingPrice(false);
+    }
+  };
 
   // Handle ticker selection from search
   const handleTickerSelect = (ticker: SelectedTicker | null) => {
@@ -290,7 +337,22 @@ export function EditItemDialog({ open, onOpenChange, item, bucket }: EditItemDia
                 {/* Price per unit */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="price">Price per Unit</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="price">Price per Unit</Label>
+                      {priceMode === "ticker" && selectedTicker && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={handleFetchPrice}
+                          disabled={isFetchingPrice}
+                          title="Fetch current price"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", isFetchingPrice && "animate-spin")} />
+                        </Button>
+                      )}
+                    </div>
                     <CurrencyInput
                       id="price"
                       value={pricePerUnit}

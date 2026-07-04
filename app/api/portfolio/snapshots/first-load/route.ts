@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       try {
         const { warmCurrencyCache } = await import('@/lib/services/currency-cache');
         const cookies = request.headers.get('cookie') || '';
-        const cacheResult = await warmCurrencyCache(userId, cookies);
+        const cacheResult = await warmCurrencyCache(userId, request.nextUrl.origin, cookies);
         console.log(`[First Load] Currency cache warmed: ${cacheResult.refreshed} rates refreshed`);
       } catch (error) {
         console.error("[First Load] Error warming currency cache:", error);
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     // Step 1: Plaid sync if enabled (this will also refresh prices)
     if (plaidSyncEnabled) {
       try {
-        const syncResponse = await fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/plaid/balances`, {
+        const syncResponse = await fetch(`${request.nextUrl.origin}/api/plaid/balances`, {
           method: "POST",
           headers: {
             cookie: request.headers.get('cookie') || '',
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 3: Create/update today's snapshot
-    const snapshotResponse = await fetch(`${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/portfolio/snapshots/today`, {
+    const snapshotResponse = await fetch(`${request.nextUrl.origin}/api/portfolio/snapshots/today`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -109,7 +109,14 @@ export async function POST(request: NextRequest) {
         priceRefreshEnabled,
       });
     } else {
-      throw new Error("Failed to create/update snapshot");
+      let detail = `status ${snapshotResponse.status}`;
+      try {
+        const errorBody = await snapshotResponse.json();
+        if (errorBody?.error) detail = errorBody.error;
+      } catch {
+        // Response body wasn't JSON; fall back to status code
+      }
+      throw new Error(`Failed to create/update snapshot: ${detail}`);
     }
   } catch (error: unknown) {
     console.error("Error in first load snapshot check:", error);

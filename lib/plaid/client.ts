@@ -36,10 +36,26 @@ export function getPlaidCredentialsFromEnv(
 }
 
 /**
- * Check if Plaid is configured
+ * Check if Plaid is configured.
+ * Pass an environment to check for that environment's secret specifically;
+ * omit it to check whether any environment's secret is configured.
  */
-export function isPlaidConfigured(): boolean {
-  return !!(process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET);
+export function isPlaidConfigured(environment?: PlaidEnvironmentType): boolean {
+  if (!process.env.PLAID_CLIENT_ID) return false;
+
+  if (environment) {
+    const secret =
+      environment === "sandbox"
+        ? (process.env.PLAID_SECRET_SANDBOX ?? process.env.PLAID_SECRET)
+        : (process.env.PLAID_SECRET_PRODUCTION ?? process.env.PLAID_SECRET);
+    return !!secret;
+  }
+
+  return !!(
+    process.env.PLAID_SECRET_SANDBOX ||
+    process.env.PLAID_SECRET_PRODUCTION ||
+    process.env.PLAID_SECRET
+  );
 }
 
 /**

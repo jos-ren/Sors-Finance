@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 
@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const limit = searchParams.get("limit");
+    const offset = searchParams.get("offset");
     const today = searchParams.get("today") === "true";
 
     if (today) {
@@ -58,6 +59,9 @@ export async function GET(request: NextRequest) {
     if (limit) {
       query = query.limit(parseInt(limit, 10)) as typeof query;
     }
+    if (offset) {
+      query = query.offset(parseInt(offset, 10)) as typeof query;
+    }
 
     const results = await query;
 
@@ -74,7 +78,16 @@ export async function GET(request: NextRequest) {
       createdAt: row.createdAt,
     }));
 
-    return NextResponse.json({ data: snapshots, success: true });
+    let total: number | undefined;
+    if (offset != null) {
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.portfolioSnapshots)
+        .where(and(...conditions));
+      total = Number(count);
+    }
+
+    return NextResponse.json({ data: snapshots, success: true, ...(total != null ? { total } : {}) });
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json(

@@ -45,6 +45,8 @@ interface AccordionRowProps {
   children: React.ReactNode;
   /** Max children shown on first expand. Enables Close / Show All footer. */
   maxItems?: number;
+  /** Optional action element rendered to the left of the expand chevron */
+  headerAction?: React.ReactNode;
 }
 
 export function AccordionRow({
@@ -53,6 +55,7 @@ export function AccordionRow({
   subtitle,
   children,
   maxItems,
+  headerAction,
 }: AccordionRowProps) {
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -85,6 +88,7 @@ export function AccordionRow({
               )}
             </div>
           </CollapsibleTrigger>
+          {headerAction}
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="icon" className="cursor-pointer">
               <ChevronDown

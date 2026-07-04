@@ -13,17 +13,17 @@ export async function POST(req: NextRequest) {
   try {
     const { userId } = await requireAuth(req);
 
-    // Check if Plaid is configured
-    if (!isPlaidConfigured()) {
-      return NextResponse.json(
-        { error: "Plaid credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET in your .env file." },
-        { status: 400 }
-      );
-    }
-
     // Parse body to get environment selection
     const body = await req.json().catch(() => ({}));
     const { accessToken, environment = "sandbox" } = body;
+
+    // Check if Plaid is configured for the requested environment
+    if (!isPlaidConfigured(environment as PlaidEnvironmentType)) {
+      return NextResponse.json(
+        { error: `Plaid ${environment} credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET_${(environment as string).toUpperCase()} in your .env file.` },
+        { status: 400 }
+      );
+    }
 
     const client = createPlaidClient(environment as PlaidEnvironmentType);
 

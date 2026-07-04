@@ -537,7 +537,7 @@ async function runSnapshotTask() {
         if (await isPlaidSyncEnabledForUser(user.id) || await isPriceRefreshEnabledForUser(user.id)) {
           try {
             const { warmCurrencyCache } = await import("./currency-cache");
-            const cacheResult = await warmCurrencyCache(user.id);
+            const cacheResult = await warmCurrencyCache(user.id, process.env.NEXTAUTH_URL || "http://localhost:3000");
             console.log(`[Scheduler] Currency cache warmed for user #${user.id}: ${cacheResult.refreshed} rates refreshed`);
           } catch (error) {
             console.error(`[Scheduler] Error warming currency cache for user #${user.id}:`, error);

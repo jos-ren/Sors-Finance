@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if Plaid is configured
-    if (!isPlaidConfigured()) {
+    // Check if Plaid is configured for the requested environment
+    if (!isPlaidConfigured(environment as PlaidEnvironmentType)) {
       return NextResponse.json(
-        { error: "Plaid credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET in your .env file." },
+        { error: `Plaid ${environment} credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET_${(environment as string).toUpperCase()} in your .env file.` },
         { status: 400 }
       );
     }

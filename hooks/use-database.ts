@@ -595,6 +595,19 @@ export function usePortfolioSnapshots(limit?: number): DbPortfolioSnapshot[] | u
   return data;
 }
 
+export function usePortfolioSnapshotsPage(page: number, pageSize: number) {
+  const { data, isLoading } = useSWR(
+    `portfolio/snapshots/page/${page}/${pageSize}`,
+    () => api.getPortfolioSnapshotsPage({ limit: pageSize, offset: page * pageSize }),
+    swrConfig
+  );
+  return {
+    snapshots: data?.data,
+    total: data?.total,
+    isLoading,
+  };
+}
+
 export function useLatestPortfolioSnapshot(): DbPortfolioSnapshot | undefined {
   const { data } = useSWR(
     "portfolio/snapshots/latest",
