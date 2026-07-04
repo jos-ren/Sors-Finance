@@ -8,24 +8,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/api-helper";
 import { testPlaidCredentials, isPlaidConfigured } from "@/lib/plaid/client";
+import type { PlaidEnvironmentType } from "@/lib/plaid/types";
 
 export async function GET(req: NextRequest) {
   try {
     await requireAuth(req);
 
-    if (!isPlaidConfigured()) {
+    const environment = (req.nextUrl.searchParams.get("environment") || "production") as PlaidEnvironmentType;
+
+    if (!isPlaidConfigured(environment)) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           configured: false,
-          error: "Plaid credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET in your .env file." 
+          error: `Plaid ${environment} credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET_${environment.toUpperCase()} in your .env file.`
         },
         { status: 400 }
       );
     }
 
-    // Test with production environment (matches PlaidLinkButton default)
-    const result = await testPlaidCredentials("production");
+    const result = await testPlaidCredentials(environment);
 
     if (result.success) {
       return NextResponse.json({ 

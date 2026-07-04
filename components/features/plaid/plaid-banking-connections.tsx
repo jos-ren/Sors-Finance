@@ -40,8 +40,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
@@ -178,7 +176,7 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
   const handleTestCredentials = async () => {
     setIsTesting(true);
     try {
-      const response = await fetch("/api/plaid/test");
+      const response = await fetch(`/api/plaid/test?environment=${plaidEnvironment}`);
       const data = await response.json();
       if (data.success) {
         toast.success("Plaid credentials are valid and working!");
@@ -398,20 +396,19 @@ PLAID_SECRET=your_secret_here`}
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="plaid-env-toggle" className="text-xs text-muted-foreground cursor-pointer">
-                    {plaidEnvironment === "sandbox" ? "Sandbox" : "Production"}
-                  </Label>
-                  <Switch
-                    id="plaid-env-toggle"
-                    checked={plaidEnvironment === "production"}
-                    onCheckedChange={(checked) => {
-                      const env = checked ? "production" : "sandbox";
-                      setPlaidEnvironment(env);
-                      localStorage.setItem("plaid-environment", env);
-                    }}
-                  />
-                </div>
+                <Tabs
+                  value={plaidEnvironment}
+                  onValueChange={(v) => {
+                    const env = v as PlaidEnvironmentType;
+                    setPlaidEnvironment(env);
+                    localStorage.setItem("plaid-environment", env);
+                  }}
+                >
+                  <TabsList className="h-8">
+                    <TabsTrigger value="sandbox" className="text-xs px-3 h-6">Sandbox</TabsTrigger>
+                    <TabsTrigger value="production" className="text-xs px-3 h-6">Production</TabsTrigger>
+                  </TabsList>
+                </Tabs>
                 <PlaidLinkButton
                   environment={plaidEnvironment}
                   onSuccess={() => loadInstitutions()}
@@ -514,6 +511,7 @@ PLAID_SECRET=your_secret_here`}
                             <PlaidLinkButton
                               mode="update"
                               accessToken={institution.accessToken}
+                              environment={institution.environment}
                               onSuccess={loadInstitutions}
                             />
                           )}
