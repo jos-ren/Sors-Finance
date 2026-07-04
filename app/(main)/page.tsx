@@ -14,8 +14,6 @@ import {
   AreaChart,
   Bar,
   BarChart,
-  BarProps,
-  ComposedChart,
   CartesianGrid,
   Cell,
   Pie,
@@ -43,7 +41,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useMonthlyTrend,
   useYearlyTotals,
-  useBudgetWithSpending,
   useSpendingByCategoryWithNames,
   useTransactionCount,
   useTransactionCountByPeriod,
@@ -68,17 +65,6 @@ const areaChartConfig = {
   expenses: {
     label: "Expenses",
     color: "var(--chart-danger)",
-  },
-} satisfies ChartConfig;
-
-const barChartConfig = {
-  amount: {
-    label: "Spent",
-    color: "var(--chart-fill)",
-  },
-  budget: {
-    label: "Budget",
-    color: "var(--chart-marker)",
   },
 } satisfies ChartConfig;
 
@@ -198,7 +184,6 @@ export default function DashboardPage() {
   // Fetch real data from Dexie - use selected date range
   const monthlyTrend = useMonthlyTrend(selectedYear ?? currentYear);
   const yearlyTotals = useYearlyTotals(selectedYear ?? currentYear);
-  const budgetWithSpending = useBudgetWithSpending(selectedYear ?? currentYear, currentMonth);
   const spendingByCategory = useSpendingByCategoryWithNames(selectedYear ?? currentYear);
   const allTransactionCount = useTransactionCount();
   const yearTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear);
@@ -230,24 +215,15 @@ export default function DashboardPage() {
   // Use appropriate transaction count based on view mode
   const activeTransactionCount = viewMode === "all" ? allTransactionCount : yearTransactionCount;
 
-  // Transform spending data for charts (use direct spending, not budget-dependent)
+  // Transform spending data for charts
   const categorySpendingData = useMemo(() => {
     if (!activeSpendingByCategory) return [];
-
-    // Create a map of budget amounts by category ID for reference
-    const budgetMap = new Map<number, number>();
-    if (budgetWithSpending) {
-      budgetWithSpending.forEach(b => {
-        budgetMap.set(b.categoryId, b.amount);
-      });
-    }
 
     return activeSpendingByCategory.map(s => ({
       category: s.categoryName,
       amount: s.amount,
-      budget: budgetMap.get(s.categoryId) || 0,
     }));
-  }, [activeSpendingByCategory, budgetWithSpending]);
+  }, [activeSpendingByCategory]);
 
   // Create pie chart config dynamically
   const pieChartConfig = useMemo(() => {
@@ -473,139 +449,6 @@ export default function DashboardPage() {
                   ))}
                 </BarChart>
               </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Category Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Spending by Category</CardTitle>
-            <CardDescription>{periodName} spending breakdown</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {categorySpendingData.length === 0 ? (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No spending data yet.
-              </div>
-            ) : (
-            <ChartContainer config={barChartConfig} className="h-[300px] w-full">
-              <ComposedChart
-                data={categorySpendingData}
-                layout="vertical"
-                margin={{ left: 0, right: 12 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <YAxis
-                  dataKey="category"
-                  type="category"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  width={100}
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={(value) => formatAmount(value, userCurrency, false)}
-                />
-                <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent formatter={(value) => formatAmount(Number(value), userCurrency)} />}
-                />
-                <Bar
-                  dataKey="amount"
-                  radius={4}
-                  name="Spent"
-                  shape={(props: BarProps) => {
-                    const { x, y, width, height, index } = props as {
-                      x?: number;
-                      y?: number;
-                      width?: number;
-                      height?: number;
-                      index?: number;
-                    };
-                    if (x === undefined || y === undefined || width === undefined || height === undefined || index === undefined) return <></>;
-
-                    const entry = categorySpendingData[index];
-                    if (!entry) return <></>;
-
-                    const budget = entry.budget || 0;
-                    const isOverBudget = budget > 0 && entry.amount > budget;
-                    const hasBudget = budget > 0;
-                    // Use matching color from PIE_COLORS palette
-                    const categoryColor = PIE_COLORS[index % PIE_COLORS.length];
-
-                    // width corresponds to 'amount', calculate budget width proportionally
-                    const budgetWidth = hasBudget ? (budget / entry.amount) * width : width;
-
-                    return (
-                      <g>
-                        {hasBudget && (
-                          /* Neutral background up to budget */
-                          <rect
-                            x={x}
-                            y={y}
-                            width={Math.min(budgetWidth, width)}
-                            height={height}
-                            rx={4}
-                            ry={4}
-                            fill="var(--muted-foreground)"
-                            fillOpacity={0.2}
-                          />
-                        )}
-                        {isOverBudget ? (
-                          <>
-                            {/* Within budget portion - category color with glass effect */}
-                            <rect
-                              x={x}
-                              y={y}
-                              width={budgetWidth + 4}
-                              height={height}
-                              rx={4}
-                              ry={4}
-                              fill={categoryColor}
-                              fillOpacity={0.5}
-                              stroke={categoryColor}
-                              strokeWidth={1.5}
-                            />
-                            {/* Over budget portion - red danger with glass effect */}
-                            <rect
-                              x={x + budgetWidth}
-                              y={y}
-                              width={width - budgetWidth}
-                              height={height}
-                              rx={4}
-                              ry={4}
-                              fill="var(--chart-danger)"
-                              fillOpacity={0.5}
-                              stroke="var(--chart-danger)"
-                              strokeWidth={1.5}
-                            />
-                          </>
-                        ) : (
-                          /* Within budget: category color with glass effect */
-                          <rect
-                            x={x}
-                            y={y}
-                            width={width}
-                            height={height}
-                            rx={4}
-                            ry={4}
-                            fill={categoryColor}
-                            fillOpacity={0.5}
-                            stroke={categoryColor}
-                            strokeWidth={1.5}
-                          />
-                        )}
-                      </g>
-                    );
-                  }}
-                />
-              </ComposedChart>
-            </ChartContainer>
             )}
           </CardContent>
         </Card>
