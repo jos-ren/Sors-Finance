@@ -1,15 +1,12 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
   Loader2,
   FileClock,
   History,
-  Trash2,
-  Pencil,
-  RefreshCw,
 } from "lucide-react";
 import {
   Bar,
@@ -49,20 +46,15 @@ import {
   usePortfolioItems,
   deletePortfolioSnapshot,
   BUCKET_TYPES,
-  type DbPortfolioSnapshot,
 } from '@/hooks/use-database';
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency, useTimezone } from "@/contexts/settings-context";
-import { formatDateTime } from "@/lib/utils/formatters";
 import { useSetPageHeader, useIsInHeader } from "@/contexts/page-header-context";
-import { BucketCard, EditSnapshotDialog } from "@/components/features/portfolio";
-import { SectionHeader, RowGroup, AccordionRow } from "@/components/ui/section";
+import { BucketCard } from "@/components/features/portfolio";
+import { SectionHeader, RowGroup } from "@/components/ui/section";
 import { NavigateRow } from "@/components/features/settings/settings-shared";
-import { cn } from "@/lib/utils";
 import { PlaidSyncButton } from "@/components/features/plaid/plaid-sync-button";
 import { PlaidSyncBanner } from "@/components/features/plaid/plaid-sync-banner";
-import { toast } from "sonner";
-import { IconBadge } from "@/components/ui/icon-badge";
 
 const BUCKET_COLORS: Record<string, string> = {
   Savings: "var(--alt-emerald)",
@@ -109,9 +101,6 @@ export default function PortfolioPage() {
   const change = useNetWorthChange();
   const allSnapshots = usePortfolioSnapshots();
 
-  // Snapshot state
-  const [editingSnapshot, setEditingSnapshot] = useState<DbPortfolioSnapshot | null>(null);
-
   // Plaid sync banner state
   const [syncResult, setSyncResult] = useState<{
     accountsUpdated: number;
@@ -147,63 +136,6 @@ export default function PortfolioPage() {
     if (!allSnapshots || allSnapshots.length === 0) return null;
     return allSnapshots[0]; // Already sorted by date desc
   }, [allSnapshots]);
-
-  const handleDeleteSnapshot = useCallback(async (id: number) => {
-    try {
-      // Get snapshot data before deleting (for undo)
-      const snapshot = allSnapshots?.find(s => s.id === id);
-      if (!snapshot) return;
-
-      await deletePortfolioSnapshot(id);
-
-      toast.success("Snapshot deleted", {
-        action: {
-          label: "Undo",
-          onClick: async () => {
-            try {
-              // Re-create the snapshot via API
-              const res = await fetch("/api/portfolio/snapshots", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  date: snapshot.date.toISOString(),
-                  totalSavings: snapshot.totalSavings,
-                  totalInvestments: snapshot.totalInvestments,
-                  totalAssets: snapshot.totalAssets,
-                  totalDebt: snapshot.totalDebt,
-                  netWorth: snapshot.netWorth,
-                  details: snapshot.details,
-                }),
-              });
-              if (!res.ok) throw new Error("Failed to restore");
-              toast.success("Snapshot restored");
-            } catch {
-              toast.error("Failed to restore snapshot");
-            }
-          },
-        },
-        actionButtonStyle: { backgroundColor: "#16a34a", color: "white" },
-      });
-    } catch (error) {
-      toast.error("Failed to delete snapshot");
-      console.error(error);
-    }
-  }, [allSnapshots]);
-
-  const [isSnapshotting, setIsSnapshotting] = useState(false);
-  const handleTakeSnapshot = useCallback(async () => {
-    setIsSnapshotting(true);
-    try {
-      const res = await fetch("/api/portfolio/snapshots/today", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success(data.action === "updated" ? "Snapshot updated" : "Snapshot created");
-    } catch {
-      toast.error("Failed to take snapshot");
-    } finally {
-      setIsSnapshotting(false);
-    }
-  }, []);
 
   const headerActions = useMemo(() => (
     <PortfolioHeaderActions onSyncComplete={setSyncResult} />
@@ -548,7 +480,7 @@ export default function PortfolioPage() {
 
       {/* Change History */}
       <section className="space-y-2">
-        <SectionHeader label="Change History" />
+        <SectionHeader label="History" />
         <RowGroup>
           <NavigateRow
             icon={<FileClock className="h-4 w-4" />}
@@ -556,112 +488,18 @@ export default function PortfolioPage() {
             description="View all edits, syncs, and price refreshes of your portfolio items"
             href="/portfolio/history"
           />
+          <NavigateRow
+            icon={<History className="h-4 w-4" />}
+            title="Snapshot History"
+            description={
+              allSnapshots
+                ? `${allSnapshots.length} snapshot${allSnapshots.length !== 1 ? "s" : ""} of your net worth over time`
+                : "View, edit, and manage your net worth snapshots"
+            }
+            href="/portfolio/snapshots"
+          />
         </RowGroup>
       </section>
-
-      {/* Snapshot History */}
-      <section className="space-y-2">
-        <SectionHeader label="Snapshot History" />
-        <RowGroup>
-          {!allSnapshots || allSnapshots.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
-              <History className="h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium">No snapshots yet</p>
-              <p className="text-xs text-muted-foreground">
-                Snapshots are automatically saved when you visit this page
-              </p>
-            </div>
-          ) : (
-            <AccordionRow
-              icon={<History className="h-4 w-4 text-muted-foreground" />}
-              title="Snapshot History"
-              subtitle={`${allSnapshots.length} snapshot${allSnapshots.length !== 1 ? "s" : ""}`}
-              maxItems={50}
-            >
-              {allSnapshots.map((snapshot) => {
-                const today = new Date();
-                const isToday =
-                  snapshot.date.getFullYear() === today.getFullYear() &&
-                  snapshot.date.getMonth() === today.getMonth() &&
-                  snapshot.date.getDate() === today.getDate();
-
-                return (
-                  <div key={snapshot.id} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex w-9 shrink-0 justify-center">
-                      <IconBadge>
-                        <History className="h-4 w-4 text-muted-foreground" />
-                      </IconBadge>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">
-                        {formatDateTime(snapshot.createdAt, userTimezone)}
-                      </p>
-                      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
-                        <span className="text-emerald-500">
-                          Savings: {formatAmount(snapshot.totalSavings, userCurrency, false)}
-                        </span>
-                        <span className="text-blue-500">
-                          Inv: {formatAmount(snapshot.totalInvestments, userCurrency, false)}
-                        </span>
-                        <span className="text-amber-500">
-                          Assets: {formatAmount(snapshot.totalAssets, userCurrency, false)}
-                        </span>
-                        <span className="text-red-500">
-                          Debt: {formatAmount(snapshot.totalDebt, userCurrency, false)}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm font-semibold tabular-nums shrink-0">
-                      {formatAmount(snapshot.netWorth, userCurrency)}
-                    </p>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {isToday ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={handleTakeSnapshot}
-                          disabled={isSnapshotting}
-                        >
-                          <RefreshCw className={cn("h-4 w-4", isSnapshotting && "animate-spin")} />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => setEditingSnapshot(snapshot)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteSnapshot(snapshot.id!)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </AccordionRow>
-          )}
-        </RowGroup>
-      </section>
-
-
-
-      {/* Edit Snapshot Dialog */}
-      {editingSnapshot && (
-        <EditSnapshotDialog
-          open={!!editingSnapshot}
-          onOpenChange={(open) => !open && setEditingSnapshot(null)}
-          snapshot={editingSnapshot}
-        />
-      )}
     </div>
   );
 }

@@ -117,12 +117,14 @@ export async function POST(request: NextRequest) {
       await db
         .update(portfolioSnapshots)
         .set({
+          date: now,
           totalSavings,
           totalInvestments,
           totalAssets,
           totalDebt,
           netWorth,
           details: snapshotDetails,
+          createdAt: now,
         })
         .where(eq(portfolioSnapshots.id, existingSnapshots[0].id!));
 

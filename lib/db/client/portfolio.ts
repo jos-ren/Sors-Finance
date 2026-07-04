@@ -195,6 +195,27 @@ export async function getPortfolioSnapshots(options?: {
   }));
 }
 
+export async function getPortfolioSnapshotsPage(options: {
+  limit: number;
+  offset: number;
+}): Promise<{ data: DbPortfolioSnapshot[]; total: number }> {
+  const params = new URLSearchParams();
+  params.append("limit", String(options.limit));
+  params.append("offset", String(options.offset));
+
+  const res = await fetch(`/api/portfolio/snapshots?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch snapshots");
+  const { data, total } = await res.json();
+  return {
+    data: data.map((s: DbPortfolioSnapshot) => ({
+      ...s,
+      date: new Date(s.date),
+      createdAt: new Date(s.createdAt),
+    })),
+    total,
+  };
+}
+
 export async function getLatestPortfolioSnapshot(): Promise<DbPortfolioSnapshot | null> {
   const snapshots = await getPortfolioSnapshots({ limit: 1 });
   return snapshots.length > 0 ? snapshots[0] : null;

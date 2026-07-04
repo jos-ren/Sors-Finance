@@ -95,6 +95,7 @@ export {
   getTickerModeItems,
   // Snapshots
   getPortfolioSnapshots,
+  getPortfolioSnapshotsPage,
   getLatestPortfolioSnapshot,
   createPortfolioSnapshot,
   deletePortfolioSnapshot,
