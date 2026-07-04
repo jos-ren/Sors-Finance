@@ -366,6 +366,30 @@ export const importDrafts = sqliteTable(
 );
 
 // ============================================
+// System Logs Table
+// ============================================
+// Records scheduler runs, sync failures, and integration errors so users can
+// review them in Settings → Error Log instead of digging through server logs.
+
+export const systemLogs = sqliteTable(
+  "system_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    level: text("level").notNull(), // 'info' | 'warning' | 'error'
+    source: text("source").notNull(), // 'scheduler' | 'plaid_sync' | 'price_refresh' | 'snapshot' | 'currency_cache'
+    message: text("message").notNull(),
+    details: text("details", { mode: "json" }).$type<Record<string, unknown>>(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("system_logs_created_idx").on(table.createdAt),
+    index("system_logs_user_idx").on(table.userId),
+    index("system_logs_level_idx").on(table.level),
+  ]
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
@@ -406,6 +430,9 @@ export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInse
 
 export type ImportDraftRow = typeof importDrafts.$inferSelect;
 export type ImportDraftInsert = typeof importDrafts.$inferInsert;
+
+export type SystemLogRow = typeof systemLogs.$inferSelect;
+export type SystemLogInsert = typeof systemLogs.$inferInsert;
 
 // ============================================
 // Plaid Items Table

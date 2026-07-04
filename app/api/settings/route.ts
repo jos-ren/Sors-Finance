@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { refreshScheduler } from "@/lib/services/scheduler";
 
 // GET /api/settings?key=SETTING_KEY
 export async function GET(request: NextRequest) {
@@ -95,6 +96,16 @@ export async function PUT(request: NextRequest) {
         value: String(value),
         userId,
       });
+    }
+
+    // The snapshot cron interprets its time in the configured timezone;
+    // reschedule so a timezone change takes effect without a restart
+    if (key === "TIMEZONE") {
+      try {
+        await refreshScheduler();
+      } catch (schedulerError) {
+        console.error("Failed to refresh scheduler after timezone change:", schedulerError);
+      }
     }
 
     return NextResponse.json({ data: { key, value }, success: true });

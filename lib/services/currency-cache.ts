@@ -7,12 +7,7 @@
 import { db } from '@/lib/db/connection';
 import { portfolioItems, settings, currencyExchangeRates } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
-
-interface ExchangeRateResponse {
-  rate: number;
-  from: string;
-  to: string;
-}
+import { getExchangeRate } from './quotes';
 
 /**
  * Gets all unique currency pairs needed for a user's portfolio
@@ -68,19 +63,10 @@ async function getRequiredCurrencyPairs(userId: number): Promise<string[]> {
 /**
  * Fetches and caches exchange rates for a specific currency pair
  */
-async function fetchAndCacheRate(from: string, to: string, baseUrl: string, authCookies?: string): Promise<number | null> {
+async function fetchAndCacheRate(from: string, to: string): Promise<number | null> {
   try {
-    const headers: HeadersInit = authCookies ? { cookie: authCookies } : {};
-    
-    const response = await fetch(`${baseUrl}/api/exchange-rate?from=${from}&to=${to}`, { headers });
-    
-    if (!response.ok) {
-      console.warn(`Failed to fetch rate ${from}-${to}:`, response.statusText);
-      return null;
-    }
-
-    const data: ExchangeRateResponse = await response.json();
-    return data.rate;
+    const result = await getExchangeRate(from, to);
+    return result.rate;
   } catch (error) {
     console.error(`Error fetching rate ${from}-${to}:`, error);
     return null;
@@ -91,7 +77,7 @@ async function fetchAndCacheRate(from: string, to: string, baseUrl: string, auth
  * Pre-warms the currency cache with all needed exchange rates for a user
  * Should be called during "Sync All" or first-load snapshot
  */
-export async function warmCurrencyCache(userId: number, baseUrl: string, authCookies?: string): Promise<{
+export async function warmCurrencyCache(userId: number): Promise<{
   refreshed: number;
   failed: number;
   pairs: string[];
@@ -112,7 +98,7 @@ export async function warmCurrencyCache(userId: number, baseUrl: string, authCoo
     await Promise.all(
       batch.map(async (pair) => {
         const [from, to] = pair.split('-');
-        const rate = await fetchAndCacheRate(from, to, baseUrl, authCookies);
+        const rate = await fetchAndCacheRate(from, to);
         
         if (rate !== null) {
           refreshed++;

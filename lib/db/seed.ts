@@ -177,6 +177,56 @@ async function ensureSystemCategories(existingCategories: typeof schema.categori
   }
 }
 
+/** Fallback when the client doesn't report a usable timezone */
+const DEFAULT_TIMEZONE = "America/Los_Angeles";
+
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensure the user has a TIMEZONE setting, seeding it from the client's
+ * browser timezone (or PST fallback) if missing. Called on first
+ * authenticated app load; once the user changes the setting in Settings,
+ * that value is authoritative and this never overwrites it.
+ *
+ * Returns true if a timezone was seeded, false if one already existed.
+ */
+export async function ensureTimezoneSetting(
+  userId: number,
+  clientTimezone?: string
+): Promise<boolean> {
+  const existing = await db
+    .select()
+    .from(schema.settings)
+    .where(and(
+      eq(schema.settings.key, "TIMEZONE"),
+      eq(schema.settings.userId, userId)
+    ))
+    .limit(1);
+
+  if (existing.length > 0) return false;
+
+  const timezone =
+    clientTimezone && isValidTimezone(clientTimezone)
+      ? clientTimezone
+      : DEFAULT_TIMEZONE;
+
+  await db.insert(schema.settings).values({
+    key: "TIMEZONE",
+    value: timezone,
+    userId,
+  });
+
+  console.log(`[Seed] Set timezone for user ${userId}: ${timezone}`);
+  return true;
+}
+
 /**
  * Seed default settings for a specific user.
  * This should be called when a new user registers.
@@ -186,9 +236,9 @@ export async function seedDefaultSettingsForUser(userId: number): Promise<void> 
   const defaultSettings = [
     { key: "CURRENCY", value: "USD" },
     { key: "autoCopyBudgets", value: "false" },
-    // Note: TIMEZONE and FINNHUB_API_KEY are not seeded
-    // TIMEZONE will be set from the client's browser on first load
-    // FINNHUB_API_KEY starts as null (user must configure it)
+    // Note: TIMEZONE and FINNHUB_API_KEY are not seeded here.
+    // TIMEZONE is seeded from the browser on first authenticated app load.
+    // FINNHUB_API_KEY starts as null (user must configure it).
   ];
 
   for (const setting of defaultSettings) {

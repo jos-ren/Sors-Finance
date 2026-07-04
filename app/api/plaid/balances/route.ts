@@ -14,26 +14,15 @@ import type { HistoryChange } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
 import { PLAID_SETTINGS_KEYS } from "@/lib/plaid/types";
+import {
+  getStockQuote,
+  getCryptoQuote,
+  getMetalQuote,
+  getExchangeRateValue,
+  QuoteError,
+} from "@/lib/services/quotes";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Reads an error response body as text first (so we can log it even when it
-// isn't valid JSON — e.g. an HTML error page from a proxy/redirect) rather
-// than collapsing everything into an unhelpful "Unknown error".
-async function parseErrorResponse(response: Response, label: string): Promise<string> {
-  const rawText = await response.text().catch(() => "");
-  try {
-    const data = rawText ? JSON.parse(rawText) : {};
-    if (data.error) return data.error;
-  } catch (parseError) {
-    console.error(
-      `[Price Refresh] ${label} returned non-JSON error response (status ${response.status}):`,
-      rawText.slice(0, 500),
-      parseError
-    );
-  }
-  return `HTTP ${response.status}`;
-}
 
 // Finnhub's free tier rate-limits per-minute; space out stock lookups so a
 // portfolio with several tickers doesn't get 429'd mid-batch.
@@ -83,9 +72,7 @@ function buildSyncMessage(result: {
  */
 async function refreshTickerPricesForUser(
   userId: number,
-  userCurrency: string,
-  authCookies: string,
-  baseUrl: string
+  userCurrency: string
 ): Promise<{
   success: boolean;
   updated: number;
@@ -119,24 +106,6 @@ async function refreshTickerPricesForUser(
     }
   }
   const uniqueTickers = Array.from(tickerMap.keys());
-
-  // Helper to get exchange rate
-  const getExchangeRate = async (from: string, to: string): Promise<number> => {
-    if (from.toUpperCase() === to.toUpperCase()) return 1;
-    try {
-      const response = await fetch(
-        `${baseUrl}/api/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-        { headers: { cookie: authCookies } }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        return data.rate;
-      }
-    } catch {
-      // Silent fail
-    }
-    return 1; // Fallback
-  };
 
   // First pass: fetch unique ticker prices
   const tickerQuotes = new Map<
@@ -172,42 +141,39 @@ async function refreshTickerPricesForUser(
       }
 
       if (tickerType === "metal") {
-        const response = await fetch(`${baseUrl}/api/metals/${encodeURIComponent(cleanTicker)}`, {
-          headers: { cookie: authCookies }
-        });
-        if (response.ok) {
-          quote = await response.json();
-        } else {
-          errorDetail = await parseErrorResponse(response, `Metal ${cleanTicker}`);
+        try {
+          quote = await getMetalQuote(cleanTicker);
+        } catch (error) {
+          errorDetail = error instanceof QuoteError ? error.message : "Failed to fetch metal price";
           console.error(`[Price Refresh] Metal ${cleanTicker} failed:`, errorDetail);
         }
       } else if (tickerType === "crypto") {
-        const response = await fetch(`${baseUrl}/api/crypto/${encodeURIComponent(cleanTicker)}`, {
-          headers: { cookie: authCookies }
-        });
-        if (response.ok) {
-          quote = await response.json();
-        } else {
-          errorDetail = await parseErrorResponse(response, `Crypto ${cleanTicker}`);
+        try {
+          quote = await getCryptoQuote(cleanTicker);
+        } catch (error) {
+          errorDetail = error instanceof QuoteError ? error.message : "Failed to fetch crypto price";
           console.error(`[Price Refresh] Crypto ${cleanTicker} failed:`, errorDetail);
         }
       } else {
         // Stock lookup
-        let response = await fetch(`${baseUrl}/api/stock/${encodeURIComponent(cleanTicker)}`, {
-          headers: { cookie: authCookies }
-        });
-        if (response.status === 429) {
-          // Retry once after backing off further — Finnhub's per-minute limit resets quickly
-          await sleep(STOCK_LOOKUP_DELAY_MS * 2);
-          response = await fetch(`${baseUrl}/api/stock/${encodeURIComponent(cleanTicker)}`, {
-            headers: { cookie: authCookies }
-          });
-        }
-        if (response.ok) {
-          quote = await response.json();
-        } else {
-          errorDetail = await parseErrorResponse(response, `Stock ${cleanTicker}`);
-          console.error(`[Price Refresh] Stock ${cleanTicker} failed:`, errorDetail);
+        try {
+          quote = await getStockQuote(cleanTicker);
+        } catch (error) {
+          if (error instanceof QuoteError && error.code === "RATE_LIMIT") {
+            // Retry once after backing off further — Finnhub's per-minute limit resets quickly
+            await sleep(STOCK_LOOKUP_DELAY_MS * 2);
+            try {
+              quote = await getStockQuote(cleanTicker);
+            } catch (retryError) {
+              errorDetail =
+                retryError instanceof QuoteError ? retryError.message : "Failed to fetch stock data";
+            }
+          } else {
+            errorDetail = error instanceof QuoteError ? error.message : "Failed to fetch stock data";
+          }
+          if (errorDetail) {
+            console.error(`[Price Refresh] Stock ${cleanTicker} failed:`, errorDetail);
+          }
         }
       }
 
@@ -221,7 +187,7 @@ async function refreshTickerPricesForUser(
         // Get exchange rate if currency differs
         let exchangeRate = 1;
         if (quote.currency !== userCurrency) {
-          exchangeRate = await getExchangeRate(quote.currency, userCurrency);
+          exchangeRate = await getExchangeRateValue(quote.currency, userCurrency);
         }
         tickerQuotes.set(ticker, { quote, exchangeRate });
       }
@@ -262,7 +228,7 @@ async function refreshTickerPricesForUser(
     // Get exchange rate based on the effective currency
     let exchangeRate = 1;
     if (effectiveCurrency !== userCurrency) {
-      exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
+      exchangeRate = await getExchangeRateValue(effectiveCurrency, userCurrency);
     }
 
     // Calculate new value using the correct exchange rate
@@ -340,9 +306,6 @@ interface SyncResult {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
-    
-    // Get auth cookies to forward to internal API calls
-    const cookies = request.headers.get('cookie') || '';
 
     // Check if Plaid is configured
     if (!isPlaidConfigured()) {
@@ -552,7 +515,7 @@ export async function POST(request: NextRequest) {
       const userCurrencySetting = await db
         .select()
         .from(settings)
-        .where(and(eq(settings.userId, userId), eq(settings.key, "currency")))
+        .where(and(eq(settings.userId, userId), eq(settings.key, "CURRENCY")))
         .limit(1);
 
       const userCurrency = userCurrencySetting[0]?.value || "CAD";
@@ -560,7 +523,7 @@ export async function POST(request: NextRequest) {
       // Pre-warm currency cache before price refresh
       try {
         const { warmCurrencyCache } = await import('@/lib/services/currency-cache');
-        const cacheResult = await warmCurrencyCache(userId, request.nextUrl.origin, cookies);
+        const cacheResult = await warmCurrencyCache(userId);
         console.log(`[Sync All] Currency cache warmed: ${cacheResult.refreshed} rates refreshed, ${cacheResult.failed} failed`);
       } catch (error) {
         console.error("Error warming currency cache:", error);
@@ -569,7 +532,7 @@ export async function POST(request: NextRequest) {
 
       // Refresh ticker prices for all user's investment items
       try {
-        const priceRefreshResult = await refreshTickerPricesForUser(userId, userCurrency, cookies, request.nextUrl.origin);
+        const priceRefreshResult = await refreshTickerPricesForUser(userId, userCurrency);
         result.pricesUpdated = priceRefreshResult.updated;
         result.pricesFailed = priceRefreshResult.failed.length;
         result.priceErrors = priceRefreshResult.failed;

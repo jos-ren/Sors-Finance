@@ -3,12 +3,28 @@
  *
  * Handles scheduled tasks like automatic portfolio snapshots.
  * Uses node-cron for scheduling and reads configuration from the database.
+ *
+ * Price lookups call the quote services in lib/services/quotes directly —
+ * background jobs have no session cookie, so fetching our own API routes
+ * over HTTP would be rejected by the auth middleware with 401.
+ *
+ * Failures are recorded to the system_logs table (Settings → Error Log).
  */
 
 import cron, { ScheduledTask } from "node-cron";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
+import {
+  getStockQuote,
+  getCryptoQuote,
+  getMetalQuote,
+  getExchangeRateValue,
+  QuoteError,
+} from "./quotes";
+import { warmCurrencyCache } from "./currency-cache";
+import { logSystemEvent, pruneSystemLogs } from "./system-log";
 
 let schedulerInitialized = false;
 let currentJob: ScheduledTask | null = null;
@@ -17,6 +33,13 @@ const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
 const PLAID_SYNC_WITH_SNAPSHOT_KEY = "PLAID_SYNC_WITH_SNAPSHOT";
 const PRICE_REFRESH_WITH_SNAPSHOT_KEY = "PRICE_REFRESH_WITH_SNAPSHOT";
+const TIMEZONE_KEY = "TIMEZONE";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Finnhub's free tier rate-limits per-minute; space out stock lookups so a
+// portfolio with several tickers doesn't get 429'd mid-batch.
+const STOCK_LOOKUP_DELAY_MS = 1100;
 
 /**
  * Get the configured snapshot time from the database (uses first found or default)
@@ -32,85 +55,90 @@ async function getSnapshotTime(): Promise<string> {
 }
 
 /**
- * Check if snapshots are enabled for a specific user
+ * Get the configured timezone (uses first found). The snapshot time is
+ * interpreted in this timezone; without it, node-cron uses the server's
+ * local time — which inside Docker is usually UTC.
  */
-async function isSnapshotEnabledForUser(userId: number): Promise<boolean> {
+async function getSnapshotTimezone(): Promise<string | undefined> {
   const result = await db
     .select()
     .from(schema.settings)
-    .where(
-      and(
-        eq(schema.settings.key, SNAPSHOT_ENABLED_KEY),
-        eq(schema.settings.userId, userId)
-      )
-    )
+    .where(eq(schema.settings.key, TIMEZONE_KEY))
     .limit(1);
 
-  // Default to true if no setting exists
-  return result[0]?.value !== "false";
+  return result[0]?.value || undefined;
 }
 
 /**
- * Check if Plaid sync is enabled for a specific user
- * When enabled, Plaid balances will sync before creating portfolio snapshots
+ * Read a per-user boolean setting, with a default when unset
  */
-async function isPlaidSyncEnabledForUser(userId: number): Promise<boolean> {
+async function getUserBoolSetting(
+  userId: number,
+  key: string,
+  defaultValue: boolean
+): Promise<boolean> {
   const result = await db
     .select()
     .from(schema.settings)
     .where(
-      and(
-        eq(schema.settings.key, PLAID_SYNC_WITH_SNAPSHOT_KEY),
-        eq(schema.settings.userId, userId)
-      )
+      and(eq(schema.settings.key, key), eq(schema.settings.userId, userId))
     )
     .limit(1);
 
-  // Default to false if no setting exists (opt-in model)
-  return result[0]?.value === "true";
+  if (result.length === 0) return defaultValue;
+  return result[0].value === "true";
 }
 
+const isSnapshotEnabledForUser = (userId: number) =>
+  getUserBoolSetting(userId, SNAPSHOT_ENABLED_KEY, true);
+
+// Opt-in: default false
+const isPlaidSyncEnabledForUser = (userId: number) =>
+  getUserBoolSetting(userId, PLAID_SYNC_WITH_SNAPSHOT_KEY, false);
+
+// Opt-out: default true
+const isPriceRefreshEnabledForUser = (userId: number) =>
+  getUserBoolSetting(userId, PRICE_REFRESH_WITH_SNAPSHOT_KEY, true);
+
 /**
- * Check if price refresh is enabled for a specific user
- * When enabled, ticker prices will refresh before creating portfolio snapshots
+ * Get the user's preferred currency
  */
-async function isPriceRefreshEnabledForUser(userId: number): Promise<boolean> {
+async function getUserCurrency(userId: number): Promise<string> {
   const result = await db
     .select()
     .from(schema.settings)
     .where(
       and(
-        eq(schema.settings.key, PRICE_REFRESH_WITH_SNAPSHOT_KEY),
+        eq(schema.settings.key, "CURRENCY"),
         eq(schema.settings.userId, userId)
       )
     )
     .limit(1);
 
-  // Default to true if no setting exists (opt-in model)
-  return result[0]?.value !== "false";
+  return result[0]?.value || "CAD";
 }
 
 /**
  * Sync Plaid balances for a specific user
  */
-async function syncPlaidBalancesForUser(userId: number): Promise<{ success: boolean; accountsUpdated: number; errors: string[] }> {
+async function syncPlaidBalancesForUser(
+  userId: number
+): Promise<{ success: boolean; accountsUpdated: number; errors: string[] }> {
   try {
-    // Import dynamically to avoid circular dependencies
-    const { db: dbInstance } = await import("../db/connection");
-    const { plaidItems, plaidAccounts, portfolioItems } = await import("../db/schema");
-    const { eq, and } = await import("drizzle-orm");
-    const { createPlaidClient, isPlaidConfigured } = await import("../plaid/client");
-
     // Check if Plaid is configured
     if (!isPlaidConfigured()) {
-      return { success: true, accountsUpdated: 0, errors: ["Plaid credentials not configured in environment variables"] };
+      return {
+        success: true,
+        accountsUpdated: 0,
+        errors: ["Plaid credentials not configured in environment variables"],
+      };
     }
 
     // Get all Plaid items for this user
-    const userPlaidItems = await dbInstance
+    const userPlaidItems = await db
       .select()
-      .from(plaidItems)
-      .where(eq(plaidItems.userId, userId));
+      .from(schema.plaidItems)
+      .where(eq(schema.plaidItems.userId, userId));
 
     if (userPlaidItems.length === 0) {
       return { success: true, accountsUpdated: 0, errors: [] };
@@ -126,7 +154,9 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
         const accessToken = item.accessToken;
 
         // Create Plaid client from environment variables
-        const client = createPlaidClient(item.environment as "sandbox" | "development" | "production");
+        const client = createPlaidClient(
+          item.environment as "sandbox" | "development" | "production"
+        );
 
         // Fetch balances
         const balanceResponse = await client.accountsBalanceGet({
@@ -134,20 +164,20 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
         });
 
         // Get Plaid accounts linked to portfolio accounts
-        const linkedAccounts = await dbInstance
+        const linkedAccounts = await db
           .select({
-            plaidAccount: plaidAccounts,
-            portfolioItem: portfolioItems,
+            plaidAccount: schema.plaidAccounts,
+            portfolioItem: schema.portfolioItems,
           })
-          .from(plaidAccounts)
+          .from(schema.plaidAccounts)
           .innerJoin(
-            portfolioItems,
-            eq(plaidAccounts.portfolioAccountId, portfolioItems.accountId)
+            schema.portfolioItems,
+            eq(schema.plaidAccounts.portfolioAccountId, schema.portfolioItems.accountId)
           )
           .where(
             and(
-              eq(plaidAccounts.plaidItemId, item.id),
-              eq(plaidAccounts.userId, userId)
+              eq(schema.plaidAccounts.plaidItemId, item.id),
+              eq(schema.plaidAccounts.userId, userId)
             )
           );
 
@@ -161,42 +191,42 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
             const balance = account.balances.current || 0;
 
             // Update portfolio item
-            await dbInstance
-              .update(portfolioItems)
+            await db
+              .update(schema.portfolioItems)
               .set({
                 currentValue: balance,
                 updatedAt: new Date(),
               })
-              .where(eq(portfolioItems.id, linkedAccount.portfolioItem.id));
+              .where(eq(schema.portfolioItems.id, linkedAccount.portfolioItem.id));
 
             accountsUpdated++;
           }
         }
 
         // Update item last sync timestamp
-        await dbInstance
-          .update(plaidItems)
+        await db
+          .update(schema.plaidItems)
           .set({
             lastSync: new Date(),
             status: "active",
             errorMessage: null,
             updatedAt: new Date(),
           })
-          .where(eq(plaidItems.id, item.id));
+          .where(eq(schema.plaidItems.id, item.id));
       } catch (error: unknown) {
         const err = error as { response?: { data?: { error_message?: string } }; message?: string };
         const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
         errors.push(`${item.institutionName}: ${errorMessage}`);
 
         // Update item status
-        await dbInstance
-          .update(plaidItems)
+        await db
+          .update(schema.plaidItems)
           .set({
             status: "error",
             errorMessage,
             updatedAt: new Date(),
           })
-          .where(eq(plaidItems.id, item.id));
+          .where(eq(schema.plaidItems.id, item.id));
       }
     }
 
@@ -209,16 +239,16 @@ async function syncPlaidBalancesForUser(userId: number): Promise<{ success: bool
 }
 
 /**
- * Refresh ticker prices for a specific user
+ * Refresh ticker prices for a specific user by calling the quote services
+ * directly (no HTTP self-fetch).
  */
-async function refreshTickerPricesForUser(userId: number, userCurrency: string): Promise<{ success: boolean; updated: number; failed: Array<{ ticker: string; itemName: string; error: string }> }> {
+async function refreshTickerPricesForUser(
+  userId: number,
+  userCurrency: string
+): Promise<{ success: boolean; updated: number; failed: Array<{ ticker: string; itemName: string; error: string }> }> {
   try {
-    // Import dependencies
-    const { db: dbInstance, schema } = await import("../db/connection");
-    const { eq, and } = await import("drizzle-orm");
-
     // Get ticker items for this user
-    const items = await dbInstance
+    const items = await db
       .select()
       .from(schema.portfolioItems)
       .where(
@@ -240,90 +270,65 @@ async function refreshTickerPricesForUser(userId: number, userCurrency: string):
         const upperTicker = item.ticker.toUpperCase();
         // Use the first tickerType we find for each unique ticker
         if (!tickerMap.has(upperTicker)) {
-          tickerMap.set(upperTicker, item.type || "stock");
+          tickerMap.set(upperTicker, item.type || item.tickerType || "stock");
         }
       }
     }
     const uniqueTickers = Array.from(tickerMap.keys());
 
-    // Helper to get exchange rate
-    const getExchangeRate = async (from: string, to: string): Promise<number> => {
-      if (from.toUpperCase() === to.toUpperCase()) return 1;
-      
-      try {
-        // Use the API endpoint internally
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-        const response = await fetch(`${baseUrl}/api/exchange-rate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-        if (response.ok) {
-          const data = await response.json();
-          return data.rate;
-        }
-      } catch {
-        // Silent fail
-      }
-      return 1; // Fallback
-    };
-
-    // Helper to lookup stock ticker
-    const lookupStock = async (ticker: string): Promise<{ price: number; currency: string; name?: string } | null> => {
-      try {
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-        const response = await fetch(`${baseUrl}/api/stock/${encodeURIComponent(ticker)}`);
-        if (response.ok) {
-          return await response.json();
-        }
-      } catch {
-        // Silent fail
-      }
-      return null;
-    };
-
     // First pass: fetch unique ticker prices
-    const tickerQuotes = new Map<string, { quote: { price: number; currency: string; name?: string } | null; exchangeRate: number; error?: string }>();
-    const failedTickers: string[] = [];
+    const tickerQuotes = new Map<
+      string,
+      { quote: { price: number; currency: string; name?: string } | null; error?: string }
+    >();
+
+    let stockLookupCount = 0;
 
     for (const ticker of uniqueTickers) {
       const tickerType = tickerMap.get(ticker) || "stock";
-      
+
+      // Clean crypto ticker (remove exchange prefix like "BINANCE:")
+      let cleanTicker = ticker;
+      if (tickerType === "crypto" && ticker.includes(":")) {
+        cleanTicker = ticker.split(":")[1] || ticker;
+      }
+
       try {
         let quote = null;
 
-        // Fetch from the appropriate API based on tickerType
-        const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-        
         if (tickerType === "metal") {
-          const response = await fetch(`${baseUrl}/api/metals/${encodeURIComponent(ticker)}`);
-          if (response.ok) {
-            quote = await response.json();
-          }
+          quote = await getMetalQuote(cleanTicker);
         } else if (tickerType === "crypto") {
-          const response = await fetch(`${baseUrl}/api/crypto/${encodeURIComponent(ticker)}`);
-          if (response.ok) {
-            quote = await response.json();
-          }
+          quote = await getCryptoQuote(cleanTicker);
         } else {
-          // Default to stock lookup (requires API key)
-          quote = await lookupStock(ticker);
+          // Space out Finnhub-backed stock lookups to avoid tripping its rate limit
+          if (stockLookupCount > 0) {
+            await sleep(STOCK_LOOKUP_DELAY_MS);
+          }
+          stockLookupCount++;
+
+          try {
+            quote = await getStockQuote(cleanTicker);
+          } catch (error) {
+            if (error instanceof QuoteError && error.code === "RATE_LIMIT") {
+              // Retry once after backing off — Finnhub's per-minute limit resets quickly
+              await sleep(STOCK_LOOKUP_DELAY_MS * 2);
+              quote = await getStockQuote(cleanTicker);
+            } else {
+              throw error;
+            }
+          }
         }
 
-        if (!quote) {
-          failedTickers.push(ticker);
-          tickerQuotes.set(ticker, { quote: null, exchangeRate: 1, error: 'Ticker not found' });
-        } else {
-          // Get exchange rate if currency differs
-          let exchangeRate = 1;
-          if (quote.currency !== userCurrency) {
-            exchangeRate = await getExchangeRate(quote.currency, userCurrency);
-          }
-          tickerQuotes.set(ticker, { quote, exchangeRate });
-        }
+        tickerQuotes.set(ticker, { quote });
       } catch (error) {
-        failedTickers.push(ticker);
-        tickerQuotes.set(ticker, {
-          quote: null,
-          exchangeRate: 1,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
+        const message =
+          error instanceof QuoteError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Unknown error";
+        tickerQuotes.set(ticker, { quote: null, error: message });
       }
     }
 
@@ -354,14 +359,14 @@ async function refreshTickerPricesForUser(userId: number, userCurrency: string):
       // Get exchange rate based on the effective currency (user's or API's)
       let exchangeRate = 1;
       if (effectiveCurrency !== userCurrency) {
-        exchangeRate = await getExchangeRate(effectiveCurrency, userCurrency);
+        exchangeRate = await getExchangeRateValue(effectiveCurrency, userCurrency);
       }
 
       // Calculate new value using the correct exchange rate
       const newValue = (item.quantity || 0) * quote.price * exchangeRate;
 
       // Update the item - preserve user-set currency
-      await dbInstance
+      await db
         .update(schema.portfolioItems)
         .set({
           pricePerUnit: quote.price,
@@ -505,6 +510,19 @@ async function createSnapshotForUser(userId: number): Promise<number> {
  */
 async function runSnapshotTask() {
   console.log("[Scheduler] Running scheduled portfolio snapshots for all users...");
+  const runStart = Date.now();
+
+  // Keep the error log table bounded
+  await pruneSystemLogs();
+
+  const summary = {
+    usersProcessed: 0,
+    snapshotsCreated: 0,
+    snapshotsUpdated: 0,
+    plaidAccountsUpdated: 0,
+    tickersRefreshed: 0,
+    errorCount: 0,
+  };
 
   try {
     // Get all users
@@ -520,56 +538,77 @@ async function runSnapshotTask() {
     // Process each user
     for (const user of allUsers) {
       try {
-        // Get user's currency setting
-        const userCurrencyResult = await db
-          .select()
-          .from(schema.settings)
-          .where(
-            and(
-              eq(schema.settings.key, "currency"),
-              eq(schema.settings.userId, user.id)
-            )
-          )
-          .limit(1);
-        const userCurrency = userCurrencyResult[0]?.value || "CAD";
+        summary.usersProcessed++;
+        const userCurrency = await getUserCurrency(user.id);
+
+        const plaidSyncEnabled = await isPlaidSyncEnabledForUser(user.id);
+        const priceRefreshEnabled = await isPriceRefreshEnabledForUser(user.id);
 
         // Pre-warm currency cache before any syncing
-        if (await isPlaidSyncEnabledForUser(user.id) || await isPriceRefreshEnabledForUser(user.id)) {
+        if (plaidSyncEnabled || priceRefreshEnabled) {
           try {
-            const { warmCurrencyCache } = await import("./currency-cache");
-            const cacheResult = await warmCurrencyCache(user.id, process.env.NEXTAUTH_URL || "http://localhost:3000");
+            const cacheResult = await warmCurrencyCache(user.id);
             console.log(`[Scheduler] Currency cache warmed for user #${user.id}: ${cacheResult.refreshed} rates refreshed`);
+            if (cacheResult.failed > 0) {
+              // A single rate miss falls back to 1 for that pair and retries
+              // tomorrow — transient and not actionable, so console-only.
+              console.warn(`[Scheduler] Failed to refresh ${cacheResult.failed} of ${cacheResult.pairs.length} exchange rate(s) for user #${user.id}`);
+            }
           } catch (error) {
             console.error(`[Scheduler] Error warming currency cache for user #${user.id}:`, error);
+            summary.errorCount++;
+            await logSystemEvent({
+              level: "error",
+              source: "currency_cache",
+              message: "Currency cache warming failed during scheduled snapshot",
+              details: { error: error instanceof Error ? error.message : String(error) },
+              userId: user.id,
+            });
             // Continue anyway
           }
         }
 
         // Step 1: Sync Plaid balances if enabled
-        const plaidSyncEnabled = await isPlaidSyncEnabledForUser(user.id);
         if (plaidSyncEnabled) {
           console.log(`[Scheduler] Syncing Plaid balances for user #${user.id} (${user.username})...`);
           const syncResult = await syncPlaidBalancesForUser(user.id);
+          summary.plaidAccountsUpdated += syncResult.accountsUpdated;
           if (syncResult.accountsUpdated > 0) {
             console.log(`[Scheduler] Synced ${syncResult.accountsUpdated} account(s) for user #${user.id}`);
           }
           if (syncResult.errors.length > 0) {
             console.error(`[Scheduler] Plaid sync errors for user #${user.id}:`, syncResult.errors);
+            summary.errorCount += syncResult.errors.length;
+            await logSystemEvent({
+              level: "error",
+              source: "plaid_sync",
+              message: `Plaid sync failed for ${syncResult.errors.length} institution(s) during scheduled snapshot`,
+              details: { errors: syncResult.errors, accountsUpdated: syncResult.accountsUpdated },
+              userId: user.id,
+            });
           }
         } else {
           console.log(`[Scheduler] Plaid sync disabled for user #${user.id} (${user.username}), skipping.`);
         }
 
         // Step 2: Refresh ticker prices if enabled
-        const priceRefreshEnabled = await isPriceRefreshEnabledForUser(user.id);
         if (priceRefreshEnabled) {
           console.log(`[Scheduler] Refreshing ticker prices for user #${user.id} (${user.username})...`);
           const refreshResult = await refreshTickerPricesForUser(user.id, userCurrency);
+          summary.tickersRefreshed += refreshResult.updated;
           if (refreshResult.updated > 0) {
             console.log(`[Scheduler] Refreshed ${refreshResult.updated} ticker(s) for user #${user.id}`);
           }
           if (refreshResult.failed.length > 0) {
             console.error(`[Scheduler] Price refresh errors for user #${user.id}:`, refreshResult.failed);
+            summary.errorCount += refreshResult.failed.length;
+            await logSystemEvent({
+              level: "error",
+              source: "price_refresh",
+              message: `Price refresh failed for ${refreshResult.failed.length} ticker(s) during scheduled snapshot`,
+              details: { failed: refreshResult.failed, updated: refreshResult.updated },
+              userId: user.id,
+            });
           }
         } else {
           console.log(`[Scheduler] Price refresh disabled for user #${user.id} (${user.username}), skipping.`);
@@ -641,22 +680,42 @@ async function runSnapshotTask() {
               .set({ totalSavings, totalInvestments, totalAssets, totalDebt, netWorth })
               .where(eq(schema.portfolioSnapshots.id, existingSnapshot[0].id));
 
+            summary.snapshotsUpdated++;
             console.log(`[Scheduler] Updated existing snapshot #${existingSnapshot[0].id} for user #${user.id} with refreshed prices.`);
           }
         } else {
           // Create snapshot for this user
           const snapshotId = await createSnapshotForUser(user.id);
+          summary.snapshotsCreated++;
           console.log(`[Scheduler] Created snapshot #${snapshotId} for user #${user.id} (${user.username})`);
         }
       } catch (userError) {
         console.error(`[Scheduler] Failed to process user #${user.id}:`, userError);
+        summary.errorCount++;
+        await logSystemEvent({
+          level: "error",
+          source: "snapshot",
+          message: "Scheduled snapshot failed",
+          details: { error: userError instanceof Error ? userError.message : String(userError) },
+          userId: user.id,
+        });
         // Continue with other users even if one fails
       }
     }
 
-    console.log("[Scheduler] Completed processing for all users.");
+    const durationMs = Date.now() - runStart;
+    console.log(`[Scheduler] Completed processing for all users in ${durationMs}ms.`, summary);
+    // No log entry on a clean or already-logged run — every failure above
+    // is recorded at its source, so a blanket summary would just duplicate
+    // (or, on success, pointlessly restate) what's already there.
   } catch (error) {
     console.error("[Scheduler] Failed to run snapshot task:", error);
+    await logSystemEvent({
+      level: "error",
+      source: "scheduler",
+      message: "Scheduled snapshot run failed",
+      details: { error: error instanceof Error ? error.message : String(error) },
+    });
   }
 }
 
@@ -666,6 +725,22 @@ async function runSnapshotTask() {
 function timeToCron(time: string): string {
   const [hours, minutes] = time.split(":").map(Number);
   return `${minutes} ${hours} * * *`;
+}
+
+/**
+ * Schedule the snapshot job, interpreting the time in the configured
+ * timezone when one is set. Falls back to server-local time if the
+ * timezone is invalid.
+ */
+function scheduleSnapshotJob(cronExpression: string, timezone?: string): ScheduledTask {
+  if (timezone) {
+    try {
+      return cron.schedule(cronExpression, runSnapshotTask, { timezone });
+    } catch (error) {
+      console.error(`[Scheduler] Invalid timezone "${timezone}", falling back to server time:`, error);
+    }
+  }
+  return cron.schedule(cronExpression, runSnapshotTask);
 }
 
 /**
@@ -685,16 +760,23 @@ export async function initScheduler() {
 
   try {
     const snapshotTime = await getSnapshotTime();
+    const timezone = await getSnapshotTimezone();
     const cronExpression = timeToCron(snapshotTime);
 
-    console.log(`[Scheduler] Initializing with snapshot time: ${snapshotTime} (cron: ${cronExpression})`);
+    console.log(`[Scheduler] Initializing with snapshot time: ${snapshotTime} (cron: ${cronExpression}, timezone: ${timezone || "server default"})`);
 
-    currentJob = cron.schedule(cronExpression, runSnapshotTask);
+    currentJob = scheduleSnapshotJob(cronExpression, timezone);
 
     schedulerInitialized = true;
     console.log("[Scheduler] Initialized successfully");
   } catch (error) {
     console.error("[Scheduler] Failed to initialize:", error);
+    await logSystemEvent({
+      level: "error",
+      source: "scheduler",
+      message: "Scheduler failed to initialize — automatic snapshots will not run",
+      details: { error: error instanceof Error ? error.message : String(error) },
+    });
   }
 }
 
@@ -702,15 +784,35 @@ export async function initScheduler() {
  * Update the scheduler with a new time
  */
 export async function updateSchedulerTime(newTime: string) {
+  // The scheduler only runs in production; don't start a job in dev
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[Scheduler] Skipping reschedule in development mode");
+    return;
+  }
+
   if (currentJob) {
     currentJob.stop();
     currentJob = null;
   }
 
+  const timezone = await getSnapshotTimezone();
   const cronExpression = timeToCron(newTime);
-  console.log(`[Scheduler] Updating snapshot time to: ${newTime} (cron: ${cronExpression})`);
+  console.log(`[Scheduler] Updating snapshot time to: ${newTime} (cron: ${cronExpression}, timezone: ${timezone || "server default"})`);
 
-  currentJob = cron.schedule(cronExpression, runSnapshotTask);
+  currentJob = scheduleSnapshotJob(cronExpression, timezone);
+  schedulerInitialized = true;
+}
+
+/**
+ * Reschedule the snapshot job with the current time and timezone from the
+ * database. Call after the TIMEZONE setting changes so the new timezone
+ * takes effect without an app restart.
+ */
+export async function refreshScheduler() {
+  if (process.env.NODE_ENV !== "production") return;
+
+  const snapshotTime = await getSnapshotTime();
+  await updateSchedulerTime(snapshotTime);
 }
 
 /**
