@@ -326,7 +326,7 @@ export default function DashboardPage() {
       {/* Charts */}
       <div className="grid gap-6 md:grid-cols-2">
         {/* Income vs Expenses Trend Chart */}
-        <Card className="col-span-2">
+        <Card className="col-span-2 flex flex-col">
           <CardHeader>
             <CardTitle>Income vs Expenses</CardTitle>
             <CardDescription>
@@ -335,8 +335,8 @@ export default function DashboardPage() {
                 : `Monthly comparison for ${selectedYear}`}
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <ChartContainer config={areaChartConfig} className="h-[300px] w-full">
+          <CardContent className="flex flex-col flex-1 pb-6">
+            <ChartContainer config={areaChartConfig} className="flex-1 min-h-[300px] w-full">
               <AreaChart
                 data={activeTrendData || []}
                 margin={{ left: 12, right: 12 }}
@@ -382,91 +382,94 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Monthly Expenses by Category (stacked) */}
-        <Card className="col-span-2">
-          <CardHeader>
-            <CardTitle>Monthly Expenses</CardTitle>
-            <CardDescription>
-              {viewMode === "all"
-                ? "Monthly breakdown across all time"
-                : `Monthly breakdown for ${selectedYear}`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!monthlyExpensesData || monthlyExpensesData.categorySeries.length === 0 ? (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No spending data yet.
-              </div>
-            ) : (
-              <ChartContainer config={monthlyExpensesChartConfig} className="h-[300px] w-full">
-                <BarChart data={monthlyExpensesData.chartRows} margin={{ left: 12, right: 12 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="month"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) => formatAmount(value, userCurrency, false)}
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={
-                      <ChartTooltipContent
-                        formatter={(value, name, item) => (
-                          <div className="flex w-full flex-1 items-center gap-2">
-                            <div
-                              className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                              style={{ backgroundColor: item.color }}
-                            />
-                            <div className="flex flex-1 items-center justify-between gap-4 leading-none">
-                              <span className="text-muted-foreground">{name}</span>
-                              <span className="text-foreground font-mono font-medium tabular-nums">
-                                {formatAmount(Number(value), userCurrency)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      />
-                    }
-                  />
-                  <ChartLegend content={<ChartLegendContent />} />
-                  {monthlyExpensesData.categorySeries.map((series, index) => (
-                    <Bar
-                      key={series.categoryName}
-                      dataKey={series.categoryName}
-                      stackId="expenses"
-                      radius={index === monthlyExpensesData.categorySeries.length - 1 ? [4, 4, 0, 0] : 0}
-                      fill={PIE_COLORS[index % PIE_COLORS.length]}
-                      fillOpacity={0.5}
-                      stroke={PIE_COLORS[index % PIE_COLORS.length]}
-                      strokeWidth={1.5}
+        {/* Monthly Expenses + Category Distribution (side by side, 2/3 + 1/3) */}
+        <div className="col-span-2 grid grid-cols-3 gap-6 items-stretch">
+          {/* Monthly Expenses by Category (stacked) */}
+          <Card className="col-span-2 flex flex-col">
+            <CardHeader>
+              <CardTitle>Monthly Expenses</CardTitle>
+              <CardDescription>
+                {viewMode === "all"
+                  ? "Monthly breakdown across all time"
+                  : `Monthly breakdown for ${selectedYear}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1 pb-6">
+              {!monthlyExpensesData || monthlyExpensesData.categorySeries.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  No spending data yet.
+                </div>
+              ) : (
+                <ChartContainer config={monthlyExpensesChartConfig} className="flex-1 min-h-0 w-full">
+                  <BarChart data={monthlyExpensesData.chartRows} margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
                     />
-                  ))}
-                </BarChart>
-              </ChartContainer>
-            )}
-          </CardContent>
-        </Card>
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tickFormatter={(value) => formatAmount(value, userCurrency, false)}
+                    />
+                    <ChartTooltip
+                      cursor={false}
+                      content={
+                        <ChartTooltipContent
+                          formatter={(value, name, item) => (
+                            <div className="flex w-full flex-1 items-center gap-2">
+                              <div
+                                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                                style={{ backgroundColor: item.color }}
+                              />
+                              <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                                <span className="text-muted-foreground">{name}</span>
+                                <span className="text-foreground font-mono font-medium tabular-nums">
+                                  {formatAmount(Number(value), userCurrency)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        />
+                      }
+                    />
+                    <ChartLegend content={<ChartLegendContent />} />
+                    {monthlyExpensesData.categorySeries.map((series, index) => (
+                      <Bar
+                        key={series.categoryName}
+                        dataKey={series.categoryName}
+                        stackId="expenses"
+                        radius={index === monthlyExpensesData.categorySeries.length - 1 ? [4, 4, 0, 0] : 0}
+                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                        fillOpacity={0.5}
+                        stroke={PIE_COLORS[index % PIE_COLORS.length]}
+                        strokeWidth={1.5}
+                      />
+                    ))}
+                  </BarChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
 
-        {/* Category Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Category Distribution</CardTitle>
-            <CardDescription>{periodName} percentage breakdown</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {categorySpendingData.length === 0 ? (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No spending data yet.
-              </div>
-            ) : (
-              <>
-                <ChartContainer config={pieChartConfig} className="h-[300px] w-full">
+          {/* Category Pie Chart */}
+          <Card className="col-span-1 flex flex-col">
+            <CardHeader>
+              <CardTitle>Category Distribution</CardTitle>
+              <CardDescription>
+                {periodName} · {categorySpendingData.length > 0 ? formatAmount(totalCategorySpending, userCurrency) : "No data"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1 pb-6">
+              {categorySpendingData.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  No spending data yet.
+                </div>
+              ) : (
+                <ChartContainer config={pieChartConfig} className="flex-1 min-h-0 w-full">
                   <PieChart>
                     <ChartTooltip
                       cursor={false}
@@ -510,14 +513,10 @@ export default function DashboardPage() {
                     </Pie>
                   </PieChart>
                 </ChartContainer>
-                <div className="mt-4 text-center">
-                  <p className="text-2xl font-bold">{formatAmount(totalCategorySpending, userCurrency)}</p>
-                  <p className="text-sm text-muted-foreground">Total spending in {periodName}</p>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
     </div>

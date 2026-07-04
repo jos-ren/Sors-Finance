@@ -3,7 +3,7 @@
 import { use, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { Check, Save, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Check, Save, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -313,6 +313,10 @@ export default function CategoryTransactionsPage({
 
   const hasPendingEdits = pendingEdits.size > 0;
 
+  const clearAllEdits = useCallback(() => {
+    setPendingEdits(new Map());
+  }, []);
+
   const [sortCol, setSortCol] = useState<SortCol | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
@@ -487,15 +491,24 @@ export default function CategoryTransactionsPage({
         </CardContent>
       </Card>
 
-      {/* FAB */}
+      {/* FABs */}
       {hasPendingEdits && (
-        <button
-          onClick={saveAll}
-          className="fixed bottom-8 right-8 z-50 flex items-center gap-2 rounded-full bg-green-600 px-5 py-3 text-sm font-medium text-white shadow-lg hover:bg-green-700 transition-colors"
-        >
-          <Save className="h-4 w-4" />
-          Save all ({pendingEdits.size})
-        </button>
+        <div className="fixed bottom-8 right-8 z-50 flex items-center gap-3">
+          <button
+            onClick={clearAllEdits}
+            aria-label="Clear"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-input/30 text-foreground shadow-lg transition-colors hover:bg-input/50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <button
+            onClick={saveAll}
+            className="flex items-center gap-2 rounded-full bg-[var(--alt-lime)] px-5 py-3 text-sm font-medium text-black shadow-lg transition-colors hover:opacity-90"
+          >
+            <Save className="h-4 w-4" />
+            Save all ({pendingEdits.size})
+          </button>
+        </div>
       )}
     </div>
   );

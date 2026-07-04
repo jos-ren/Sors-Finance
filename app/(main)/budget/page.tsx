@@ -10,7 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Check,
+  Save,
   X,
   Copy,
   Settings,
@@ -1031,28 +1031,6 @@ export default function BudgetPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {hasChanges && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCancel}
-                disabled={isSaving}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                <Check className="h-4 w-4 mr-1" />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            </>
-          )}
           {hiddenCategories.length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
@@ -1153,6 +1131,28 @@ export default function BudgetPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* FABs */}
+      {hasChanges && (
+        <div className="fixed bottom-8 right-8 z-50 flex items-center gap-3">
+          <button
+            onClick={handleCancel}
+            disabled={isSaving}
+            aria-label="Clear"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-input/30 text-foreground shadow-lg transition-colors hover:bg-input/50 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex items-center gap-2 rounded-full bg-[var(--alt-lime)] px-5 py-3 text-sm font-medium text-black shadow-lg transition-colors hover:opacity-90 disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
