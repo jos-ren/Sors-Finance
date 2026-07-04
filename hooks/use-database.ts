@@ -462,6 +462,102 @@ export function useMonthlyTrend(year: number) {
   return data;
 }
 
+export interface CategoryTrendRow {
+  label: string;
+  categoryTotals: Record<number, number>;
+}
+
+export function useMonthlyByCategoryForYear(year: number): CategoryTrendRow[] | undefined {
+  const { data } = useSWR(
+    `trend/monthlyByCategory/${year}`,
+    () => api.getMonthlyByCategory(year),
+    swrConfig
+  );
+  return data?.map((r) => ({ label: r.monthName, categoryTotals: r.categoryTotals }));
+}
+
+export function useAllTimeMonthlyByCategory(minMonths?: number): CategoryTrendRow[] | undefined {
+  const { data } = useSWR(
+    "trend/allTimeMonthlyByCategory",
+    () => api.getAllTimeMonthlyByCategory(),
+    swrConfig
+  );
+
+  if (!data) {
+    return undefined;
+  }
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const rows = [...data];
+
+  // Pad with future months (never past ones) if there isn't enough history to fill minMonths
+  if (minMonths && rows.length < minMonths) {
+    if (rows.length === 0) {
+      const now = new Date();
+      for (let i = 0; i < minMonths; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        rows.push({ year: d.getFullYear(), month: d.getMonth(), monthName: monthNames[d.getMonth()], categoryTotals: {} });
+      }
+    } else {
+      const deficit = minMonths - rows.length;
+      const last = rows[rows.length - 1];
+      for (let i = 1; i <= deficit; i++) {
+        const d = new Date(last.year, last.month + i, 1);
+        rows.push({ year: d.getFullYear(), month: d.getMonth(), monthName: monthNames[d.getMonth()], categoryTotals: {} });
+      }
+    }
+  }
+
+  return rows.map((r) => ({ label: `${r.monthName} ${r.year}`, categoryTotals: r.categoryTotals }));
+}
+
+export interface MonthlyExpenseCategorySeries {
+  categoryId: number;
+  categoryName: string;
+  total: number;
+}
+
+export function buildCategoryChartData(
+  rows: CategoryTrendRow[] | undefined,
+  categories: DbCategory[] | undefined
+): {
+  chartRows: Array<Record<string, number | string>>;
+  categorySeries: MonthlyExpenseCategorySeries[];
+} | undefined {
+  if (!rows || !categories) {
+    return undefined;
+  }
+
+  const totalsByCategory = new Map<number, number>();
+  for (const row of rows) {
+    for (const [categoryIdStr, amount] of Object.entries(row.categoryTotals)) {
+      const categoryId = Number(categoryIdStr);
+      totalsByCategory.set(categoryId, (totalsByCategory.get(categoryId) || 0) + amount);
+    }
+  }
+
+  const categorySeries: MonthlyExpenseCategorySeries[] = categories
+    .map((category) => ({
+      categoryId: category.id!,
+      categoryName: category.name,
+      total: totalsByCategory.get(category.id!) || 0,
+    }))
+    .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const chartRows = rows.map((row) => {
+    const chartRow: Record<string, number | string> = {
+      month: row.label,
+    };
+    for (const series of categorySeries) {
+      chartRow[series.categoryName] = row.categoryTotals[series.categoryId] || 0;
+    }
+    return chartRow;
+  });
+
+  return { chartRows, categorySeries };
+}
+
 export function useDailyTrend(year: number, month: number) {
   const { data } = useSWR(
     `trend/daily/${year}/${month}`,

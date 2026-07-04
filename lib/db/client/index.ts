@@ -70,6 +70,8 @@ export {
   getAllTimeSpendingByCategory,
   getAllTimeMonthlyTrend,
   getMonthlyTrend,
+  getMonthlyByCategory,
+  getAllTimeMonthlyByCategory,
   getDailyTrend,
   getTransactionCount,
   getAvailablePeriods,

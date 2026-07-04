@@ -207,6 +207,25 @@ export async function getMonthlyTrend(year: number): Promise<
   return data;
 }
 
+export async function getMonthlyByCategory(year: number): Promise<
+  Array<{ month: number; monthName: string; categoryTotals: Record<number, number> }>
+> {
+  const params = new URLSearchParams({ type: "monthlyByCategory", year: String(year) });
+  const res = await fetch(`/api/transactions/aggregations?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch monthly by category");
+  const { data } = await res.json();
+  return data;
+}
+
+export async function getAllTimeMonthlyByCategory(): Promise<
+  Array<{ year: number; month: number; monthName: string; categoryTotals: Record<number, number> }>
+> {
+  const res = await fetch("/api/transactions/aggregations?type=allTimeMonthlyByCategory");
+  if (!res.ok) throw new Error("Failed to fetch all-time monthly by category");
+  const { data } = await res.json();
+  return data;
+}
+
 export async function getDailyTrend(year: number, month: number): Promise<
   Array<{ day: number; dayName: string; income: number; expenses: number }>
 > {

@@ -8,12 +8,12 @@ import {
   Receipt,
   PiggyBank,
   ArrowUpRight,
-  Calendar,
 } from "lucide-react";
 import {
   Area,
   AreaChart,
   Bar,
+  BarChart,
   BarProps,
   ComposedChart,
   CartesianGrid,
@@ -40,16 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   useMonthlyTrend,
-  useDailyTrend,
-  useMonthlyTotals,
   useYearlyTotals,
   useBudgetWithSpending,
   useSpendingByCategoryWithNames,
@@ -59,11 +51,14 @@ import {
   useAllTimeTotals,
   useAllTimeSpendingByCategory,
   useAllTimeMonthlyTrend,
+  useCategories,
+  useMonthlyByCategoryForYear,
+  useAllTimeMonthlyByCategory,
+  buildCategoryChartData,
 } from "@/hooks";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useSetPageHeader } from "@/contexts/page-header-context";
-import { cn } from "@/lib/utils";
 
 const areaChartConfig = {
   income: {
@@ -132,166 +127,23 @@ function StatCard({
   );
 }
 
-// Month names for display
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
-
-const MONTH_NAMES_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-];
-
-// Month picker component - grid-based month selection with year navigation
-function MonthPicker({
-  size = "default",
-  selectedMonth,
-  onMonthSelect,
-  availableYears,
-  availableMonthsByYear,
-}: {
-  size?: "default" | "sm";
-  selectedMonth: { year: number; month: number };
-  onMonthSelect: (year: number, month: number) => void;
-  availableYears: number[];
-  availableMonthsByYear?: Map<number, number[]>;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [displayYear, setDisplayYear] = useState(selectedMonth.year);
-
-  const selectedMonthDisplay = `${MONTH_NAMES_SHORT[selectedMonth.month]} ${selectedMonth.year}`;
-
-  // Current month/year should always be allowed
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-
-  // Generate year options - include current year even if no data
-  const yearOptions = availableYears.length > 0
-    ? [...new Set([...availableYears, currentYear])].sort((a, b) => b - a)
-    : Array.from({ length: 5 }, (_, i) => currentYear - 2 + i);
-
-  // Check if a month is enabled (has data OR is current month)
-  const isMonthEnabled = (year: number, month: number) => {
-    // Always allow current month
-    if (year === currentYear && month === currentMonth) return true;
-    // If no data loaded yet, allow all
-    if (!availableMonthsByYear) return true;
-    // Check if month has data
-    return availableMonthsByYear.get(year)?.includes(month) ?? false;
-  };
-
-  // Reset display year when popover opens
-  const handleOpenChange = (open: boolean) => {
-    if (open) {
-      setDisplayYear(selectedMonth.year);
-    }
-    setIsOpen(open);
-  };
-
-  const handleMonthClick = (monthIndex: number) => {
-    onMonthSelect(displayYear, monthIndex);
-    setIsOpen(false);
-  };
-
-  const canGoPrev = yearOptions.includes(displayYear - 1);
-  const canGoNext = yearOptions.includes(displayYear + 1);
-
-  return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size={size === "sm" ? "sm" : "default"}
-          className={cn(
-            "justify-start text-left font-normal",
-            size === "sm" ? "w-[110px] h-8 text-xs" : "w-[140px]"
-          )}
-        >
-          <Calendar className={size === "sm" ? "mr-1 h-3 w-3" : "mr-2 h-4 w-4"} />
-          {selectedMonthDisplay}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-0" align="start">
-        {/* Year selector header */}
-        <div className="flex items-center justify-between p-3 border-b">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled={!canGoPrev}
-            onClick={() => setDisplayYear(y => y - 1)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </Button>
-          <Select
-            value={displayYear.toString()}
-            onValueChange={(v) => setDisplayYear(parseInt(v))}
-          >
-            <SelectTrigger className="w-[100px] h-7 border-0 font-semibold focus:ring-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {yearOptions.map((year) => (
-                <SelectItem key={year} value={year.toString()}>
-                  {year}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled={!canGoNext}
-            onClick={() => setDisplayYear(y => y + 1)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-          </Button>
-        </div>
-        {/* Month grid */}
-        <div className="grid grid-cols-3 gap-1 p-3">
-          {MONTH_NAMES_SHORT.map((name, index) => {
-            const isSelected = selectedMonth.year === displayYear && selectedMonth.month === index;
-            const isEnabled = isMonthEnabled(displayYear, index);
-            return (
-              <Button
-                key={name}
-                variant={isSelected ? "default" : "ghost"}
-                size="sm"
-                className={cn("h-9", !isEnabled && "opacity-40")}
-                disabled={!isEnabled}
-                onClick={() => handleMonthClick(index)}
-              >
-                {name}
-              </Button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 export default function DashboardPage() {
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
-  // View mode: "all", "year", or "month"
-  const [viewMode, setViewMode] = useState<"all" | "year" | "month">("all");
+  // View mode: "all" or "year"
+  const [viewMode, setViewMode] = useState<"all" | "year">("all");
 
   // Selection values
   const [selectedYearValue, setSelectedYearValue] = useState(currentYear);
-  const [selectedMonthValue, setSelectedMonthValue] = useState({ year: currentYear, month: currentMonth });
 
   // Get available periods with data
   const availablePeriods = useAvailablePeriods();
 
   // Handle view mode change - reset to current period
   const handleViewModeChange = useCallback((mode: string) => {
-    const newMode = mode as "all" | "year" | "month";
+    const newMode = mode as "all" | "year";
     setViewMode(newMode);
     if (newMode === "year") {
       // Default to current year or first available year
@@ -299,50 +151,16 @@ export default function DashboardPage() {
         ? currentYear
         : availablePeriods?.years[0] ?? currentYear;
       setSelectedYearValue(availableYear);
-    } else if (newMode === "month") {
-      // Default to current month or first available month
-      const hasCurrentMonth = availablePeriods?.monthsByYear.get(currentYear)?.includes(currentMonth);
-      if (hasCurrentMonth) {
-        setSelectedMonthValue({ year: currentYear, month: currentMonth });
-      } else if (availablePeriods?.years[0]) {
-        const year = availablePeriods.years[0];
-        const months = availablePeriods.monthsByYear.get(year);
-        if (months && months.length > 0) {
-          setSelectedMonthValue({ year, month: months[months.length - 1] });
-        }
-      }
     }
     // "all" mode doesn't need any state changes
-  }, [availablePeriods, currentYear, currentMonth]);
+  }, [availablePeriods, currentYear]);
 
   // Parse the active selection based on view mode
-  const { selectedYear, selectedMonth } = useMemo(() => {
-    if (viewMode === "all") {
-      return {
-        selectedYear: undefined,
-        selectedMonth: undefined,
-      };
-    } else if (viewMode === "year") {
-      return {
-        selectedYear: selectedYearValue,
-        selectedMonth: undefined,
-      };
-    } else {
-      return {
-        selectedYear: selectedMonthValue.year,
-        selectedMonth: selectedMonthValue.month,
-      };
-    }
-  }, [viewMode, selectedYearValue, selectedMonthValue]);
+  const selectedYear = viewMode === "all" ? undefined : selectedYearValue;
 
   // Privacy mode and user currency
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
-
-  // Handler for month selection
-  const handleMonthSelect = useCallback((year: number, month: number) => {
-    setSelectedMonthValue({ year, month });
-  }, []);
 
   // Memoized available years - use currentYear if no data exists
   const availableYears = useMemo(
@@ -357,7 +175,6 @@ export default function DashboardPage() {
         <TabsList className="h-8">
           <TabsTrigger value="all" className="text-xs px-2 py-1">All</TabsTrigger>
           <TabsTrigger value="year" className="text-xs px-2 py-1">Year</TabsTrigger>
-          <TabsTrigger value="month" className="text-xs px-2 py-1">Month</TabsTrigger>
         </TabsList>
       </Tabs>
       {viewMode === "year" && (
@@ -372,48 +189,46 @@ export default function DashboardPage() {
           </SelectContent>
         </Select>
       )}
-      {viewMode === "month" && (
-        <MonthPicker
-          size="sm"
-          selectedMonth={selectedMonthValue}
-          onMonthSelect={handleMonthSelect}
-          availableYears={availableYears}
-          availableMonthsByYear={availablePeriods?.monthsByYear}
-        />
-      )}
     </div>
-  ), [viewMode, selectedYearValue, availableYears, selectedMonthValue, handleMonthSelect, handleViewModeChange, availablePeriods?.years, availablePeriods?.monthsByYear, currentYear]);
+  ), [viewMode, selectedYearValue, availableYears, handleViewModeChange]);
 
   // Set page header and get sentinel ref
   const sentinelRef = useSetPageHeader("Dashboard", headerDateSelector);
 
   // Fetch real data from Dexie - use selected date range
   const monthlyTrend = useMonthlyTrend(selectedYear ?? currentYear);
-  const dailyTrend = useDailyTrend(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
   const yearlyTotals = useYearlyTotals(selectedYear ?? currentYear);
-  const monthlyTotals = useMonthlyTotals(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
-  const budgetWithSpending = useBudgetWithSpending(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
-  const spendingByCategory = useSpendingByCategoryWithNames(selectedYear ?? currentYear, selectedMonth);
+  const budgetWithSpending = useBudgetWithSpending(selectedYear ?? currentYear, currentMonth);
+  const spendingByCategory = useSpendingByCategoryWithNames(selectedYear ?? currentYear);
   const allTransactionCount = useTransactionCount();
   const yearTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear);
-  const monthTransactionCount = useTransactionCountByPeriod(selectedYear ?? currentYear, selectedMonth ?? currentMonth);
 
   // All-time data hooks
   const allTimeTotals = useAllTimeTotals();
   const allTimeSpendingByCategory = useAllTimeSpendingByCategory();
   const allTimeMonthlyTrend = useAllTimeMonthlyTrend();
 
+  // Monthly expenses breakdown chart - driven by the same All/Year picker as the rest of the page.
+  const categories = useCategories();
+  const monthlyCategoryTrend = useMonthlyByCategoryForYear(selectedYearValue);
+  const allTimeCategoryTrend = useAllTimeMonthlyByCategory(12);
+  const activeCategoryTrend = viewMode === "all" ? allTimeCategoryTrend : monthlyCategoryTrend;
+  const monthlyExpensesData = useMemo(
+    () => buildCategoryChartData(activeCategoryTrend, categories),
+    [activeCategoryTrend, categories]
+  );
+
   // Use appropriate totals based on view mode
-  const activeTotals = viewMode === "all" ? allTimeTotals : viewMode === "year" ? yearlyTotals : monthlyTotals;
+  const activeTotals = viewMode === "all" ? allTimeTotals : yearlyTotals;
 
   // Use appropriate spending data based on view mode
   const activeSpendingByCategory = viewMode === "all" ? allTimeSpendingByCategory : spendingByCategory;
 
   // Use appropriate trend data based on view mode
-  const activeTrendData = viewMode === "all" ? allTimeMonthlyTrend : viewMode === "year" ? monthlyTrend : dailyTrend;
+  const activeTrendData = viewMode === "all" ? allTimeMonthlyTrend : monthlyTrend;
 
   // Use appropriate transaction count based on view mode
-  const activeTransactionCount = viewMode === "all" ? allTransactionCount : viewMode === "year" ? yearTransactionCount : monthTransactionCount;
+  const activeTransactionCount = viewMode === "all" ? allTransactionCount : yearTransactionCount;
 
   // Transform spending data for charts (use direct spending, not budget-dependent)
   const categorySpendingData = useMemo(() => {
@@ -445,6 +260,18 @@ export default function DashboardPage() {
     }, {} as ChartConfig);
   }, [categorySpendingData]);
 
+  // Create monthly expenses chart config dynamically
+  const monthlyExpensesChartConfig = useMemo(() => {
+    if (!monthlyExpensesData) return {} as ChartConfig;
+    return monthlyExpensesData.categorySeries.reduce((acc, item, index) => {
+      acc[item.categoryName] = {
+        label: item.categoryName,
+        color: PIE_COLORS[index % PIE_COLORS.length],
+      };
+      return acc;
+    }, {} as ChartConfig);
+  }, [monthlyExpensesData]);
+
   // Calculate stats based on view mode (yearly or monthly totals)
   const totalIncome = activeTotals?.income ?? 0;
   const totalExpenses = activeTotals?.expenses ?? 0;
@@ -454,12 +281,8 @@ export default function DashboardPage() {
   const totalCategorySpending = categorySpendingData.reduce((sum, item) => sum + item.amount, 0);
 
   // Format period name for display
-  const periodName = viewMode === "all"
-    ? "All Time"
-    : selectedMonth !== undefined
-      ? `${MONTH_NAMES[selectedMonth]} ${selectedYear}`
-      : `${selectedYear}`;
-  const periodDescription = viewMode === "all" ? "All time" : selectedMonth !== undefined ? "This month" : "This year";
+  const periodName = viewMode === "all" ? "All Time" : `${selectedYear}`;
+  const periodDescription = viewMode === "all" ? "All time" : "This year";
 
   return (
     <div className="p-6 space-y-6">
@@ -476,7 +299,6 @@ export default function DashboardPage() {
             <TabsList>
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="year">Year</TabsTrigger>
-              <TabsTrigger value="month">Month</TabsTrigger>
             </TabsList>
           </Tabs>
           {viewMode === "year" && (
@@ -490,14 +312,6 @@ export default function DashboardPage() {
                 ))}
               </SelectContent>
             </Select>
-          )}
-          {viewMode === "month" && (
-            <MonthPicker
-              selectedMonth={selectedMonthValue}
-              onMonthSelect={handleMonthSelect}
-              availableYears={availableYears}
-              availableMonthsByYear={availablePeriods?.monthsByYear}
-            />
           )}
         </div>
       </div>
@@ -542,9 +356,7 @@ export default function DashboardPage() {
             <CardDescription>
               {viewMode === "all"
                 ? "Monthly comparison across all time"
-                : viewMode === "year"
-                  ? `Monthly comparison for ${selectedYear}`
-                  : `Daily comparison for ${periodName}`}
+                : `Monthly comparison for ${selectedYear}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -555,11 +367,11 @@ export default function DashboardPage() {
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey={viewMode === "month" ? "dayName" : "monthName"}
+                  dataKey="monthName"
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  interval={viewMode === "month" ? "preserveStartEnd" : 0}
+                  interval={0}
                 />
                 <YAxis
                   tickLine={false}
@@ -591,6 +403,77 @@ export default function DashboardPage() {
                 />
               </AreaChart>
             </ChartContainer>
+          </CardContent>
+        </Card>
+
+        {/* Monthly Expenses by Category (stacked) */}
+        <Card className="col-span-2">
+          <CardHeader>
+            <CardTitle>Monthly Expenses</CardTitle>
+            <CardDescription>
+              {viewMode === "all"
+                ? "Monthly breakdown across all time"
+                : `Monthly breakdown for ${selectedYear}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!monthlyExpensesData || monthlyExpensesData.categorySeries.length === 0 ? (
+              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                No spending data yet.
+              </div>
+            ) : (
+              <ChartContainer config={monthlyExpensesChartConfig} className="h-[300px] w-full">
+                <BarChart data={monthlyExpensesData.chartRows} margin={{ left: 12, right: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    tickFormatter={(value) => formatAmount(value, userCurrency, false)}
+                  />
+                  <ChartTooltip
+                    cursor={false}
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, name, item) => (
+                          <div className="flex w-full flex-1 items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
+                              style={{ backgroundColor: item.color }}
+                            />
+                            <div className="flex flex-1 items-center justify-between gap-4 leading-none">
+                              <span className="text-muted-foreground">{name}</span>
+                              <span className="text-foreground font-mono font-medium tabular-nums">
+                                {formatAmount(Number(value), userCurrency)}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      />
+                    }
+                  />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  {monthlyExpensesData.categorySeries.map((series, index) => (
+                    <Bar
+                      key={series.categoryName}
+                      dataKey={series.categoryName}
+                      stackId="expenses"
+                      radius={index === monthlyExpensesData.categorySeries.length - 1 ? [4, 4, 0, 0] : 0}
+                      fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      fillOpacity={0.5}
+                      stroke={PIE_COLORS[index % PIE_COLORS.length]}
+                      strokeWidth={1.5}
+                    />
+                  ))}
+                </BarChart>
+              </ChartContainer>
+            )}
           </CardContent>
         </Card>
 
