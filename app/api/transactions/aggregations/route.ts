@@ -261,6 +261,101 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ data: trend, success: true });
       }
 
+      case "monthlyByCategory": {
+        // Spending by category for each month of a year
+        if (!year) {
+          return NextResponse.json(
+            { error: "Year is required", success: false },
+            { status: 400 }
+          );
+        }
+
+        const yearNum = parseInt(year, 10);
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const rows = [];
+
+        for (let m = 0; m < 12; m++) {
+          const startDate = new Date(yearNum, m, 1);
+          const endDate = new Date(yearNum, m + 1, 0, 23, 59, 59);
+
+          const conditions = [
+            eq(schema.transactions.userId, userId),
+            gte(schema.transactions.date, startDate),
+            lte(schema.transactions.date, endDate),
+          ];
+          if (excludedId) {
+            conditions.push(ne(schema.transactions.categoryId, excludedId));
+          }
+
+          const results = await db
+            .select({
+              categoryId: schema.transactions.categoryId,
+              total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
+            })
+            .from(schema.transactions)
+            .where(and(...conditions))
+            .groupBy(schema.transactions.categoryId);
+
+          const categoryTotals: Record<number, number> = {};
+          for (const r of results) {
+            if (r.categoryId !== null) {
+              categoryTotals[r.categoryId] = r.total || 0;
+            }
+          }
+
+          rows.push({
+            month: m,
+            monthName: monthNames[m],
+            categoryTotals,
+          });
+        }
+
+        return NextResponse.json({ data: rows, success: true });
+      }
+
+      case "allTimeMonthlyByCategory": {
+        // Spending by category for every month with data, across all time
+        const conditions = [eq(schema.transactions.userId, userId)];
+        if (excludedId) {
+          conditions.push(ne(schema.transactions.categoryId, excludedId));
+        }
+
+        const allTransactions = await db
+          .select()
+          .from(schema.transactions)
+          .where(and(...conditions));
+
+        const monthlyData: Record<string, Record<number, number>> = {};
+
+        for (const t of allTransactions) {
+          if (t.categoryId === null) continue;
+          const y = t.date.getFullYear();
+          const m = t.date.getMonth();
+          const key = `${y}-${m}`;
+
+          if (!monthlyData[key]) {
+            monthlyData[key] = {};
+          }
+          monthlyData[key][t.categoryId] =
+            (monthlyData[key][t.categoryId] || 0) + (t.amountOut - t.amountIn);
+        }
+
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const rows = Object.entries(monthlyData)
+          .map(([key, categoryTotals]) => {
+            const [y, m] = key.split("-").map(Number);
+            return {
+              year: y,
+              month: m,
+              monthName: monthNames[m],
+              categoryTotals,
+            };
+          })
+          .sort((a, b) => a.year - b.year || a.month - b.month);
+
+        return NextResponse.json({ data: rows, success: true });
+      }
+
       case "dailyTrend": {
         // Daily trend for a month
         if (!year || !month) {
