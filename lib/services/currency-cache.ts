@@ -68,9 +68,8 @@ async function getRequiredCurrencyPairs(userId: number): Promise<string[]> {
 /**
  * Fetches and caches exchange rates for a specific currency pair
  */
-async function fetchAndCacheRate(from: string, to: string, authCookies?: string): Promise<number | null> {
+async function fetchAndCacheRate(from: string, to: string, baseUrl: string, authCookies?: string): Promise<number | null> {
   try {
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     const headers: HeadersInit = authCookies ? { cookie: authCookies } : {};
     
     const response = await fetch(`${baseUrl}/api/exchange-rate?from=${from}&to=${to}`, { headers });
@@ -92,7 +91,7 @@ async function fetchAndCacheRate(from: string, to: string, authCookies?: string)
  * Pre-warms the currency cache with all needed exchange rates for a user
  * Should be called during "Sync All" or first-load snapshot
  */
-export async function warmCurrencyCache(userId: number, authCookies?: string): Promise<{
+export async function warmCurrencyCache(userId: number, baseUrl: string, authCookies?: string): Promise<{
   refreshed: number;
   failed: number;
   pairs: string[];
@@ -113,7 +112,7 @@ export async function warmCurrencyCache(userId: number, authCookies?: string): P
     await Promise.all(
       batch.map(async (pair) => {
         const [from, to] = pair.split('-');
-        const rate = await fetchAndCacheRate(from, to, authCookies);
+        const rate = await fetchAndCacheRate(from, to, baseUrl, authCookies);
         
         if (rate !== null) {
           refreshed++;
