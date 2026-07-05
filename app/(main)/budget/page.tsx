@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { Save, X, Settings2 } from "lucide-react";
+import { Save, X, Settings2, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
@@ -17,7 +17,8 @@ import {
   useAvailablePeriods,
   invalidateBudgets,
 } from "@/hooks";
-import { setBudget, getSetting, setSetting, findPreviousMonthWithBudgets, copyBudgetToMonth } from "@/lib/db/client";
+import { setBudget, getSetting, setSetting, findPreviousMonthWithBudgets, copyBudgetToMonth, seedDefaultBudget } from "@/lib/db/client";
+import { invalidateBudgetHierarchy } from "@/hooks/use-budget";
 import type { BudgetTree, BudgetTreeItem } from "@/lib/budget/types";
 import { computeEffectiveTree, parsePending } from "@/lib/budget/effective-tree";
 import { BudgetTreeInputProvider, useBudgetTreeInputs } from "@/components/features/budget/budget-tree-context";
@@ -28,6 +29,8 @@ import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previou
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
 import { ItemDetailSheet, type DetailItem } from "@/components/features/budget/item-detail-sheet";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
+import { ManageTree } from "@/components/features/budget/manage/manage-tree";
+import { ArchivedItemsSheet } from "@/components/features/budget/manage/archived-items-sheet";
 
 const SUGGESTION_GROUPS = ["Savings", "Goals", "Flexible Spending"];
 
@@ -37,6 +40,7 @@ export default function BudgetPage() {
   const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [manage, setManage] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
@@ -56,7 +60,7 @@ export default function BudgetPage() {
   const yearly = useYearlyBudgetSummary(selectedYear);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <div ref={sentinelRef} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -78,13 +82,23 @@ export default function BudgetPage() {
             onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
           />
           {viewMode === "monthly" && (
-            <Toggle pressed={manage} onPressedChange={setManage} variant="outline" size="sm" className="gap-1.5" aria-label="Manage budget structure">
-              <Settings2 className="h-4 w-4" />
-              Manage
-            </Toggle>
+            <>
+              {manage && (
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setArchivedOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archived
+                </Button>
+              )}
+              <Toggle pressed={manage} onPressedChange={setManage} variant="outline" size="sm" className="gap-1.5" aria-label="Manage budget structure">
+                <Settings2 className="h-4 w-4" />
+                Manage
+              </Toggle>
+            </>
           )}
         </div>
       </div>
+
+      <ArchivedItemsSheet open={archivedOpen} onOpenChange={setArchivedOpen} />
 
       {viewMode === "monthly" ? (
         !tree ? (
@@ -108,12 +122,28 @@ export default function BudgetPage() {
 }
 
 function EmptyBudget() {
+  const [seeding, setSeeding] = useState(false);
+  const handleSeed = async () => {
+    setSeeding(true);
+    try {
+      await seedDefaultBudget();
+      invalidateBudgetHierarchy();
+      toast.success("Starter budget created");
+    } catch {
+      toast.error("Failed to create starter budget");
+    } finally {
+      setSeeding(false);
+    }
+  };
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed py-16 text-center">
       <p className="text-lg font-medium">No budget yet</p>
       <p className="max-w-sm text-sm text-muted-foreground">
-        Add a group, subcategory, and item to start budgeting, or import transactions to see activity.
+        Start with a ready-made zero-based budget you can tweak, or turn on Manage mode to build your own.
       </p>
+      <Button onClick={handleSeed} disabled={seeding}>
+        {seeding ? "Creating…" : "Create starter budget"}
+      </Button>
     </div>
   );
 }
@@ -287,25 +317,28 @@ function MonthlyContent({
         />
       )}
 
-      {manage && (
-        <p className="rounded-lg border border-dashed bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-          Manage mode: use each row&apos;s ⋯ menu → Item details to rename, move, set targets, archive, or delete.
-        </p>
+      {manage ? (
+        <>
+          <p className="rounded-lg border border-dashed bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            Manage mode: drag to reorder, click a name to rename, use + to add. Click an item to open its details (keywords, target, move, archive, delete).
+          </p>
+          <ManageTree onOpenDetail={openDetail} />
+        </>
+      ) : (
+        <BudgetTreeView
+          tree={effective}
+          pending={pending}
+          formatAmount={fmt}
+          year={year}
+          month={month}
+          onPlannedChange={setPlanned}
+          onPlannedCommit={() => { /* pending already captured; commit is a no-op until Save */ }}
+          onOpenDetail={openDetail}
+        />
       )}
 
-      <BudgetTreeView
-        tree={effective}
-        pending={pending}
-        formatAmount={fmt}
-        year={year}
-        month={month}
-        onPlannedChange={setPlanned}
-        onPlannedCommit={() => { /* pending already captured; commit is a no-op until Save */ }}
-        onOpenDetail={openDetail}
-      />
-
       {/* Save/Cancel FAB */}
-      {pending.size > 0 && (
+      {!manage && pending.size > 0 && (
         <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border bg-card p-1.5 shadow-lg animate-in slide-in-from-bottom-4">
           <span className="px-3 text-sm text-muted-foreground">{pending.size} unsaved</span>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setPending(new Map())} disabled={saving}>

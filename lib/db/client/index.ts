@@ -51,6 +51,7 @@ export {
 
 // Budget hierarchy (groups → subcategories → items)
 export {
+  seedDefaultBudget,
   getBudgetHierarchy,
   createGroup,
   updateGroup,

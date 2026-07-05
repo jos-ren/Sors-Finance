@@ -46,6 +46,13 @@ async function del<T>(url: string): Promise<T> {
   return data;
 }
 
+// ---- Seed -------------------------------------------------------------------
+
+export async function seedDefaultBudget(): Promise<void> {
+  const res = await fetch("/api/budget/seed-default", { method: "POST" });
+  if (!res.ok) throw new Error("Failed to seed starter budget");
+}
+
 // ---- Read -------------------------------------------------------------------
 
 export async function getBudgetHierarchy(includeArchived = false): Promise<BudgetHierarchy> {

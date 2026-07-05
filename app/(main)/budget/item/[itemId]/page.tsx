@@ -57,7 +57,7 @@ export default function BudgetItemPage({ params }: { params: Promise<{ itemId: s
   const total = transactions?.reduce((a, t) => a + (t.amountOut - t.amountIn), 0) ?? 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 p-6">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
