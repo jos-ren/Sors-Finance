@@ -96,3 +96,8 @@ export async function getUncategorizedCategory(): Promise<DbCategory | undefined
   const categories = await getCategories();
   return categories.find((c) => c.name === "Uncategorized");
 }
+
+export async function getIncomeCategory(): Promise<DbCategory | undefined> {
+  const categories = await getCategories();
+  return categories.find((c) => c.name === "Income");
+}

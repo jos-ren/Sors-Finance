@@ -15,7 +15,6 @@ export interface DbCategory {
   keywords: string[];
   order: number;
   isSystem?: boolean;
-  excludeFromBudget?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,6 +24,45 @@ export const SYSTEM_CATEGORIES = {
   UNCATEGORIZED: "Uncategorized",
   INCOME: "Income",
 } as const;
+
+// ============================================
+// Budget Hierarchy Types (Group → Subcategory → Item)
+// ============================================
+
+export type BudgetItemType = "expense" | "goal";
+
+export interface DbBudgetGroup {
+  id?: number;
+  uuid: string;
+  name: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbBudgetSubcategory {
+  id?: number;
+  uuid: string;
+  name: string;
+  groupId: number;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DbBudgetItem {
+  id?: number;
+  uuid: string;
+  name: string;
+  subcategoryId: number;
+  keywords: string[];
+  itemType: BudgetItemType;
+  targetAmount?: number | null;
+  isActive: boolean;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 // ============================================
 // Transaction Types
@@ -44,6 +82,7 @@ export interface DbTransaction {
   sourceAccountName?: string | null; // Specific account name for tooltip
   note?: string | null;
   categoryId: number | null;
+  budgetItemId: number | null;
   categoryLocked: boolean;
   importId: number | null;
   createdAt: Date;
@@ -56,9 +95,9 @@ export interface DbTransaction {
 
 export interface DbBudget {
   id?: number;
-  categoryId: number;
+  budgetItemId: number;
   year: number;
-  month: number | null;
+  month: number; // 0–11 (monthly only)
   amount: number;
   createdAt: Date;
   updatedAt: Date;

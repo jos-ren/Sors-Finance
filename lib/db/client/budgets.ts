@@ -1,17 +1,13 @@
 /**
- * Client-side API wrapper for budget operations
+ * Client-side API wrapper for monthly budget rows (item-based).
+ *
+ * Budgets attach to budget items and are always monthly (yearly mode is gone).
  */
 
 import type { DbBudget } from "../types";
 
-export async function getBudgets(year: number, month?: number | null): Promise<DbBudget[]> {
-  const params = new URLSearchParams({ year: String(year) });
-  if (month !== undefined && month !== null) {
-    params.append("month", String(month));
-  } else {
-    params.append("month", "null");
-  }
-
+export async function getBudgets(year: number, month: number): Promise<DbBudget[]> {
+  const params = new URLSearchParams({ year: String(year), month: String(month) });
   const res = await fetch(`/api/budgets?${params}`);
   if (!res.ok) throw new Error("Failed to fetch budgets");
   const { data } = await res.json();
@@ -22,25 +18,17 @@ export async function getBudgets(year: number, month?: number | null): Promise<D
   }));
 }
 
-export async function getBudgetForCategory(
-  categoryId: number,
-  year: number,
-  month?: number | null
-): Promise<DbBudget | null> {
-  const budgets = await getBudgets(year, month);
-  return budgets.find((b) => b.categoryId === categoryId) || null;
-}
-
+/** Upsert a monthly planned amount for a budget item. Returns the row id. */
 export async function setBudget(
-  categoryId: number,
+  budgetItemId: number,
   year: number,
-  month: number | null,
+  month: number,
   amount: number
 ): Promise<number> {
   const res = await fetch("/api/budgets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ categoryId, year, month, amount }),
+    body: JSON.stringify({ budgetItemId, year, month, amount }),
   });
   if (!res.ok) throw new Error("Failed to save budget");
   const { data } = await res.json();
@@ -54,9 +42,9 @@ export async function deleteBudget(id: number): Promise<void> {
 
 export async function copyBudgetToMonth(
   fromYear: number,
-  fromMonth: number | null,
+  fromMonth: number,
   toYear: number,
-  toMonth: number | null
+  toMonth: number
 ): Promise<number> {
   const res = await fetch("/api/budgets/copy", {
     method: "POST",
@@ -102,23 +90,4 @@ export async function autoCopyBudgetsIfEmpty(year: number, month: number): Promi
 
   const copied = await copyBudgetToMonth(previous.year, previous.month, year, month);
   return copied > 0;
-}
-
-export async function applyBudgetToPreviousMonths(
-  categoryId: number,
-  year: number,
-  upToMonth: number,
-  amount: number
-): Promise<number> {
-  let appliedCount = 0;
-
-  for (let month = 0; month < upToMonth; month++) {
-    const existing = await getBudgetForCategory(categoryId, year, month);
-    if (!existing) {
-      await setBudget(categoryId, year, month, amount);
-      appliedCount++;
-    }
-  }
-
-  return appliedCount;
 }

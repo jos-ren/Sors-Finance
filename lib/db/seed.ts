@@ -1,7 +1,11 @@
 /**
  * Database Seeding
  *
- * Default categories and initialization logic for SQLite/Drizzle.
+ * System categories, default budget hierarchy, and initialization logic.
+ *
+ * The flat user-category seed is gone: budgeting now uses the 3-level hierarchy
+ * (see ./budget-seed). Only the three system categories (Income / Excluded /
+ * Uncategorized) live in the `categories` table.
  */
 
 import { db, schema } from "./connection";
@@ -16,21 +20,10 @@ const SYSTEM_CATEGORY_DEFS = [
   { name: SYSTEM_CATEGORIES.INCOME, keywords: ["SALARY", "PAYROLL", "DEPOSIT", "DIRECT DEP", "VENMO", "ZELLE", "ACH CREDIT"], isSystem: true },
 ];
 
-const DEFAULT_CATEGORIES = [
-  { name: "Groceries", keywords: ["WHOLE FOODS", "TRADER JOE", "KROGER", "WALMART", "COSTCO", "SAFEWAY", "PUBLIX", "ALDI"] },
-  { name: "Dining & Restaurants", keywords: ["RESTAURANT", "MCDONALD", "STARBUCKS", "CHIPOTLE", "DOORDASH", "UBER EATS", "GRUBHUB", "CHEESECAKE"] },
-  { name: "Gas & Transportation", keywords: ["CHEVRON", "EXXON", "SHELL", "BP", "UBER", "LYFT", "METRO TRANSIT"] },
-  { name: "Subscriptions", keywords: ["NETFLIX", "SPOTIFY", "DISNEY", "AMAZON PRIME", "APPLE.COM", "HULU", "HBO MAX", "GOOGLE"] },
-  { name: "Shopping", keywords: ["AMAZON", "AMZN MKTP", "TARGET", "BEST BUY", "HOME DEPOT", "LOWES", "IKEA", "NORDSTROM"] },
-  { name: "Utilities & Bills", keywords: ["VERIZON", "AT&T", "T-MOBILE", "COMCAST", "XFINITY", "PG&E", "INSURANCE", "SPECTRUM"] },
-  { name: "Healthcare", keywords: ["CVS", "WALGREENS", "PHARMACY", "MEDICAL", "DENTAL", "CLINIC", "HOSPITAL"] },
-];
-
-export { DEFAULT_CATEGORIES };
-
 /**
- * Seed default categories for a specific user.
- * This should be called when a new user registers.
+ * Seed system categories for a specific user.
+ * Called when a new user registers (budget hierarchy is seeded separately via
+ * seedDefaultBudgetForUser).
  */
 export async function seedDefaultCategoriesForUser(userId: number): Promise<void> {
   // Check if user already has categories
@@ -48,7 +41,7 @@ export async function seedDefaultCategoriesForUser(userId: number): Promise<void
   const now = new Date();
   let order = 0;
 
-  // Add system categories first
+  // Add system categories only
   for (const cat of SYSTEM_CATEGORY_DEFS) {
     await db.insert(schema.categories).values({
       uuid: randomUUID(),
@@ -62,20 +55,7 @@ export async function seedDefaultCategoriesForUser(userId: number): Promise<void
     });
   }
 
-  // Add default user categories
-  for (const cat of DEFAULT_CATEGORIES) {
-    await db.insert(schema.categories).values({
-      uuid: randomUUID(),
-      name: cat.name,
-      keywords: cat.keywords,
-      order: order++,
-      isSystem: false,
-      userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  console.log(`[Seed] Seeded default categories for user ${userId}`);
+  console.log(`[Seed] Seeded system categories for user ${userId}`);
 }
 
 // Ensure system categories exist for a user (for database migrations)
@@ -122,7 +102,7 @@ export async function seedDefaultCategories(): Promise<void> {
   const now = new Date();
   let order = 0;
 
-  // Add system categories first
+  // Add system categories only
   for (const cat of SYSTEM_CATEGORY_DEFS) {
     await db.insert(schema.categories).values({
       uuid: randomUUID(),
@@ -135,19 +115,7 @@ export async function seedDefaultCategories(): Promise<void> {
     });
   }
 
-  // Add default user categories
-  for (const cat of DEFAULT_CATEGORIES) {
-    await db.insert(schema.categories).values({
-      uuid: randomUUID(),
-      name: cat.name,
-      keywords: cat.keywords,
-      order: order++,
-      isSystem: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  console.log("[Seed] Seeded default categories");
+  console.log("[Seed] Seeded system categories");
 }
 
 // Ensure system categories exist (for database migrations) - legacy version

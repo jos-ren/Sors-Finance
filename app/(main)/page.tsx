@@ -48,7 +48,7 @@ import {
   useAllTimeTotals,
   useAllTimeSpendingByCategory,
   useAllTimeMonthlyTrend,
-  useCategories,
+  useBudgetHierarchy,
   useMonthlyByCategoryForYear,
   useAllTimeMonthlyByCategory,
   buildCategoryChartData,
@@ -194,13 +194,18 @@ export default function DashboardPage() {
   const allTimeMonthlyTrend = useAllTimeMonthlyTrend();
 
   // Monthly expenses breakdown chart - driven by the same All/Year picker as the rest of the page.
-  const categories = useCategories();
+  // Spending aggregations are keyed by budget item; resolve names from the hierarchy.
+  const budgetHierarchy = useBudgetHierarchy(true);
+  const budgetItemNames = useMemo(
+    () => budgetHierarchy?.items.map((i) => ({ id: i.id, name: i.name })),
+    [budgetHierarchy]
+  );
   const monthlyCategoryTrend = useMonthlyByCategoryForYear(selectedYearValue);
   const allTimeCategoryTrend = useAllTimeMonthlyByCategory(12);
   const activeCategoryTrend = viewMode === "all" ? allTimeCategoryTrend : monthlyCategoryTrend;
   const monthlyExpensesData = useMemo(
-    () => buildCategoryChartData(activeCategoryTrend, categories),
-    [activeCategoryTrend, categories]
+    () => buildCategoryChartData(activeCategoryTrend, budgetItemNames),
+    [activeCategoryTrend, budgetItemNames]
   );
 
   // Use appropriate totals based on view mode

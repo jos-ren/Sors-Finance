@@ -12,7 +12,10 @@ export {
   getAllSettings,
 } from "./settings";
 
-// Categories
+// Categories (system-only now: Income / Excluded / Uncategorized).
+// NOTE: addCategory/deleteCategory/reorderCategories are retained as interim
+// no-longer-wired shims until the settings/categories + importer rewrites
+// (build steps 7 & 9) remove their callers; cleaned up in step 10.
 export {
   getCategories,
   getCategoryById,
@@ -24,6 +27,7 @@ export {
   removeKeywordFromCategory,
   getExcludedCategory,
   getUncategorizedCategory,
+  getIncomeCategory,
 } from "./categories";
 
 // Imports
@@ -41,17 +45,40 @@ export {
   deleteImportDraft,
 } from "./import-drafts";
 
-// Budgets
+// Budgets (item-based, monthly)
 export {
   getBudgets,
-  getBudgetForCategory,
   setBudget,
   deleteBudget,
   copyBudgetToMonth,
   findPreviousMonthWithBudgets,
   autoCopyBudgetsIfEmpty,
-  applyBudgetToPreviousMonths,
 } from "./budgets";
+
+// Budget hierarchy (groups → subcategories → items)
+export {
+  getBudgetHierarchy,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  reorderGroups,
+  createSubcategory,
+  updateSubcategory,
+  deleteSubcategory,
+  reorderSubcategories,
+  createItem,
+  updateItem,
+  deleteItem,
+  reorderItems,
+  archiveItem,
+  restoreItem,
+  addKeywordToItem,
+  removeKeywordFromItem,
+} from "./budget-hierarchy";
+export type { BudgetHierarchy, CreateItemInput, UpdateItemInput } from "./budget-hierarchy";
+
+// Budget tree + yearly summary
+export { getBudgetTree, getYearlySummary } from "./budget-tree";
 
 // Transactions
 export {
@@ -65,6 +92,8 @@ export {
   findDuplicateSignatures,
   getSpendingByCategory,
   getYTDSpendingByCategory,
+  getIncomeTotal,
+  getGoalProgress,
   getTotalSpending,
   getAllTimeTotals,
   getAllTimeSpendingByCategory,

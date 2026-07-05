@@ -8,6 +8,7 @@ interface GetTransactionsOptions {
   startDate?: Date;
   endDate?: Date;
   categoryId?: number;
+  budgetItemId?: number;
   source?: string;
   limit?: number;
   offset?: number;
@@ -19,6 +20,7 @@ export async function getTransactions(options?: GetTransactionsOptions): Promise
   if (options?.startDate) params.append("startDate", options.startDate.toISOString());
   if (options?.endDate) params.append("endDate", options.endDate.toISOString());
   if (options?.categoryId) params.append("categoryId", String(options.categoryId));
+  if (options?.budgetItemId) params.append("budgetItemId", String(options.budgetItemId));
   if (options?.source) params.append("source", options.source);
   if (options?.limit) params.append("limit", String(options.limit));
   if (options?.offset) params.append("offset", String(options.offset));
@@ -157,6 +159,26 @@ export async function getYTDSpendingByCategory(year: number): Promise<Map<number
 
   const res = await fetch(`/api/transactions/aggregations?${params}`);
   if (!res.ok) throw new Error("Failed to fetch YTD spending");
+  const { data } = await res.json();
+  return new Map(Object.entries(data).map(([k, v]) => [Number(k), v as number]));
+}
+
+/** Net income (Income system category) for a period, or all-time if no year. */
+export async function getIncomeTotal(year?: number, month?: number): Promise<number> {
+  const params = new URLSearchParams({ type: "incomeTotal" });
+  if (year !== undefined) params.append("year", String(year));
+  if (month !== undefined) params.append("month", String(month));
+
+  const res = await fetch(`/api/transactions/aggregations?${params}`);
+  if (!res.ok) throw new Error("Failed to fetch income total");
+  const { data } = await res.json();
+  return data as number;
+}
+
+/** Lifetime cumulative net per goal item → Map<itemId, number>. */
+export async function getGoalProgress(): Promise<Map<number, number>> {
+  const res = await fetch("/api/transactions/aggregations?type=goalProgress");
+  if (!res.ok) throw new Error("Failed to fetch goal progress");
   const { data } = await res.json();
   return new Map(Object.entries(data).map(([k, v]) => [Number(k), v as number]));
 }
