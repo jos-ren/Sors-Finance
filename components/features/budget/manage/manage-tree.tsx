@@ -125,7 +125,7 @@ function ManageGroup({
       className={cn("overflow-hidden rounded-lg border bg-card", isDragging && "opacity-60")}
     >
       <div className="flex items-center gap-2 border-b px-2 py-2">
-        <button className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners} aria-label="Drag group">
+        <button className="-m-1.5 cursor-grab touch-none p-1.5 text-muted-foreground" {...attributes} {...listeners} aria-label="Drag group">
           <GripVertical className="h-4 w-4" />
         </button>
         <InlineRename value={group.name} onCommit={(name) => updateGroup(group.id!, { name })} className="font-semibold" />
@@ -183,7 +183,7 @@ function ManageSubcategory({
       className={cn("rounded-md border bg-background/40", isDragging && "opacity-60")}
     >
       <div className="flex items-center gap-2 px-2 py-1.5">
-        <button className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners} aria-label="Drag subcategory">
+        <button className="-m-1.5 cursor-grab touch-none p-1.5 text-muted-foreground" {...attributes} {...listeners} aria-label="Drag subcategory">
           <GripVertical className="h-3.5 w-3.5" />
         </button>
         <InlineRename

@@ -48,7 +48,7 @@ export function BudgetSummaryHero({
         state === "negative" && "border-destructive/40"
       )}
     >
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <Stat icon={<TrendingUp className="h-4 w-4" />} label="Actual Income" value={formatAmount(incomeActual)} />
         <Stat icon={<Wallet className="h-4 w-4" />} label="Total Budgeted" value={formatAmount(totalBudgeted)} live />
         <Stat
@@ -143,7 +143,7 @@ function Stat({
       </span>
       <span
         className={cn(
-          "text-2xl font-semibold tabular-nums",
+          "text-xl font-semibold tabular-nums sm:text-2xl",
           emphasis === "zero" && "text-primary",
           emphasis === "positive" && "text-primary",
           emphasis === "negative" && "text-destructive"
