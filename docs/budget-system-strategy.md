@@ -393,3 +393,18 @@ Compatible with irregular income (bonuses, refunds, side income)
 ## Summary
 
 The core idea is simple: **Budget Items are the new categories.** The two levels above them (Subcategory and Category) are purely organizational — they never touch transactions directly and only exist to make the budget readable and reportable at a high level. This gives zero-based budgeting a clean home while keeping the transaction import system largely intact.
+
+---
+
+## Resolved Implementation Decisions
+
+These decisions were settled during the build (see `.claude/plans/budget-refactor-plan.md`):
+
+- **Rollover.** Spending items reset each month. Goal items (`itemType = 'goal'`) track a **cumulative lifetime** total (sum of all assigned transactions) plus an optional `targetAmount` for progress. No YNAB-style envelope rollover.
+- **Yearly budgets dropped.** The old `month IS NULL` yearly-budget mode and rolling-balance/pace UI are gone. In their place is a read-only **Yearly Totals** view (Σ planned / Σ actual / diff per item across 12 months). Legacy yearly rows are dropped in migration (not ÷12) and the dropped count is logged to `system_logs`.
+- **Migration.** Each existing non-system category becomes a Budget Item under a single "Ungrouped" group (its uuid is reused so in-flight import drafts keep resolving; keywords, transaction links, and deduped monthly amounts are preserved). The default hierarchy structure + keywords are also seeded for existing users (no planned amounts). New users get the full seed including first-month amounts (the $5,500 example).
+- **One-FK rule.** A transaction sets **at most one** of `categoryId` (a system category) or `budgetItemId`; both null = uncategorized. Enforced in code via a shared `normalizeAssignment()` helper in every write path (no CHECK constraint, to avoid a SQLite table rebuild).
+- **Deletion semantics.** Deleting a group/subcategory cascades to its items (FK); affected transactions are set to uncategorized (`SET NULL`). APIs return affected counts so the UI can warn. Archiving (`isActive = false`) is the safe path for goals.
+- **`excludeFromBudget` removed.** Its role is covered by archiving + the Excluded system category.
+- **Unique constraint.** `budgets` now has `unique(budgetItemId, year, month, userId)` with a real `ON CONFLICT DO UPDATE` upsert.
+- **Income is transaction-driven.** Available to Assign = Actual Income (sum of Income-category transactions for the month) − Total Budgeted. No static income value.

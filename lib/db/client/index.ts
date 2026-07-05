@@ -13,16 +13,10 @@ export {
 } from "./settings";
 
 // Categories (system-only now: Income / Excluded / Uncategorized).
-// NOTE: addCategory/deleteCategory/reorderCategories are retained as interim
-// no-longer-wired shims until the settings/categories + importer rewrites
-// (build steps 7 & 9) remove their callers; cleaned up in step 10.
 export {
   getCategories,
   getCategoryById,
-  addCategory,
   updateCategory,
-  deleteCategory,
-  reorderCategories,
   addKeywordToCategory,
   removeKeywordFromCategory,
   getExcludedCategory,

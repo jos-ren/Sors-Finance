@@ -29,17 +29,6 @@ export async function getCategoryById(id: number): Promise<DbCategory | null> {
   };
 }
 
-export async function addCategory(name: string, keywords: string[] = []): Promise<number> {
-  const res = await fetch("/api/categories", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, keywords }),
-  });
-  if (!res.ok) throw new Error("Failed to create category");
-  const { data } = await res.json();
-  return data.id;
-}
-
 export async function updateCategory(
   id: number,
   updates: Partial<Omit<DbCategory, "id" | "uuid" | "createdAt">>
@@ -52,20 +41,6 @@ export async function updateCategory(
   if (!res.ok) throw new Error("Failed to update category");
   const { data } = await res.json();
   return data;
-}
-
-export async function deleteCategory(id: number): Promise<void> {
-  const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete category");
-}
-
-export async function reorderCategories(activeId: number, overId: number): Promise<void> {
-  const res = await fetch("/api/categories/reorder", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ activeId, overId }),
-  });
-  if (!res.ok) throw new Error("Failed to reorder categories");
 }
 
 export async function addKeywordToCategory(categoryId: number, keyword: string): Promise<void> {

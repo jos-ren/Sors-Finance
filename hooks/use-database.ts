@@ -576,13 +576,7 @@ export function useNetWorthHistory(months: number = 12) {
 // Mutation Functions with Cache Invalidation
 // ============================================
 
-// Categories
-export async function addCategory(name: string, keywords: string[] = []): Promise<number> {
-  const id = await api.addCategory(name, keywords);
-  invalidateCategories();
-  return id;
-}
-
+// Categories — system categories only now; just keyword edits are supported.
 export async function updateCategory(
   id: number,
   updates: Partial<Omit<DbCategory, "id" | "uuid" | "createdAt">>
@@ -591,18 +585,6 @@ export async function updateCategory(
   invalidateCategories();
   invalidateTransactions();
   return result;
-}
-
-export async function deleteCategory(id: number): Promise<void> {
-  await api.deleteCategory(id);
-  invalidateCategories();
-  invalidateTransactions();
-  invalidateBudgets();
-}
-
-export async function reorderCategories(activeId: number, overId: number): Promise<void> {
-  await api.reorderCategories(activeId, overId);
-  invalidateCategories();
 }
 
 export async function addKeywordToCategory(categoryId: number, keyword: string): Promise<void> {
