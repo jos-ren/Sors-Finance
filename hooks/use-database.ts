@@ -642,14 +642,14 @@ export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   invalidateTransactions();
 }
 
-// Budgets
+// Budgets (item-based, monthly)
 export async function setBudget(
-  categoryId: number,
+  budgetItemId: number,
   year: number,
-  month: number | null,
+  month: number,
   amount: number
 ): Promise<number> {
-  const id = await api.setBudget(categoryId, year, month, amount);
+  const id = await api.setBudget(budgetItemId, year, month, amount);
   invalidateBudgets();
   return id;
 }
@@ -661,9 +661,9 @@ export async function deleteBudget(id: number): Promise<void> {
 
 export async function copyBudgetToMonth(
   fromYear: number,
-  fromMonth: number | null,
+  fromMonth: number,
   toYear: number,
-  toMonth: number | null
+  toMonth: number
 ): Promise<number> {
   const count = await api.copyBudgetToMonth(fromYear, fromMonth, toYear, toMonth);
   invalidateBudgets();

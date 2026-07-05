@@ -14,28 +14,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { addTransaction } from "@/hooks";
+import { BudgetItemPicker, fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
 
 interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  categories: DbCategory[];
 }
 
 export function AddTransactionDialog({
   open,
   onOpenChange,
-  categories,
 }: AddTransactionDialogProps) {
   const [date, setDate] = useState(() => {
     const today = new Date();
@@ -43,7 +34,7 @@ export function AddTransactionDialog({
   });
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [assignment, setAssignment] = useState<PickerValue>(null);
   const [note, setNote] = useState<string>("");
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,7 +44,7 @@ export function AddTransactionDialog({
     setDate(today.toISOString().split("T")[0]);
     setDescription("");
     setAmount("");
-    setCategoryId("");
+    setAssignment(null);
     setNote("");
     setTransactionType("expense");
   };
@@ -86,7 +77,7 @@ export function AddTransactionDialog({
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source: "Manual",
         note: note.trim() || null,
-        categoryId: categoryId ? parseInt(categoryId) : null,
+        ...fromPickerValue(assignment),
         categoryLocked: false,
         importId: null,
       });
@@ -176,24 +167,10 @@ export function AddTransactionDialog({
             />
           </div>
 
-          {/* Category */}
+          {/* Category / budget item */}
           <div className="space-y-2">
             <Label htmlFor="category">Category (optional)</Label>
-            <Select value={categoryId || "uncategorized"} onValueChange={(value) => setCategoryId(value === "uncategorized" ? "" : value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                {categories
-                  .filter((cat) => cat.name !== SYSTEM_CATEGORIES.UNCATEGORIZED)
-                  .map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id!.toString()}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <BudgetItemPicker value={assignment} onChange={setAssignment} placeholder="Uncategorized" />
           </div>
 
           {/* Note */}

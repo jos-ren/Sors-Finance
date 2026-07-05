@@ -273,13 +273,7 @@ export default function TransactionsPage() {
         </Dialog>
 
         {/* Add Transaction Dialog */}
-        {categories && (
-          <AddTransactionDialog
-            open={isAddOpen}
-            onOpenChange={setIsAddOpen}
-            categories={categories}
-          />
-        )}
+        <AddTransactionDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
       </div>
     </>
   );

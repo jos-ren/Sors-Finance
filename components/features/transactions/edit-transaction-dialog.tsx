@@ -14,35 +14,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { DbCategory, DbTransaction, SYSTEM_CATEGORIES } from "@/lib/db";
+import { DbTransaction } from "@/lib/db";
 import { updateTransaction } from "@/lib/db/client";
+import { BudgetItemPicker, fromPickerValue, toPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
 
 interface EditTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transaction: DbTransaction | null;
-  categories: DbCategory[];
 }
 
 export function EditTransactionDialog({
   open,
   onOpenChange,
   transaction,
-  categories,
 }: EditTransactionDialogProps) {
   const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  const [assignment, setAssignment] = useState<PickerValue>(null);
   const [categoryChanged, setCategoryChanged] = useState(false);
   const [source, setSource] = useState<string>("Manual");
   const [note, setNote] = useState<string>("");
@@ -67,7 +59,7 @@ export function EditTransactionDialog({
         setAmount(transaction.amountIn.toString());
       }
 
-      setCategoryId(transaction.categoryId?.toString() || "");
+      setAssignment(toPickerValue(transaction.categoryId, transaction.budgetItemId));
       setSource(transaction.source);
       setNote(transaction.note || "");
     }
@@ -103,7 +95,7 @@ export function EditTransactionDialog({
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source,
         note: note.trim() || null,
-        categoryId: categoryId ? parseInt(categoryId) : null,
+        ...fromPickerValue(assignment),
         ...(categoryChanged && { categoryLocked: true }),
       });
 
@@ -184,24 +176,14 @@ export function EditTransactionDialog({
             />
           </div>
 
-          {/* Category */}
+          {/* Category / budget item */}
           <div className="space-y-2">
             <Label htmlFor="edit-category">Category</Label>
-            <Select value={categoryId || "uncategorized"} onValueChange={(value) => { setCategoryChanged(true); setCategoryId(value === "uncategorized" ? "" : value); }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="uncategorized">Uncategorized</SelectItem>
-                {categories
-                  .filter((cat) => cat.name !== SYSTEM_CATEGORIES.UNCATEGORIZED)
-                  .map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id!.toString()}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <BudgetItemPicker
+              value={assignment}
+              onChange={(v) => { setCategoryChanged(true); setAssignment(v); }}
+              placeholder="Uncategorized"
+            />
           </div>
 
           {/* Source */}
