@@ -336,7 +336,7 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col flex-1 pb-6">
-            <ChartContainer config={areaChartConfig} className="flex-1 min-h-[300px] w-full">
+            <ChartContainer config={areaChartConfig} className="h-[300px] w-full aspect-auto">
               <AreaChart
                 data={activeTrendData || []}
                 margin={{ left: 12, right: 12 }}
@@ -396,11 +396,11 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-col flex-1 pb-6">
               {!monthlyExpensesData || monthlyExpensesData.categorySeries.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                   No spending data yet.
                 </div>
               ) : (
-                <ChartContainer config={monthlyExpensesChartConfig} className="flex-1 min-h-0 w-full">
+                <ChartContainer config={monthlyExpensesChartConfig} className="h-[300px] w-full aspect-auto">
                   <BarChart data={monthlyExpensesData.chartRows} margin={{ left: 12, right: 12 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
@@ -465,11 +465,11 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="flex flex-col flex-1 pb-6">
               {categorySpendingData.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
                   No spending data yet.
                 </div>
               ) : (
-                <ChartContainer config={pieChartConfig} className="flex-1 min-h-0 w-full">
+                <ChartContainer config={pieChartConfig} className="h-[300px] w-full aspect-auto">
                   <PieChart>
                     <ChartTooltip
                       cursor={false}

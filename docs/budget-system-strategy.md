@@ -339,6 +339,55 @@ The seed budget also includes default **keywords** on each Budget Item so auto-c
 
 Users are expected to delete, rename, and reorganize this structure to match their own lives. The example just makes the first session useful rather than intimidating.
 
+### Income
+
+Income is entirely transaction-driven. The system does not rely on a static monthly income value—instead, it computes income from imported bank transactions categorized as Income (e.g. payroll, bonuses, tax refunds, reimbursements).
+
+Core Rule
+Available to Assign = Total Income Transactions − Total Budgeted Amount
+Expected vs Actual Income
+Expected Income: user-defined planning value (optional, for reference only)
+Actual Income: sum of all imported income transactions
+Budgeted Income: total amount already assigned across budget items
+
+Only Actual Income drives budgeting availability.
+
+Surplus Income (Positive Difference)
+
+If actual income exceeds budgeted income:
+
+System shows “Available to Assign”
+User must allocate funds to budget items (Savings, Goals, Spending, etc.)
+Budget remains zero-based after assignment
+
+Example:
+
+Actual: $6,140
+Budgeted: $5,500
+Available: $640 → must be assigned
+Income Shortfall (Negative Difference)
+
+If actual income is less than budgeted:
+
+System shows “Over-Budgeted Income”
+User must reduce existing budget allocations until balanced
+
+Example:
+
+Actual: $5,500
+Budgeted: $5,800
+Adjustment required: -$300
+Key Design Principle
+
+Income is not “entered”—it is observed from transactions.
+Budgeting is always reconciled against reality, not assumptions.
+
+This keeps the system:
+
+Fully zero-based
+Reactive to real financial changes
+Compatible with irregular income (bonuses, refunds, side income)
+
 ---
 
 ## Summary
