@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { Save, X, ArrowLeft } from "lucide-react";
+import { Save, X, ArrowLeft, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ import { AllocationMeter } from "@/components/features/budget/builder/allocation
 import { BuilderList, type BuilderGroupData } from "@/components/features/budget/builder/builder-list";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
 import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
+import { ArchivedItemsSheet } from "@/components/features/budget/manage/archived-items-sheet";
 
 export default function BudgetBuilderPage() {
   const now = new Date();
@@ -26,6 +27,7 @@ export default function BudgetBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
@@ -136,15 +138,20 @@ export default function BudgetBuilderPage() {
         <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
           <Link href="/budget"><ArrowLeft className="h-4 w-4" /> Back to budget</Link>
         </Button>
-        <PeriodNavigator
-          viewMode="month"
-          selectedMonth={selected}
-          selectedYear={selected.year}
-          availableYears={periods?.years ?? []}
-          availableMonthsByYear={availableMonthsByYear}
-          onMonthSelect={(year, month) => setSelected({ year, month })}
-          onYearChange={() => {}}
-        />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setArchivedOpen(true)}>
+            <Archive className="h-4 w-4" /> Archived
+          </Button>
+          <PeriodNavigator
+            viewMode="month"
+            selectedMonth={selected}
+            selectedYear={selected.year}
+            availableYears={periods?.years ?? []}
+            availableMonthsByYear={availableMonthsByYear}
+            onMonthSelect={(year, month) => setSelected({ year, month })}
+            onYearChange={() => {}}
+          />
+        </div>
       </div>
 
       {loading ? (
@@ -177,6 +184,7 @@ export default function BudgetBuilderPage() {
       )}
 
       <ItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
+      <ArchivedItemsSheet open={archivedOpen} onOpenChange={setArchivedOpen} />
     </div>
   );
 }

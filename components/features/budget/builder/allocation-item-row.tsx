@@ -1,6 +1,8 @@
 "use client";
 
-import { Target, MoreHorizontal } from "lucide-react";
+import { Target, MoreHorizontal, GripVertical } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Slider } from "@/components/ui/slider";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
@@ -21,9 +23,9 @@ export interface BuilderItem {
 }
 
 /**
- * Builder allocation row with structure editing: inline rename + % of income +
- * a distribute slider + a $ input + a details menu (keywords/target/move/
- * archive/delete via the Item Detail dialog).
+ * Builder allocation row: a dedicated drag handle (kept separate from the
+ * slider thumb so dragging to reorder never fights allocation), inline rename,
+ * % of income, a distribute slider, a $ input, and a details menu.
  */
 export function AllocationItemRow({
   item,
@@ -46,13 +48,22 @@ export function AllocationItemRow({
   onRename: (name: string) => void;
   onOpenDetail: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `item:${item.id}` });
   const planned = item.planned;
   const inputValue = pendingValue !== undefined ? pendingValue : planned ? planned.toFixed(2) : "";
   const sliderMax = Math.max(planned + Math.max(0, leftToAssign), planned, 100);
   const pctOfIncome = income > 0 ? (planned / income) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-3 py-1.5">
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("flex items-center gap-2 py-1.5", isDragging && "opacity-60")}
+    >
+      <button className="-m-1 shrink-0 cursor-grab touch-none p-1 text-muted-foreground" {...attributes} {...listeners} aria-label={`Drag ${item.name}`}>
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+
       <div className="flex min-w-0 flex-[2] items-center gap-1.5">
         {item.itemType === "goal" && <Target className="h-3.5 w-3.5 shrink-0 text-primary" />}
         <InlineRename value={item.name} onCommit={onRename} className="text-sm" />

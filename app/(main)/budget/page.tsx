@@ -2,10 +2,9 @@
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { Save, X, Settings2, Archive, SlidersHorizontal } from "lucide-react";
+import { Save, X, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toggle } from "@/components/ui/toggle";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
@@ -30,8 +29,6 @@ import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previou
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
 import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
-import { ManageTree } from "@/components/features/budget/manage/manage-tree";
-import { ArchivedItemsSheet } from "@/components/features/budget/manage/archived-items-sheet";
 
 const SUGGESTION_GROUPS = ["Savings", "Goals", "Flexible Spending"];
 
@@ -40,8 +37,6 @@ export default function BudgetPage() {
   const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
   const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
-  const [manage, setManage] = useState(false);
-  const [archivedOpen, setArchivedOpen] = useState(false);
 
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
@@ -83,29 +78,15 @@ export default function BudgetPage() {
             onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
           />
           {viewMode === "monthly" && (
-            <>
-              {manage && (
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setArchivedOpen(true)}>
-                  <Archive className="h-4 w-4" />
-                  Archived
-                </Button>
-              )}
-              <Button asChild variant="outline" size="sm" className="gap-1.5">
-                <Link href="/budget/builder">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  Builder
-                </Link>
-              </Button>
-              <Toggle pressed={manage} onPressedChange={setManage} variant="outline" size="sm" className="gap-1.5" aria-label="Manage budget structure">
-                <Settings2 className="h-4 w-4" />
-                Manage
-              </Toggle>
-            </>
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link href="/budget/builder">
+                <SlidersHorizontal className="h-4 w-4" />
+                Builder
+              </Link>
+            </Button>
           )}
         </div>
       </div>
-
-      <ArchivedItemsSheet open={archivedOpen} onOpenChange={setArchivedOpen} />
 
       {viewMode === "monthly" ? (
         !tree ? (
@@ -114,7 +95,7 @@ export default function BudgetPage() {
           <EmptyBudget />
         ) : (
           <BudgetTreeInputProvider>
-            <MonthlyContent tree={tree} year={selected.year} month={selected.month} fmt={fmt} manage={manage} />
+            <MonthlyContent tree={tree} year={selected.year} month={selected.month} fmt={fmt} />
           </BudgetTreeInputProvider>
         )
       ) : !yearly ? (
@@ -160,13 +141,11 @@ function MonthlyContent({
   year,
   month,
   fmt,
-  manage,
 }: {
   tree: BudgetTree;
   year: number;
   month: number;
   fmt: (n: number) => string;
-  manage: boolean;
 }) {
   const { focus } = useBudgetTreeInputs();
   const { setHasUnsavedChanges, setSaveHandler } = useUnsavedChanges();
@@ -324,28 +303,19 @@ function MonthlyContent({
         />
       )}
 
-      {manage ? (
-        <>
-          <p className="rounded-lg border border-dashed bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            Manage mode: drag to reorder, click a name to rename, use + to add. Click an item to open its details (keywords, target, move, archive, delete).
-          </p>
-          <ManageTree onOpenDetail={openDetail} />
-        </>
-      ) : (
-        <BudgetTreeView
-          tree={effective}
-          pending={pending}
-          formatAmount={fmt}
-          year={year}
-          month={month}
-          onPlannedChange={setPlanned}
-          onPlannedCommit={() => { /* pending already captured; commit is a no-op until Save */ }}
-          onOpenDetail={openDetail}
-        />
-      )}
+      <BudgetTreeView
+        tree={effective}
+        pending={pending}
+        formatAmount={fmt}
+        year={year}
+        month={month}
+        onPlannedChange={setPlanned}
+        onPlannedCommit={() => { /* pending already captured; commit is a no-op until Save */ }}
+        onOpenDetail={openDetail}
+      />
 
       {/* Save/Cancel FAB */}
-      {!manage && pending.size > 0 && (
+      {pending.size > 0 && (
         <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border bg-card p-1.5 shadow-lg animate-in slide-in-from-bottom-4">
           <span className="px-3 text-sm text-muted-foreground">{pending.size} unsaved</span>
           <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setPending(new Map())} disabled={saving}>
