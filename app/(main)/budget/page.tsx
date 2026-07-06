@@ -24,6 +24,7 @@ import { computeEffectiveTree, parsePending } from "@/lib/budget/effective-tree"
 import { BudgetTreeInputProvider, useBudgetTreeInputs } from "@/components/features/budget/budget-tree-context";
 import { PeriodNavigator } from "@/components/features/budget/period-navigator";
 import { BudgetSummaryHero, type AssignSuggestion } from "@/components/features/budget/budget-summary-hero";
+import { MoneyFlowSankey } from "@/components/features/budget/money-flow-sankey";
 import { BudgetTreeView } from "@/components/features/budget/budget-tree";
 import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previous-month-card";
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
@@ -292,6 +293,8 @@ function MonthlyContent({
 
   return (
     <div className="space-y-4 pb-24">
+      <MoneyFlowSankey tree={tree} formatAmountShort={fmtShort} />
+
       <BudgetSummaryHero
         tree={effective}
         formatAmount={fmt}
