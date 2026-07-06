@@ -13,7 +13,7 @@ export interface AssignSuggestion {
 }
 
 /**
- * Available-to-Assign hero. Three stats (Actual Income | Total Budgeted (live) |
+ * Available-to-Assign hero. Three stats (Actual Income | Total Budgeted |
  * Available) with a zero-based status treatment:
  *   available == 0 → green "Every dollar assigned" + ring pulse
  *   available > 0  → lime "Assign remaining" popover of suggested targets
@@ -50,7 +50,7 @@ export function BudgetSummaryHero({
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <Stat icon={<TrendingUp className="h-4 w-4" />} label="Actual Income" value={formatAmount(incomeActual)} />
-        <Stat icon={<Wallet className="h-4 w-4" />} label="Total Budgeted" value={formatAmount(totalBudgeted)} live />
+        <Stat icon={<Wallet className="h-4 w-4" />} label="Total Budgeted" value={formatAmount(totalBudgeted)} />
         <Stat
           label="Available to Assign"
           value={formatAmount(availableToAssign)}
@@ -125,13 +125,11 @@ function Stat({
   icon,
   label,
   value,
-  live,
   emphasis,
 }: {
   icon?: React.ReactNode;
   label: string;
   value: string;
-  live?: boolean;
   emphasis?: "zero" | "positive" | "negative";
 }) {
   return (
@@ -139,7 +137,6 @@ function Stat({
       <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         {icon}
         {label}
-        {live && <span className="text-[10px] uppercase tracking-wide text-primary/70">live</span>}
       </span>
       <span
         className={cn(

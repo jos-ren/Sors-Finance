@@ -11,10 +11,10 @@
 import { db, schema } from "./connection";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { DEFAULT_BUDGET_HIERARCHY } from "./budget-hierarchy-data";
+import { DEFAULT_BUDGET_CATEGORY_GROUPS } from "./budget-hierarchy-data";
 
-export { DEFAULT_BUDGET_HIERARCHY };
-export type { SeedBudgetItem, SeedBudgetSubcategory, SeedBudgetGroup } from "./budget-hierarchy-data";
+export { DEFAULT_BUDGET_CATEGORY_GROUPS };
+export type { SeedBudgetCategory, SeedBudgetCategoryGroup } from "./budget-hierarchy-data";
 
 /**
  * Seed the default budget hierarchy for a user using the Drizzle client.
@@ -42,52 +42,43 @@ export async function seedDefaultBudgetForUser(
   const targetMonth = month ?? now.getMonth();
 
   let groupOrder = 0;
-  for (const group of DEFAULT_BUDGET_HIERARCHY) {
+  for (const group of DEFAULT_BUDGET_CATEGORY_GROUPS) {
     const groupRow = await db
       .insert(schema.budgetGroups)
       .values({ uuid: randomUUID(), name: group.name, order: groupOrder++, userId, createdAt: now, updatedAt: now })
       .returning({ id: schema.budgetGroups.id })
       .get();
 
-    let subOrder = 0;
-    for (const sub of group.subcategories) {
-      const subRow = await db
+    let categoryOrder = 0;
+    for (const category of group.categories) {
+      const categoryRow = await db
         .insert(schema.budgetSubcategories)
-        .values({ uuid: randomUUID(), name: sub.name, groupId: groupRow.id, order: subOrder++, userId, createdAt: now, updatedAt: now })
+        .values({
+          uuid: randomUUID(),
+          name: category.name,
+          groupId: groupRow.id,
+          keywords: category.keywords,
+          itemType: category.itemType ?? "expense",
+          targetAmount: category.targetAmount ?? null,
+          isActive: true,
+          order: categoryOrder++,
+          userId,
+          createdAt: now,
+          updatedAt: now,
+        })
         .returning({ id: schema.budgetSubcategories.id })
         .get();
 
-      let itemOrder = 0;
-      for (const item of sub.items) {
-        const itemRow = await db
-          .insert(schema.budgetItems)
-          .values({
-            uuid: randomUUID(),
-            name: item.name,
-            subcategoryId: subRow.id,
-            keywords: item.keywords,
-            itemType: item.itemType ?? "expense",
-            targetAmount: item.targetAmount ?? null,
-            isActive: true,
-            order: itemOrder++,
-            userId,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .returning({ id: schema.budgetItems.id })
-          .get();
-
-        if (withAmounts && item.defaultAmount > 0) {
-          await db.insert(schema.budgets).values({
-            budgetItemId: itemRow.id,
-            year: targetYear,
-            month: targetMonth,
-            amount: item.defaultAmount,
-            userId,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
+      if (withAmounts && category.defaultAmount > 0) {
+        await db.insert(schema.budgets).values({
+          budgetItemId: categoryRow.id,
+          year: targetYear,
+          month: targetMonth,
+          amount: category.defaultAmount,
+          userId,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
     }
   }

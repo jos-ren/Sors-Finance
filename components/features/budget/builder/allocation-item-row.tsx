@@ -3,7 +3,6 @@
 import { Target, MoreHorizontal, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Slider } from "@/components/ui/slider";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,14 +22,12 @@ export interface BuilderItem {
 }
 
 /**
- * Builder allocation row: a dedicated drag handle (kept separate from the
- * slider thumb so dragging to reorder never fights allocation), inline rename,
- * % of income, a distribute slider, a $ input, and a details menu.
+ * Builder allocation row: a dedicated drag handle, inline rename,
+ * % of income, a $ input, and a details menu.
  */
 export function AllocationItemRow({
   item,
   income,
-  leftToAssign,
   pendingValue,
   dirty,
   formatAmount,
@@ -40,7 +37,6 @@ export function AllocationItemRow({
 }: {
   item: BuilderItem;
   income: number;
-  leftToAssign: number;
   pendingValue: string | undefined;
   dirty: boolean;
   formatAmount: (n: number) => string;
@@ -48,10 +44,9 @@ export function AllocationItemRow({
   onRename: (name: string) => void;
   onOpenDetail: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `item:${item.id}` });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `sub:${item.id}` });
   const planned = item.planned;
   const inputValue = pendingValue !== undefined ? pendingValue : planned ? planned.toFixed(2) : "";
-  const sliderMax = Math.max(planned + Math.max(0, leftToAssign), planned, 100);
   const pctOfIncome = income > 0 ? (planned / income) * 100 : 0;
 
   return (
@@ -72,17 +67,6 @@ export function AllocationItemRow({
         )}
       </div>
 
-      <div className="flex-1">
-        <Slider
-          value={[planned]}
-          min={0}
-          max={sliderMax}
-          step={5}
-          onValueChange={([v]) => onChange(String(v))}
-          aria-label={`Allocate to ${item.name}`}
-        />
-      </div>
-
       <div className="relative w-28 shrink-0">
         <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
         <CurrencyInput
@@ -101,7 +85,7 @@ export function AllocationItemRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onOpenDetail}>Item details…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenDetail}>Category details…</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

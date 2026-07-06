@@ -49,7 +49,7 @@ export {
   autoCopyBudgetsIfEmpty,
 } from "./budgets";
 
-// Budget hierarchy (groups → subcategories → items)
+// Budget hierarchy (Category Groups → Categories)
 export {
   seedDefaultBudget,
   getBudgetHierarchy,
@@ -61,16 +61,12 @@ export {
   updateSubcategory,
   deleteSubcategory,
   reorderSubcategories,
-  createItem,
-  updateItem,
-  deleteItem,
-  reorderItems,
-  archiveItem,
-  restoreItem,
-  addKeywordToItem,
-  removeKeywordFromItem,
+  archiveSubcategory,
+  restoreSubcategory,
+  addKeywordToSubcategory,
+  removeKeywordFromSubcategory,
 } from "./budget-hierarchy";
-export type { BudgetHierarchy, CreateItemInput, UpdateItemInput } from "./budget-hierarchy";
+export type { BudgetHierarchy, CreateCategoryInput, UpdateCategoryInput } from "./budget-hierarchy";
 
 // Budget tree + yearly summary
 export { getBudgetTree, getYearlySummary } from "./budget-tree";

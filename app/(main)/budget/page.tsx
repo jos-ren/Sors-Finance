@@ -2,9 +2,8 @@
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { Save, X, SlidersHorizontal } from "lucide-react";
+import { Save, X, PencilLine, CalendarRange, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
@@ -15,11 +14,12 @@ import {
   useBudgetTree,
   useYearlyBudgetSummary,
   useAvailablePeriods,
+  useTransactions,
   invalidateBudgets,
 } from "@/hooks";
 import { setBudget, getSetting, setSetting, findPreviousMonthWithBudgets, copyBudgetToMonth, seedDefaultBudget } from "@/lib/db/client";
 import { invalidateBudgetHierarchy } from "@/hooks/use-budget";
-import type { BudgetTree, BudgetTreeItem } from "@/lib/budget/types";
+import type { BudgetTree, BudgetTreeCategory } from "@/lib/budget/types";
 import { computeEffectiveTree, parsePending } from "@/lib/budget/effective-tree";
 import { BudgetTreeInputProvider, useBudgetTreeInputs } from "@/components/features/budget/budget-tree-context";
 import { PeriodNavigator } from "@/components/features/budget/period-navigator";
@@ -27,7 +27,7 @@ import { BudgetSummaryHero, type AssignSuggestion } from "@/components/features/
 import { BudgetTreeView } from "@/components/features/budget/budget-tree";
 import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previous-month-card";
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
-import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
+import { CategoryDetailDialog, type DetailCategory } from "@/components/features/budget/category-detail-dialog";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
 
 const SUGGESTION_GROUPS = ["Savings", "Goals", "Flexible Spending"];
@@ -41,6 +41,7 @@ export default function BudgetPage() {
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
   const fmt = useCallback((n: number) => formatAmount(n, currency), [formatAmount, currency]);
+  const fmtShort = useCallback((n: number) => formatAmount(n, currency, false), [formatAmount, currency]);
 
   const sentinelRef = useSetPageHeader("Budget");
 
@@ -59,33 +60,42 @@ export default function BudgetPage() {
     <div className="space-y-6 p-6">
       <div ref={sentinelRef} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "monthly" | "yearly")}>
-          <TabsList>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">Yearly Totals</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <div className="flex items-center gap-2">
-          <PeriodNavigator
-            viewMode={viewMode === "monthly" ? "month" : "year"}
-            selectedMonth={selected}
-            selectedYear={selectedYear}
-            availableYears={availableYears}
-            availableMonthsByYear={availableMonthsByYear}
-            onMonthSelect={(year, month) => setSelected({ year, month })}
-            onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
-          />
-          {viewMode === "monthly" && (
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <Link href="/budget/builder">
-                <SlidersHorizontal className="h-4 w-4" />
-                Builder
-              </Link>
-            </Button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <PeriodNavigator
+          viewMode={viewMode === "monthly" ? "month" : "year"}
+          selectedMonth={selected}
+          selectedYear={selectedYear}
+          availableYears={availableYears}
+          availableMonthsByYear={availableMonthsByYear}
+          onMonthSelect={(year, month) => setSelected({ year, month })}
+          onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
+        />
+        {viewMode === "monthly" && (
+          <Button asChild variant="outline" size="sm" className="gap-1.5">
+            <Link href="/budget/builder">
+              <PencilLine className="h-4 w-4" />
+              Edit Budget
+            </Link>
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setViewMode((m) => (m === "monthly" ? "yearly" : "monthly"))}
+        >
+          {viewMode === "monthly" ? (
+            <>
+              <CalendarRange className="h-4 w-4" />
+              View Yearly
+            </>
+          ) : (
+            <>
+              <CalendarDays className="h-4 w-4" />
+              View Monthly
+            </>
           )}
-        </div>
+        </Button>
       </div>
 
       {viewMode === "monthly" ? (
@@ -95,7 +105,7 @@ export default function BudgetPage() {
           <EmptyBudget />
         ) : (
           <BudgetTreeInputProvider>
-            <MonthlyContent tree={tree} year={selected.year} month={selected.month} fmt={fmt} />
+            <MonthlyContent tree={tree} year={selected.year} month={selected.month} fmt={fmt} fmtShort={fmtShort} />
           </BudgetTreeInputProvider>
         )
       ) : !yearly ? (
@@ -141,17 +151,19 @@ function MonthlyContent({
   year,
   month,
   fmt,
+  fmtShort,
 }: {
   tree: BudgetTree;
   year: number;
   month: number;
   fmt: (n: number) => string;
+  fmtShort: (n: number) => string;
 }) {
   const { focus } = useBudgetTreeInputs();
   const { setHasUnsavedChanges, setSaveHandler } = useUnsavedChanges();
 
   const [pending, setPending] = useState<Map<number, string>>(new Map());
-  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [detailItem, setDetailItem] = useState<DetailCategory | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -160,7 +172,24 @@ function MonthlyContent({
   const [autoCopy, setAutoCopy] = useState<boolean | null>(null);
   const [isCopying, setIsCopying] = useState(false);
 
-  const monthEmpty = tree.groups.every((g) => g.subcategories.every((s) => s.items.every((i) => i.planned === 0)));
+  const monthEmpty = tree.groups.every((g) => g.categories.every((c) => c.planned === 0));
+
+  // Transactions for the period, grouped by category, so the tree can show
+  // each category's transactions nested underneath it (desc + amount only).
+  const { start: periodStart, end: periodEnd } = useMemo(
+    () => ({ start: new Date(year, month, 1), end: new Date(year, month + 1, 0, 23, 59, 59) }),
+    [year, month]
+  );
+  const monthTransactions = useTransactions({ startDate: periodStart, endDate: periodEnd });
+  const transactionsByCategory = useMemo(() => {
+    const map = new Map<number, { id: number; description: string; amount: number; date: Date }[]>();
+    for (const t of monthTransactions ?? []) {
+      if (t.budgetItemId == null) continue;
+      if (!map.has(t.budgetItemId)) map.set(t.budgetItemId, []);
+      map.get(t.budgetItemId)!.push({ id: t.id!, description: t.description, amount: t.amountOut - t.amountIn, date: t.date });
+    }
+    return map;
+  }, [monthTransactions]);
 
   useEffect(() => {
     getSetting("autoCopyBudgets").then((v) => setAutoCopy(v === "true"));
@@ -226,9 +255,9 @@ function MonthlyContent({
   }, []);
 
   const assignRemaining = useCallback((itemId: number, amount: number) => {
-    // Add the remaining amount to the item's current effective planned value.
+    // Add the remaining amount to the category's current effective planned value.
     let current = 0;
-    for (const g of effective.groups) for (const s of g.subcategories) for (const it of s.items) if (it.id === itemId) current = it.planned;
+    for (const g of effective.groups) for (const c of g.categories) if (c.id === itemId) current = c.planned;
     setPlanned(itemId, (current + amount).toFixed(2));
     focus(itemId);
   }, [effective, setPlanned, focus]);
@@ -238,25 +267,25 @@ function MonthlyContent({
     const out: AssignSuggestion[] = [];
     for (const g of effective.groups) {
       if (!SUGGESTION_GROUPS.includes(g.name)) continue;
-      for (const s of g.subcategories) for (const it of s.items) out.push({ itemId: it.id, label: `${g.name} › ${it.name}` });
+      for (const c of g.categories) out.push({ itemId: c.id, label: `${g.name} › ${c.name}` });
     }
     return out.slice(0, 8);
   }, [effective]);
 
   const overspentChips = useMemo<AssignSuggestion[]>(() => {
     const all: { itemId: number; label: string; planned: number }[] = [];
-    for (const g of effective.groups) for (const s of g.subcategories) for (const it of s.items) all.push({ itemId: it.id, label: it.name, planned: it.planned });
+    for (const g of effective.groups) for (const c of g.categories) all.push({ itemId: c.id, label: c.name, planned: c.planned });
     return all.sort((a, b) => b.planned - a.planned).slice(0, 4).map(({ itemId, label }) => ({ itemId, label }));
   }, [effective]);
 
-  const openDetail = useCallback((item: BudgetTreeItem) => {
+  const openDetail = useCallback((category: BudgetTreeCategory) => {
     setDetailItem({
-      id: item.id,
-      name: item.name,
-      itemType: item.itemType,
-      targetAmount: item.targetAmount,
-      isActive: item.isActive,
-      keywords: item.keywords,
+      id: category.id,
+      name: category.name,
+      itemType: category.itemType,
+      targetAmount: category.targetAmount,
+      isActive: category.isActive,
+      keywords: category.keywords,
     });
     setDetailOpen(true);
   }, []);
@@ -305,13 +334,11 @@ function MonthlyContent({
 
       <BudgetTreeView
         tree={effective}
-        pending={pending}
-        formatAmount={fmt}
+        formatAmountShort={fmtShort}
         year={year}
         month={month}
-        onPlannedChange={setPlanned}
-        onPlannedCommit={() => { /* pending already captured; commit is a no-op until Save */ }}
         onOpenDetail={openDetail}
+        transactionsByCategory={transactionsByCategory}
       />
 
       {/* Save/Cancel FAB */}
@@ -327,7 +354,7 @@ function MonthlyContent({
         </div>
       )}
 
-      <ItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
+      <CategoryDetailDialog category={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
     </div>
   );
 }

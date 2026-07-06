@@ -4,8 +4,8 @@ import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 
 // POST /api/budgets/copy — copy monthly budgets from one period to another.
-// Body: { fromYear, fromMonth, toYear, toMonth }. Skips inactive items and does
-// not overwrite existing target rows (ON CONFLICT DO NOTHING).
+// Body: { fromYear, fromMonth, toYear, toMonth }. Skips archived categories and
+// does not overwrite existing target rows (ON CONFLICT DO NOTHING).
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
@@ -23,15 +23,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Source budgets joined with items so we can skip inactive items.
+    // Source budgets joined with categories so we can skip archived categories.
     const sourceBudgets = await db
       .select({
         budgetItemId: schema.budgets.budgetItemId,
         amount: schema.budgets.amount,
-        isActive: schema.budgetItems.isActive,
+        isActive: schema.budgetSubcategories.isActive,
       })
       .from(schema.budgets)
-      .innerJoin(schema.budgetItems, eq(schema.budgets.budgetItemId, schema.budgetItems.id))
+      .innerJoin(schema.budgetSubcategories, eq(schema.budgets.budgetItemId, schema.budgetSubcategories.id))
       .where(
         and(
           eq(schema.budgets.year, fromYear),

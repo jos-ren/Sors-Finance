@@ -190,7 +190,7 @@ export {
   useBudgetHierarchy,
   useBudgetTree,
   useYearlyBudgetSummary,
-  useArchivedBudgetItems,
+  useArchivedBudgetCategories,
   useGoalProgress,
   useIncomeTotal,
 } from "./use-budget";
@@ -232,13 +232,13 @@ export function useYearlyTotals(year: number) {
 }
 
 /**
- * Map of budget item id → name (archived included), for resolving names on the
- * dashboard's spending aggregations, which are now keyed by budget item id.
+ * Map of budget category id → name (archived included), for resolving names on
+ * the dashboard's spending aggregations, which are now keyed by budget category id.
  */
 export function useBudgetItemNames(): Map<number, string> | undefined {
   const hierarchy = useBudgetHierarchy(true);
   if (!hierarchy) return undefined;
-  return new Map(hierarchy.items.map((i) => [i.id!, i.name]));
+  return new Map(hierarchy.subcategories.map((c) => [c.id!, c.name]));
 }
 
 export function useSpendingByCategory(year: number, month?: number) {

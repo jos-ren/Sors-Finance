@@ -26,7 +26,7 @@ export const SYSTEM_CATEGORIES = {
 } as const;
 
 // ============================================
-// Budget Hierarchy Types (Group → Subcategory → Item)
+// Budget Hierarchy Types (Category Group → Category)
 // ============================================
 
 export type BudgetItemType = "expense" | "goal";
@@ -40,21 +40,13 @@ export interface DbBudgetGroup {
   updatedAt: Date;
 }
 
+/** A Category: the budgeting leaf. Carries keywords, expense/goal type, and
+ *  target amount, and is what transactions/monthly budget rows attach to. */
 export interface DbBudgetSubcategory {
   id?: number;
   uuid: string;
   name: string;
   groupId: number;
-  order: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface DbBudgetItem {
-  id?: number;
-  uuid: string;
-  name: string;
-  subcategoryId: number;
   keywords: string[];
   itemType: BudgetItemType;
   targetAmount?: number | null;

@@ -127,6 +127,13 @@
       "when": 1783217665480,
       "tag": "0017_aromatic_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1783316665165,
+      "tag": "0018_collapse_budget_items",
+      "breakpoints": true
     }
   ]
 }

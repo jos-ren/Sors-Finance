@@ -2,8 +2,16 @@
 
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { Save, X, ArrowLeft, Archive } from "lucide-react";
+import { Save, X, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
@@ -17,7 +25,7 @@ import { PeriodNavigator } from "@/components/features/budget/period-navigator";
 import { AllocationMeter } from "@/components/features/budget/builder/allocation-meter";
 import { BuilderList, type BuilderGroupData } from "@/components/features/budget/builder/builder-list";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
-import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
+import { CategoryDetailDialog, type DetailCategory } from "@/components/features/budget/category-detail-dialog";
 import { ArchivedItemsSheet } from "@/components/features/budget/manage/archived-items-sheet";
 
 export default function BudgetBuilderPage() {
@@ -25,7 +33,7 @@ export default function BudgetBuilderPage() {
   const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [pending, setPending] = useState<Map<number, string>>(new Map());
   const [saving, setSaving] = useState(false);
-  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [detailItem, setDetailItem] = useState<DetailCategory | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
 
@@ -56,40 +64,29 @@ export default function BudgetBuilderPage() {
 
   const groups = useMemo<BuilderGroupData[]>(() => {
     if (!hierarchy) return [];
-    const subsByGroup = new Map<number, typeof hierarchy.subcategories>();
-    for (const s of hierarchy.subcategories) {
-      if (!subsByGroup.has(s.groupId)) subsByGroup.set(s.groupId, []);
-      subsByGroup.get(s.groupId)!.push(s);
-    }
-    const itemsBySub = new Map<number, typeof hierarchy.items>();
-    for (const i of hierarchy.items) {
-      if (!itemsBySub.has(i.subcategoryId)) itemsBySub.set(i.subcategoryId, []);
-      itemsBySub.get(i.subcategoryId)!.push(i);
+    const categoriesByGroup = new Map<number, typeof hierarchy.subcategories>();
+    for (const c of hierarchy.subcategories) {
+      if (!categoriesByGroup.has(c.groupId)) categoriesByGroup.set(c.groupId, []);
+      categoriesByGroup.get(c.groupId)!.push(c);
     }
     return hierarchy.groups
       .slice()
       .sort((a, b) => a.order - b.order)
       .map((group) => ({
         group,
-        subs: (subsByGroup.get(group.id!) ?? [])
+        categories: (categoriesByGroup.get(group.id!) ?? [])
           .sort((a, b) => a.order - b.order)
-          .map((sub) => ({
-            sub,
-            items: (itemsBySub.get(sub.id!) ?? [])
-              .sort((a, b) => a.order - b.order)
-              .map((item) => ({ item, saved: savedPlanned.get(item.id!) ?? 0 })),
-          })),
+          .map((category) => ({ category, saved: savedPlanned.get(category.id!) ?? 0 })),
       }));
   }, [hierarchy, savedPlanned]);
 
   const assigned = useMemo(() => {
     let sum = 0;
-    for (const g of groups) for (const s of g.subs) for (const { item, saved } of s.items) sum += parsePending(pending.get(item.id!), saved);
+    for (const g of groups) for (const { category, saved } of g.categories) sum += parsePending(pending.get(category.id!), saved);
     return sum;
   }, [groups, pending]);
 
   const incomeVal = income ?? 0;
-  const left = incomeVal - assigned;
 
   useEffect(() => setPending(new Map()), [selected.year, selected.month]);
 
@@ -123,8 +120,8 @@ export default function BudgetBuilderPage() {
     return () => { setHasUnsavedChanges(false); setSaveHandler(null); };
   }, [pending.size, handleSave, setHasUnsavedChanges, setSaveHandler]);
 
-  const openDetail = useCallback((item: DetailItem) => {
-    setDetailItem(item);
+  const openDetail = useCallback((category: DetailCategory) => {
+    setDetailItem(category);
     setDetailOpen(true);
   }, []);
 
@@ -135,9 +132,19 @@ export default function BudgetBuilderPage() {
       <div ref={sentinelRef} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button asChild variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-          <Link href="/budget"><ArrowLeft className="h-4 w-4" /> Back to budget</Link>
-        </Button>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/budget">Budget</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Builder</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setArchivedOpen(true)}>
             <Archive className="h-4 w-4" /> Archived
@@ -162,7 +169,6 @@ export default function BudgetBuilderPage() {
           <BuilderList
             groups={groups}
             income={incomeVal}
-            leftToAssign={left}
             pending={pending}
             formatAmount={fmt}
             onPlannedChange={setPlanned}
@@ -183,7 +189,7 @@ export default function BudgetBuilderPage() {
         </div>
       )}
 
-      <ItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
+      <CategoryDetailDialog category={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
       <ArchivedItemsSheet open={archivedOpen} onOpenChange={setArchivedOpen} />
     </div>
   );

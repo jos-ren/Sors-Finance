@@ -41,8 +41,13 @@ export function migrateBudgetHierarchy(sqlite: DB): void {
   const insertSub = sqlite.prepare(
     "INSERT INTO budget_subcategories (uuid, name, group_id, `order`, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
   );
+  // Inserts into budget_items_legacy: on a from-scratch install, the SQL
+  // migration for budget_hierarchy_v2 has already renamed budget_items to
+  // budget_items_legacy before any TS data migration runs, and the v2 TS
+  // migration (which runs immediately after this one) folds these rows into
+  // budget_subcategories the same way it does for real historical data.
   const insertItem = sqlite.prepare(
-    "INSERT INTO budget_items (uuid, name, subcategory_id, keywords, item_type, target_amount, is_active, `order`, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
+    "INSERT INTO budget_items_legacy (uuid, name, subcategory_id, keywords, item_type, target_amount, is_active, `order`, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
   );
   const insertBudget = sqlite.prepare(
     "INSERT INTO budgets (budget_item_id, year, month, amount, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"

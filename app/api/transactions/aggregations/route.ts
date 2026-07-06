@@ -151,24 +151,24 @@ export async function GET(request: NextRequest) {
       }
 
       case "goalProgress": {
-        // Lifetime cumulative net per goal item → Record<itemId, number>.
-        const goalItems = await db
-          .select({ id: schema.budgetItems.id })
-          .from(schema.budgetItems)
-          .where(and(eq(schema.budgetItems.userId, userId), eq(schema.budgetItems.itemType, "goal")));
-        const goalIds = new Set(goalItems.map((g) => g.id));
+        // Lifetime cumulative net per goal category → Record<categoryId, number>.
+        const goalCategories = await db
+          .select({ id: schema.budgetSubcategories.id })
+          .from(schema.budgetSubcategories)
+          .where(and(eq(schema.budgetSubcategories.userId, userId), eq(schema.budgetSubcategories.itemType, "goal")));
+        const goalIds = new Set(goalCategories.map((g) => g.id));
         if (goalIds.size === 0) return NextResponse.json({ data: {}, success: true });
 
         const results = await db
           .select({
-            itemId: schema.transactions.budgetItemId,
+            categoryId: schema.transactions.budgetItemId,
             total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
           })
           .from(schema.transactions)
           .where(and(eq(schema.transactions.userId, userId), isNotNull(schema.transactions.budgetItemId)))
           .groupBy(schema.transactions.budgetItemId);
         const map: Record<number, number> = {};
-        for (const r of results) if (r.itemId !== null && goalIds.has(r.itemId)) map[r.itemId] = r.total || 0;
+        for (const r of results) if (r.categoryId !== null && goalIds.has(r.categoryId)) map[r.categoryId] = r.total || 0;
         return NextResponse.json({ data: map, success: true });
       }
 

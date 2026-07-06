@@ -9,87 +9,58 @@ import { and, eq, inArray, sql, asc } from "drizzle-orm";
 
 export interface GroupDeleteImpact {
   subcategories: number;
-  items: number;
   transactions: number;
 }
 
 export interface SubcategoryDeleteImpact {
-  items: number;
-  transactions: number;
-}
-
-export interface ItemDeleteImpact {
   transactions: number;
   budgets: number;
 }
 
-/** Item ids under a group (via its subcategories), scoped to the user. */
-async function itemIdsUnderGroup(userId: number, groupId: number): Promise<number[]> {
+async function subcategoryIdsUnderGroup(userId: number, groupId: number): Promise<number[]> {
   const rows = await db
-    .select({ id: schema.budgetItems.id })
-    .from(schema.budgetItems)
-    .innerJoin(schema.budgetSubcategories, eq(schema.budgetItems.subcategoryId, schema.budgetSubcategories.id))
-    .where(and(eq(schema.budgetSubcategories.groupId, groupId), eq(schema.budgetItems.userId, userId)));
+    .select({ id: schema.budgetSubcategories.id })
+    .from(schema.budgetSubcategories)
+    .where(and(eq(schema.budgetSubcategories.groupId, groupId), eq(schema.budgetSubcategories.userId, userId)));
   return rows.map((r) => r.id);
 }
 
-async function itemIdsUnderSubcategory(userId: number, subId: number): Promise<number[]> {
-  const rows = await db
-    .select({ id: schema.budgetItems.id })
-    .from(schema.budgetItems)
-    .where(and(eq(schema.budgetItems.subcategoryId, subId), eq(schema.budgetItems.userId, userId)));
-  return rows.map((r) => r.id);
-}
-
-async function countTransactionsForItems(userId: number, itemIds: number[]): Promise<number> {
-  if (itemIds.length === 0) return 0;
+async function countTransactionsForSubcategories(userId: number, subcategoryIds: number[]): Promise<number> {
+  if (subcategoryIds.length === 0) return 0;
   const res = await db
     .select({ c: sql<number>`COUNT(*)` })
     .from(schema.transactions)
-    .where(and(inArray(schema.transactions.budgetItemId, itemIds), eq(schema.transactions.userId, userId)));
+    .where(and(inArray(schema.transactions.budgetItemId, subcategoryIds), eq(schema.transactions.userId, userId)));
   return res[0]?.c ?? 0;
 }
 
 export async function groupDeleteImpact(userId: number, groupId: number): Promise<GroupDeleteImpact> {
-  const subs = await db
-    .select({ c: sql<number>`COUNT(*)` })
-    .from(schema.budgetSubcategories)
-    .where(and(eq(schema.budgetSubcategories.groupId, groupId), eq(schema.budgetSubcategories.userId, userId)));
-  const itemIds = await itemIdsUnderGroup(userId, groupId);
-  const transactions = await countTransactionsForItems(userId, itemIds);
-  return { subcategories: subs[0]?.c ?? 0, items: itemIds.length, transactions };
+  const subcategoryIds = await subcategoryIdsUnderGroup(userId, groupId);
+  const transactions = await countTransactionsForSubcategories(userId, subcategoryIds);
+  return { subcategories: subcategoryIds.length, transactions };
 }
 
 export async function subcategoryDeleteImpact(userId: number, subId: number): Promise<SubcategoryDeleteImpact> {
-  const itemIds = await itemIdsUnderSubcategory(userId, subId);
-  const transactions = await countTransactionsForItems(userId, itemIds);
-  return { items: itemIds.length, transactions };
-}
-
-export async function itemDeleteImpact(userId: number, itemId: number): Promise<ItemDeleteImpact> {
-  const transactions = await countTransactionsForItems(userId, [itemId]);
+  const transactions = await countTransactionsForSubcategories(userId, [subId]);
   const budgets = await db
     .select({ c: sql<number>`COUNT(*)` })
     .from(schema.budgets)
-    .where(and(eq(schema.budgets.budgetItemId, itemId), eq(schema.budgets.userId, userId)));
+    .where(and(eq(schema.budgets.budgetItemId, subId), eq(schema.budgets.userId, userId)));
   return { transactions, budgets: budgets[0]?.c ?? 0 };
 }
 
-type ReorderTable =
-  | typeof schema.budgetGroups
-  | typeof schema.budgetSubcategories
-  | typeof schema.budgetItems;
+type ReorderTable = typeof schema.budgetGroups | typeof schema.budgetSubcategories;
 
 /**
  * Reorder rows within a user scope by moving `activeId` to `overId`'s position.
- * Optionally constrain to a parent (e.g. reorder items within one subcategory).
+ * Optionally constrain to a parent (e.g. reorder subcategories within one group).
  */
 export async function reorderWithinScope(
   table: ReorderTable,
   userId: number,
   activeId: number,
   overId: number,
-  parent?: { column: "groupId" | "subcategoryId"; id: number }
+  parent?: { column: "groupId"; id: number }
 ): Promise<boolean> {
   const scope = [eq(table.userId, userId)];
   if (parent) {

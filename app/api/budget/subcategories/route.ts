@@ -4,14 +4,16 @@ import { asc, sql, eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 
-// GET /api/budget/subcategories[?groupId=]
+// GET /api/budget/subcategories[?groupId=&includeArchived=]
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
     const groupId = request.nextUrl.searchParams.get("groupId");
+    const includeArchived = request.nextUrl.searchParams.get("includeArchived") === "true";
 
     const conditions = [eq(schema.budgetSubcategories.userId, userId)];
     if (groupId) conditions.push(eq(schema.budgetSubcategories.groupId, parseInt(groupId, 10)));
+    if (!includeArchived) conditions.push(eq(schema.budgetSubcategories.isActive, true));
 
     const rows = await db
       .select()
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
-    const { name, groupId } = await request.json();
+    const { name, groupId, keywords = [], itemType = "expense", targetAmount = null } = await request.json();
     if (!name || !groupId) {
       return NextResponse.json({ error: "name and groupId are required", success: false }, { status: 400 });
     }
@@ -56,7 +58,19 @@ export async function POST(request: NextRequest) {
 
     const result = await db
       .insert(schema.budgetSubcategories)
-      .values({ uuid: randomUUID(), name, groupId, order, userId, createdAt: now, updatedAt: now })
+      .values({
+        uuid: randomUUID(),
+        name,
+        groupId,
+        keywords,
+        itemType: itemType === "goal" ? "goal" : "expense",
+        targetAmount,
+        isActive: true,
+        order,
+        userId,
+        createdAt: now,
+        updatedAt: now,
+      })
       .returning();
     return NextResponse.json({ data: result[0], success: true });
   } catch (error) {

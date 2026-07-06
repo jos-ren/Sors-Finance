@@ -119,7 +119,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     // When unlocking without an explicit assignment, re-run keyword matching
-    // against active budget items + the Income system category.
+    // against active budget categories + the Income system category.
     if (
       updates.categoryLocked === false &&
       updates.categoryId === undefined &&
@@ -128,8 +128,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       const [activeItems, incomeCat] = await Promise.all([
         db
           .select()
-          .from(schema.budgetItems)
-          .where(and(eq(schema.budgetItems.userId, userId), eq(schema.budgetItems.isActive, true))),
+          .from(schema.budgetSubcategories)
+          .where(and(eq(schema.budgetSubcategories.userId, userId), eq(schema.budgetSubcategories.isActive, true))),
         db
           .select()
           .from(schema.categories)

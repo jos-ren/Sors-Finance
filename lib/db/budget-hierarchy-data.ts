@@ -33,9 +33,14 @@ export interface SeedBudgetGroup {
 }
 
 /**
- * The complete default budget. Amounts sum to $5,500 across all items.
- * Goal items (Savings → Emergency Fund and everything under Goals) carry an
- * `itemType: 'goal'` and an illustrative `targetAmount`.
+ * The complete default budget, expressed in its original Group→Subcategory→Item
+ * shape (kept as-is since `migrate-budget-hierarchy.ts`, the frozen
+ * budget_hierarchy_v1 migration, still inserts against that 3-level shape on a
+ * from-scratch install — see DEFAULT_BUDGET_CATEGORY_GROUPS below for the
+ * live 2-level Group→Category shape used to seed new users going forward).
+ * Amounts sum to $5,500 across all items. Goal items (Savings → Emergency
+ * Fund and everything under Goals) carry an `itemType: 'goal'` and an
+ * illustrative `targetAmount`.
  */
 export const DEFAULT_BUDGET_HIERARCHY: SeedBudgetGroup[] = [
   {
@@ -232,3 +237,43 @@ export const DEFAULT_BUDGET_HIERARCHY: SeedBudgetGroup[] = [
     ],
   },
 ];
+
+// ---- Live (2-level) seed shape -----------------------------------------
+
+/** A "Category" (formerly Subcategory+Item) under a Category Group. */
+export interface SeedBudgetCategory {
+  name: string;
+  keywords: string[];
+  defaultAmount: number;
+  itemType?: BudgetItemType; // default 'expense'
+  targetAmount?: number;
+}
+
+export interface SeedBudgetCategoryGroup {
+  name: string;
+  categories: SeedBudgetCategory[];
+}
+
+/**
+ * Merge a subcategory's items into a single category, using the same policy
+ * as the budget_hierarchy_v2 data migration: keywords are unioned, a goal
+ * item's type/target wins, and default amounts sum. Keeps new-user seeding
+ * and the live-data migration producing equivalent-shaped results.
+ */
+function mergeSubcategoryIntoCategory(sub: SeedBudgetSubcategory): SeedBudgetCategory {
+  const keywords = Array.from(new Set(sub.items.flatMap((item) => item.keywords)));
+  const goal = sub.items.find((item) => item.itemType === "goal");
+  return {
+    name: sub.name,
+    keywords,
+    defaultAmount: sub.items.reduce((sum, item) => sum + item.defaultAmount, 0),
+    itemType: goal?.itemType,
+    targetAmount: goal?.targetAmount,
+  };
+}
+
+/** The default budget in the live Group→Category shape, for seeding new users. */
+export const DEFAULT_BUDGET_CATEGORY_GROUPS: SeedBudgetCategoryGroup[] = DEFAULT_BUDGET_HIERARCHY.map((group) => ({
+  name: group.name,
+  categories: group.subcategories.map(mergeSubcategoryIntoCategory),
+}));

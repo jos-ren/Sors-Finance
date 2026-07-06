@@ -108,9 +108,9 @@ export function TransactionDataTable({
   const userCurrency = useCurrency();
   const userTimezone = useTimezone();
 
-  // Budget item names for resolving a transaction's assignment (item or system).
+  // Budget category names for resolving a transaction's assignment (category or system).
   const hierarchy = useBudgetHierarchy(true);
-  const itemNames = useMemo(() => new Map((hierarchy?.items ?? []).map((i) => [i.id!, i.name])), [hierarchy]);
+  const itemNames = useMemo(() => new Map((hierarchy?.subcategories ?? []).map((c) => [c.id!, c.name])), [hierarchy]);
 
   const handleResetCategory = useCallback(async (id: number) => {
     setResettingId(id);
@@ -631,11 +631,11 @@ export function TransactionDataTable({
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="uncategorized">Uncategorized</SelectItem>
-              {(hierarchy?.items ?? [])
-                .filter((i) => i.isActive)
-                .map((i) => (
-                  <SelectItem key={`item-${i.id}`} value={`item:${i.id}`}>
-                    {i.name}
+              {(hierarchy?.subcategories ?? [])
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <SelectItem key={`item-${c.id}`} value={`item:${c.id}`}>
+                    {c.name}
                   </SelectItem>
                 ))}
               {categories

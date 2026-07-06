@@ -93,6 +93,10 @@ export const budgetGroups = sqliteTable(
   ]
 );
 
+// Subcategories are the budgeting leaf ("Category" in the UI): they carry
+// keywords, expense/goal type, and target amount, and are what transactions
+// and monthly budget rows attach to. (Formerly this data lived one level
+// deeper on a now-removed `budget_items` table — see budget_hierarchy_v2.)
 export const budgetSubcategories = sqliteTable(
   "budget_subcategories",
   {
@@ -102,29 +106,6 @@ export const budgetSubcategories = sqliteTable(
     groupId: integer("group_id")
       .notNull()
       .references(() => budgetGroups.id, { onDelete: "cascade" }),
-    order: integer("order").notNull().default(0),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  },
-  (table) => [
-    index("budget_subcategories_group_idx").on(table.groupId),
-    index("budget_subcategories_order_idx").on(table.order),
-    index("budget_subcategories_user_idx").on(table.userId),
-  ]
-);
-
-export const budgetItems = sqliteTable(
-  "budget_items",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    uuid: text("uuid").notNull().unique(),
-    name: text("name").notNull(),
-    subcategoryId: integer("subcategory_id")
-      .notNull()
-      .references(() => budgetSubcategories.id, { onDelete: "cascade" }),
     keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
     itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
     targetAmount: real("target_amount"), // nullable; goal progress target
@@ -137,10 +118,10 @@ export const budgetItems = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
   },
   (table) => [
-    index("budget_items_subcategory_idx").on(table.subcategoryId),
-    index("budget_items_order_idx").on(table.order),
-    index("budget_items_active_idx").on(table.isActive),
-    index("budget_items_user_idx").on(table.userId),
+    index("budget_subcategories_group_idx").on(table.groupId),
+    index("budget_subcategories_order_idx").on(table.order),
+    index("budget_subcategories_active_idx").on(table.isActive),
+    index("budget_subcategories_user_idx").on(table.userId),
   ]
 );
 
@@ -164,7 +145,7 @@ export const transactions = sqliteTable(
     sourceAccountName: text("source_account_name"), // Specific account name for tooltip
     note: text("note"),
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
-    budgetItemId: integer("budget_item_id").references(() => budgetItems.id, { onDelete: "set null" }),
+    budgetItemId: integer("budget_item_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
     categoryLocked: integer("category_locked", { mode: "boolean" }).notNull().default(false),
     importId: integer("import_id").references(() => imports.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -193,7 +174,7 @@ export const budgets = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     budgetItemId: integer("budget_item_id")
       .notNull()
-      .references(() => budgetItems.id, { onDelete: "cascade" }),
+      .references(() => budgetSubcategories.id, { onDelete: "cascade" }),
     year: integer("year").notNull(),
     month: integer("month").notNull(), // 0–11 (monthly only; yearly mode dropped)
     amount: real("amount").notNull(),
@@ -500,9 +481,6 @@ export type BudgetGroupInsert = typeof budgetGroups.$inferInsert;
 
 export type BudgetSubcategoryRow = typeof budgetSubcategories.$inferSelect;
 export type BudgetSubcategoryInsert = typeof budgetSubcategories.$inferInsert;
-
-export type BudgetItemRow = typeof budgetItems.$inferSelect;
-export type BudgetItemInsert = typeof budgetItems.$inferInsert;
 
 export type DataMigrationRow = typeof dataMigrations.$inferSelect;
 export type DataMigrationInsert = typeof dataMigrations.$inferInsert;

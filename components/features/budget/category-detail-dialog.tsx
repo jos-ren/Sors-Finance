@@ -12,30 +12,30 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
-import type { DbBudgetItem, BudgetItemType } from "@/lib/db/types";
-import { useBudgetHierarchy, updateItem, deleteItem, archiveItem, restoreItem } from "@/hooks/use-budget";
+import type { BudgetItemType } from "@/lib/db/types";
+import { useBudgetHierarchy, updateSubcategory, deleteSubcategory, archiveSubcategory, restoreSubcategory } from "@/hooks/use-budget";
 
-export interface DetailItem {
+export interface DetailCategory {
   id: number;
   name: string;
   itemType: BudgetItemType;
   targetAmount: number | null;
   isActive: boolean;
   keywords: string[];
-  subcategoryId?: number;
+  groupId?: number;
 }
 
 /**
- * Per-item detail editor: rename, expense/goal + target, keywords, move-to
- * (Group › Subcategory), archive/restore, delete. Structure mutations save
- * immediately with a toast.
+ * Per-category detail editor: rename, expense/goal + target, keywords,
+ * move-to (Category Group), archive/restore, delete. Structure mutations
+ * save immediately with a toast.
  */
-export function ItemDetailDialog({
-  item,
+export function CategoryDetailDialog({
+  category,
   open,
   onOpenChange,
 }: {
-  item: DetailItem | null;
+  category: DetailCategory | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -46,27 +46,21 @@ export function ItemDetailDialog({
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [groupId, setGroupId] = useState<number | undefined>();
-  const [subcategoryId, setSubcategoryId] = useState<number | undefined>();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const detailItem = hierarchy?.items.find((i) => i.id === item?.id) as DbBudgetItem | undefined;
-
   useEffect(() => {
-    if (!item) return;
-    setName(item.name);
-    setIsGoal(item.itemType === "goal");
-    setTarget(item.targetAmount != null ? String(item.targetAmount) : "");
-    setKeywords(item.keywords ?? []);
-    const sub = hierarchy?.subcategories.find((s) => s.id === (detailItem?.subcategoryId ?? item.subcategoryId));
-    setSubcategoryId(sub?.id);
-    setGroupId(sub?.groupId);
+    if (!category) return;
+    setName(category.name);
+    setIsGoal(category.itemType === "goal");
+    setTarget(category.targetAmount != null ? String(category.targetAmount) : "");
+    setKeywords(category.keywords ?? []);
+    const current = hierarchy?.subcategories.find((s) => s.id === category.id);
+    setGroupId(current?.groupId ?? category.groupId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id, hierarchy]);
+  }, [category?.id, hierarchy]);
 
-  if (!item) return null;
-
-  const subsForGroup = hierarchy?.subcategories.filter((s) => s.groupId === groupId) ?? [];
+  if (!category) return null;
 
   const addKeyword = () => {
     const kw = keywordInput.trim();
@@ -79,17 +73,17 @@ export function ItemDetailDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateItem(item.id, {
-        name: name.trim() || item.name,
+      await updateSubcategory(category.id, {
+        name: name.trim() || category.name,
         itemType: isGoal ? "goal" : "expense",
         targetAmount: isGoal && target ? parseFloat(target) : null,
         keywords,
-        subcategoryId,
+        groupId,
       });
-      toast.success("Item updated");
+      toast.success("Category updated");
       onOpenChange(false);
     } catch {
-      toast.error("Failed to update item");
+      toast.error("Failed to update category");
     } finally {
       setSaving(false);
     }
@@ -97,30 +91,30 @@ export function ItemDetailDialog({
 
   const handleArchiveToggle = async () => {
     try {
-      if (item.isActive) {
-        await archiveItem(item.id);
-        toast.success("Item archived");
+      if (category.isActive) {
+        await archiveSubcategory(category.id);
+        toast.success("Category archived");
       } else {
-        await restoreItem(item.id);
-        toast.success("Item restored");
+        await restoreSubcategory(category.id);
+        toast.success("Category restored");
       }
       onOpenChange(false);
     } catch {
-      toast.error("Failed to update item");
+      toast.error("Failed to update category");
     }
   };
 
   const handleDelete = async () => {
     try {
-      const res = await deleteItem(item.id);
+      const res = await deleteSubcategory(category.id);
       toast.success(
         res.transactions > 0
-          ? `Item deleted · ${res.transactions} transaction(s) uncategorized`
-          : "Item deleted"
+          ? `Category deleted · ${res.transactions} transaction(s) uncategorized`
+          : "Category deleted"
       );
       onOpenChange(false);
     } catch {
-      toast.error("Failed to delete item");
+      toast.error("Failed to delete category");
     }
   };
 
@@ -129,14 +123,14 @@ export function ItemDetailDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="flex max-h-[85vh] flex-col gap-4 sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Item details</DialogTitle>
-            <DialogDescription>Edit keywords, target, or move this item.</DialogDescription>
+            <DialogTitle>Category details</DialogTitle>
+            <DialogDescription>Edit keywords, target, or move this category.</DialogDescription>
           </DialogHeader>
 
           <div className="-mr-2 flex-1 space-y-5 overflow-y-auto pr-2">
             <div className="space-y-1.5">
-              <Label htmlFor="item-name">Name</Label>
-              <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="category-name">Name</Label>
+              <Input id="category-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
 
             <div className="flex items-center justify-between rounded-lg border p-3">
@@ -149,8 +143,8 @@ export function ItemDetailDialog({
 
             {isGoal && (
               <div className="space-y-1.5">
-                <Label htmlFor="item-target">Target amount</Label>
-                <CurrencyInput id="item-target" value={target} onChange={setTarget} placeholder="0.00" />
+                <Label htmlFor="category-target">Target amount</Label>
+                <CurrencyInput id="category-target" value={target} onChange={setTarget} placeholder="0.00" />
               </div>
             )}
 
@@ -180,43 +174,22 @@ export function ItemDetailDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Group</Label>
-                <Select
-                  value={groupId ? String(groupId) : ""}
-                  onValueChange={(v) => {
-                    const gid = parseInt(v, 10);
-                    setGroupId(gid);
-                    const firstSub = hierarchy?.subcategories.find((s) => s.groupId === gid);
-                    setSubcategoryId(firstSub?.id);
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="Group" /></SelectTrigger>
-                  <SelectContent>
-                    {hierarchy?.groups.map((g) => (
-                      <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Subcategory</Label>
-                <Select value={subcategoryId ? String(subcategoryId) : ""} onValueChange={(v) => setSubcategoryId(parseInt(v, 10))}>
-                  <SelectTrigger><SelectValue placeholder="Subcategory" /></SelectTrigger>
-                  <SelectContent>
-                    {subsForGroup.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label>Category Group</Label>
+              <Select value={groupId ? String(groupId) : ""} onValueChange={(v) => setGroupId(parseInt(v, 10))}>
+                <SelectTrigger><SelectValue placeholder="Category Group" /></SelectTrigger>
+                <SelectContent>
+                  {hierarchy?.groups.map((g) => (
+                    <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex gap-2 pt-2">
               <Button variant="outline" size="sm" className="gap-1.5" onClick={handleArchiveToggle}>
-                {item.isActive ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
-                {item.isActive ? "Archive" : "Restore"}
+                {category.isActive ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}
+                {category.isActive ? "Archive" : "Restore"}
               </Button>
               <Button variant="ghost" size="sm" className="gap-1.5 text-destructive hover:text-destructive" onClick={() => setConfirmDelete(true)}>
                 <Trash2 className="h-4 w-4" />
@@ -235,8 +208,8 @@ export function ItemDetailDialog({
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title={`Delete "${item.name}"?`}
-        description="This permanently deletes the item and its planned amounts. Assigned transactions become uncategorized. To keep history, archive it instead."
+        title={`Delete "${category.name}"?`}
+        description="This permanently deletes the category and its planned amounts. Assigned transactions become uncategorized. To keep history, archive it instead."
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={handleDelete}

@@ -9,9 +9,9 @@
 
 import useSWR, { mutate } from "swr";
 import * as api from "@/lib/db/client";
-import type { DbBudgetItem } from "@/lib/db/types";
+import type { DbBudgetSubcategory } from "@/lib/db/types";
 import type { BudgetTree, YearlySummary } from "@/lib/budget/types";
-import type { CreateItemInput, UpdateItemInput } from "@/lib/db/client/budget-hierarchy";
+import type { CreateCategoryInput, UpdateCategoryInput } from "@/lib/db/client/budget-hierarchy";
 
 const swrConfig = {
   revalidateOnFocus: true,
@@ -63,9 +63,9 @@ export function useYearlyBudgetSummary(year: number): YearlySummary | undefined 
   return data;
 }
 
-export function useArchivedBudgetItems(): DbBudgetItem[] | undefined {
+export function useArchivedBudgetCategories(): DbBudgetSubcategory[] | undefined {
   const hierarchy = useBudgetHierarchy(true);
-  return hierarchy?.items.filter((i) => !i.isActive);
+  return hierarchy?.subcategories.filter((c) => !c.isActive);
 }
 
 export function useGoalProgress(): Map<number, number> | undefined {
@@ -102,12 +102,12 @@ export async function reorderGroups(activeId: number, overId: number) {
   return r;
 }
 
-export async function createSubcategory(name: string, groupId: number) {
-  const r = await api.createSubcategory(name, groupId);
+export async function createSubcategory(name: string, groupId: number, extra?: Omit<CreateCategoryInput, "name" | "groupId">) {
+  const r = await api.createSubcategory(name, groupId, extra);
   invalidateBudgetHierarchy();
   return r;
 }
-export async function updateSubcategory(id: number, updates: { name?: string; order?: number; groupId?: number }) {
+export async function updateSubcategory(id: number, updates: UpdateCategoryInput) {
   const r = await api.updateSubcategory(id, updates);
   invalidateBudgetHierarchy();
   return r;
@@ -122,44 +122,23 @@ export async function reorderSubcategories(activeId: number, overId: number, gro
   invalidateBudgetHierarchy();
   return r;
 }
-
-export async function createItem(input: CreateItemInput) {
-  const r = await api.createItem(input);
+export async function archiveSubcategory(id: number) {
+  const r = await api.archiveSubcategory(id);
   invalidateBudgetHierarchy();
   return r;
 }
-export async function updateItem(id: number, updates: UpdateItemInput) {
-  const r = await api.updateItem(id, updates);
+export async function restoreSubcategory(id: number) {
+  const r = await api.restoreSubcategory(id);
   invalidateBudgetHierarchy();
   return r;
 }
-export async function deleteItem(id: number) {
-  const r = await api.deleteItem(id);
+export async function addKeywordToSubcategory(id: number, keyword: string, currentKeywords: string[]) {
+  const r = await api.addKeywordToSubcategory(id, keyword, currentKeywords);
   invalidateBudgetHierarchy();
   return r;
 }
-export async function reorderItems(activeId: number, overId: number, subcategoryId?: number) {
-  const r = await api.reorderItems(activeId, overId, subcategoryId);
-  invalidateBudgetHierarchy();
-  return r;
-}
-export async function archiveItem(id: number) {
-  const r = await api.archiveItem(id);
-  invalidateBudgetHierarchy();
-  return r;
-}
-export async function restoreItem(id: number) {
-  const r = await api.restoreItem(id);
-  invalidateBudgetHierarchy();
-  return r;
-}
-export async function addKeywordToItem(id: number, keyword: string, currentKeywords: string[]) {
-  const r = await api.addKeywordToItem(id, keyword, currentKeywords);
-  invalidateBudgetHierarchy();
-  return r;
-}
-export async function removeKeywordFromItem(id: number, keyword: string, currentKeywords: string[]) {
-  const r = await api.removeKeywordFromItem(id, keyword, currentKeywords);
+export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: string[]) {
+  const r = await api.removeKeywordFromSubcategory(id, keyword, currentKeywords);
   invalidateBudgetHierarchy();
   return r;
 }

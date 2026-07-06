@@ -197,7 +197,7 @@ export default function DashboardPage() {
   // Spending aggregations are keyed by budget item; resolve names from the hierarchy.
   const budgetHierarchy = useBudgetHierarchy(true);
   const budgetItemNames = useMemo(
-    () => budgetHierarchy?.items.map((i) => ({ id: i.id, name: i.name })),
+    () => budgetHierarchy?.subcategories.map((c) => ({ id: c.id, name: c.name })),
     [budgetHierarchy]
   );
   const monthlyCategoryTrend = useMonthlyByCategoryForYear(selectedYearValue);

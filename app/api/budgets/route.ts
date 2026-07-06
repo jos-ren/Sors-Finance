@@ -48,14 +48,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ownership check on the item.
-    const item = await db
-      .select({ id: schema.budgetItems.id })
-      .from(schema.budgetItems)
-      .where(and(eq(schema.budgetItems.id, budgetItemId), eq(schema.budgetItems.userId, userId)))
+    // Ownership check on the category.
+    const category = await db
+      .select({ id: schema.budgetSubcategories.id })
+      .from(schema.budgetSubcategories)
+      .where(and(eq(schema.budgetSubcategories.id, budgetItemId), eq(schema.budgetSubcategories.userId, userId)))
       .limit(1);
-    if (item.length === 0) {
-      return NextResponse.json({ error: "Budget item not found", success: false }, { status: 404 });
+    if (category.length === 0) {
+      return NextResponse.json({ error: "Budget category not found", success: false }, { status: 404 });
     }
 
     const now = new Date();

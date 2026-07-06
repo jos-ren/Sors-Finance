@@ -56,17 +56,15 @@ export function BudgetItemPicker({
   const options = useMemo<Option[]>(() => {
     const out: Option[] = [];
     if (hierarchy) {
-      const subById = new Map(hierarchy.subcategories.map((s) => [s.id, s]));
       const groupById = new Map(hierarchy.groups.map((g) => [g.id, g]));
-      for (const item of hierarchy.items) {
-        const sub = subById.get(item.subcategoryId);
-        const group = sub ? groupById.get(sub.groupId) : undefined;
-        const groupLabel = group && sub ? `${group.name} › ${sub.name}` : "Ungrouped";
+      for (const category of hierarchy.subcategories) {
+        const group = groupById.get(category.groupId);
+        const groupLabel = group?.name ?? "Ungrouped";
         out.push({
           kind: "item",
-          id: item.id!,
-          name: item.name,
-          path: `${group?.name ?? ""} ${sub?.name ?? ""} ${item.name}`.toLowerCase(),
+          id: category.id!,
+          name: category.name,
+          path: `${group?.name ?? ""} ${category.name}`.toLowerCase(),
           groupLabel,
         });
       }

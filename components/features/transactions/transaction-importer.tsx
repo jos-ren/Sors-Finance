@@ -47,8 +47,7 @@ import {
 } from "@/hooks";
 import {
   useBudgetHierarchy,
-  updateItem,
-  createItem,
+  updateSubcategory,
   createGroup,
   createSubcategory,
 } from "@/hooks/use-budget";
@@ -107,26 +106,27 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
   const hierarchy = useBudgetHierarchy(false);
   const categories = useMemo(() => dbCategories || [], [dbCategories]);
 
-  // Auto-categorization + assignment now target budget items and the system
-  // categories together. `assignables` is a DbCategory-shaped, uuid-keyed list
-  // (active items + Income/Excluded/Uncategorized) that the categorizer and the
-  // resolve/conflict UIs consume. `itemUuids` marks which uuids are budget items
-  // so the save step can emit the correct FK.
+  // Auto-categorization + assignment now target budget categories and the
+  // system categories together. `assignables` is a DbCategory-shaped,
+  // uuid-keyed list (active budget categories + Income/Excluded/Uncategorized)
+  // that the categorizer and the resolve/conflict UIs consume. `itemUuids`
+  // marks which uuids are budget categories so the save step can emit the
+  // correct FK.
   const assignables = useMemo<DbCategory[]>(() => {
-    const items: DbCategory[] = (hierarchy?.items ?? []).map((i) => ({
-      id: i.id,
-      uuid: i.uuid,
-      name: i.name,
-      keywords: i.keywords ?? [],
-      order: i.order,
+    const items: DbCategory[] = (hierarchy?.subcategories ?? []).map((c) => ({
+      id: c.id,
+      uuid: c.uuid,
+      name: c.name,
+      keywords: c.keywords ?? [],
+      order: c.order,
       isSystem: false,
-      createdAt: i.createdAt,
-      updatedAt: i.updatedAt,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
     }));
     return [...items, ...categories];
   }, [hierarchy, categories]);
 
-  const itemUuids = useMemo(() => new Set((hierarchy?.items ?? []).map((i) => i.uuid)), [hierarchy]);
+  const itemUuids = useMemo(() => new Set((hierarchy?.subcategories ?? []).map((c) => c.uuid)), [hierarchy]);
 
   // Track pending reprocess - when assignables change, we recategorize
   const pendingReprocess = useRef(false);
@@ -480,13 +480,13 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  // Keyword edits route to the budget item (via updateItem) or to the system
-  // category (via updateCategory), keyed by uuid.
+  // Keyword edits route to the budget category (via updateSubcategory) or to
+  // the system category (via updateCategory), keyed by uuid.
   const persistKeywords = async (uuid: string, nextKeywords: string[]) => {
     const target = assignables.find((c) => c.uuid === uuid);
     if (!target || target.id == null) return;
     if (itemUuids.has(uuid)) {
-      await updateItem(target.id, { keywords: nextKeywords });
+      await updateSubcategory(target.id, { keywords: nextKeywords });
     } else {
       await updateCategory(target.id, { keywords: nextKeywords });
     }
@@ -511,17 +511,16 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     await persistKeywords(categoryId, target.keywords.map((k) => (k === oldKeyword ? newKeyword : k)));
   };
 
-  // Creating a category during import creates a budget item under an "Ungrouped"
-  // subcategory (created on demand if needed).
+  // Creating a category during import creates a budget category under an
+  // "Ungrouped" group (created on demand if needed).
   const handleCreateCategory = async (name: string, keyword: string) => {
-    let subcategoryId = hierarchy?.subcategories.find((s) => s.name === "Ungrouped")?.id
-      ?? hierarchy?.subcategories[0]?.id;
-    if (subcategoryId == null) {
+    let groupId = hierarchy?.groups.find((g) => g.name === "Ungrouped")?.id
+      ?? hierarchy?.groups[0]?.id;
+    if (groupId == null) {
       const group = await createGroup("Ungrouped");
-      const sub = await createSubcategory("Ungrouped", group.id!);
-      subcategoryId = sub.id!;
+      groupId = group.id!;
     }
-    await createItem({ name, subcategoryId, keywords: [keyword] });
+    await createSubcategory(name, groupId, { keywords: [keyword] });
     pendingReprocess.current = true;
   };
 

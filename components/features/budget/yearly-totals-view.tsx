@@ -4,8 +4,8 @@ import { cn } from "@/lib/utils";
 import type { YearlySummary } from "@/lib/budget/types";
 
 /**
- * Read-only Yearly Totals: Σ planned / Σ actual / diff per item across 12
- * months, grouped. Archived items that had activity show an "archived" badge.
+ * Read-only Yearly Totals: Σ planned / Σ actual / diff per category across 12
+ * months, grouped. Archived categories that had activity show an "archived" badge.
  */
 export function YearlyTotalsView({
   summary,
@@ -33,12 +33,8 @@ export function YearlyTotalsView({
 
       <div className="space-y-3">
         {summary.groups.map((group) => {
-          const gPlanned = group.subcategories
-            .flatMap((s) => s.items)
-            .reduce((a, i) => a + i.plannedTotal, 0);
-          const gActual = group.subcategories
-            .flatMap((s) => s.items)
-            .reduce((a, i) => a + i.actualTotal, 0);
+          const gPlanned = group.categories.reduce((a, c) => a + c.plannedTotal, 0);
+          const gActual = group.categories.reduce((a, c) => a + c.actualTotal, 0);
           return (
             <div key={group.id} className="overflow-hidden rounded-lg border bg-card">
               <div className="flex items-center justify-between px-3 py-2.5">
@@ -48,34 +44,27 @@ export function YearlyTotalsView({
                   <span className="text-muted-foreground">{formatAmount(gActual)}</span>
                 </span>
               </div>
-              <div className="border-t">
-                {group.subcategories.map((sub) => (
-                  <div key={sub.id} className="border-b px-3 py-1.5 last:border-b-0">
-                    {sub.items.length > 1 && (
-                      <p className="pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{sub.name}</p>
-                    )}
-                    {sub.items.map((item) => {
-                      const diff = item.plannedTotal - item.actualTotal;
-                      return (
-                        <div key={item.id} className="flex items-center justify-between py-1 text-sm">
-                          <span className="flex items-center gap-1.5 truncate">
-                            {item.name}
-                            {!item.isActive && (
-                              <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">archived</span>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-4 tabular-nums">
-                            <span className="w-24 text-right">{formatAmount(item.plannedTotal)}</span>
-                            <span className="w-24 text-right text-muted-foreground">{formatAmount(item.actualTotal)}</span>
-                            <span className={cn("hidden w-24 text-right sm:block", diff < 0 && "text-destructive")}>
-                              {formatAmount(diff)}
-                            </span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+              <div className="border-t px-3 py-1.5">
+                {group.categories.map((category) => {
+                  const diff = category.plannedTotal - category.actualTotal;
+                  return (
+                    <div key={category.id} className="flex items-center justify-between py-1 text-sm">
+                      <span className="flex items-center gap-1.5 truncate">
+                        {category.name}
+                        {!category.isActive && (
+                          <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">archived</span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-4 tabular-nums">
+                        <span className="w-24 text-right">{formatAmount(category.plannedTotal)}</span>
+                        <span className="w-24 text-right text-muted-foreground">{formatAmount(category.actualTotal)}</span>
+                        <span className={cn("hidden w-24 text-right sm:block", diff < 0 && "text-destructive")}>
+                          {formatAmount(diff)}
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

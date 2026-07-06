@@ -1,14 +1,13 @@
 /**
- * Client-side API wrapper for the budget hierarchy (groups → subcategories →
- * items): CRUD, reorder, archive/restore, keyword add/remove.
+ * Client-side API wrapper for the budget hierarchy (Category Groups →
+ * Categories): CRUD, reorder, archive/restore, keyword add/remove.
  */
 
-import type { DbBudgetGroup, DbBudgetSubcategory, DbBudgetItem, BudgetItemType } from "../types";
+import type { DbBudgetGroup, DbBudgetSubcategory, BudgetItemType } from "../types";
 
 export interface BudgetHierarchy {
   groups: DbBudgetGroup[];
   subcategories: DbBudgetSubcategory[];
-  items: DbBudgetItem[];
 }
 
 const withDates = <T extends { createdAt: unknown; updatedAt: unknown }>(row: T) => ({
@@ -62,7 +61,6 @@ export async function getBudgetHierarchy(includeArchived = false): Promise<Budge
   return {
     groups: (data.groups as DbBudgetGroup[]).map(withDates),
     subcategories: (data.subcategories as DbBudgetSubcategory[]).map(withDates),
-    items: (data.items as DbBudgetItem[]).map(withDates),
   };
 }
 
@@ -75,65 +73,51 @@ export const updateGroup = (id: number, updates: { name?: string; order?: number
   putJson<{ updated: boolean }>(`/api/budget/groups/${id}`, updates);
 
 export const deleteGroup = (id: number) =>
-  del<{ deleted: boolean; subcategories: number; items: number; transactions: number }>(`/api/budget/groups/${id}`);
+  del<{ deleted: boolean; subcategories: number; transactions: number }>(`/api/budget/groups/${id}`);
 
 export const reorderGroups = (activeId: number, overId: number) =>
   postJson("/api/budget/groups/reorder", { activeId, overId });
 
-// ---- Subcategories ----------------------------------------------------------
+// ---- Categories (subcategory rows) -------------------------------------------
 
-export const createSubcategory = (name: string, groupId: number) =>
-  postJson<DbBudgetSubcategory>("/api/budget/subcategories", { name, groupId });
-
-export const updateSubcategory = (id: number, updates: { name?: string; order?: number; groupId?: number }) =>
-  putJson<{ updated: boolean }>(`/api/budget/subcategories/${id}`, updates);
-
-export const deleteSubcategory = (id: number) =>
-  del<{ deleted: boolean; items: number; transactions: number }>(`/api/budget/subcategories/${id}`);
-
-export const reorderSubcategories = (activeId: number, overId: number, groupId?: number) =>
-  postJson("/api/budget/subcategories/reorder", { activeId, overId, groupId });
-
-// ---- Items ------------------------------------------------------------------
-
-export interface CreateItemInput {
+export interface CreateCategoryInput {
   name: string;
-  subcategoryId: number;
+  groupId: number;
   keywords?: string[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
 }
 
-export const createItem = (input: CreateItemInput) =>
-  postJson<DbBudgetItem>("/api/budget/items", input);
+export const createSubcategory = (name: string, groupId: number, extra?: Omit<CreateCategoryInput, "name" | "groupId">) =>
+  postJson<DbBudgetSubcategory>("/api/budget/subcategories", { name, groupId, ...extra });
 
-export interface UpdateItemInput {
+export interface UpdateCategoryInput {
   name?: string;
   order?: number;
+  groupId?: number;
   keywords?: string[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
   isActive?: boolean;
-  subcategoryId?: number;
 }
 
-export const updateItem = (id: number, updates: UpdateItemInput) =>
-  putJson<{ assigned: number }>(`/api/budget/items/${id}`, updates);
+export const updateSubcategory = (id: number, updates: UpdateCategoryInput) =>
+  putJson<{ assigned: number }>(`/api/budget/subcategories/${id}`, updates);
 
-export const deleteItem = (id: number) =>
-  del<{ deleted: boolean; transactions: number; budgets: number }>(`/api/budget/items/${id}`);
+export const deleteSubcategory = (id: number) =>
+  del<{ deleted: boolean; transactions: number; budgets: number }>(`/api/budget/subcategories/${id}`);
 
-export const reorderItems = (activeId: number, overId: number, subcategoryId?: number) =>
-  postJson("/api/budget/items/reorder", { activeId, overId, subcategoryId });
+export const reorderSubcategories = (activeId: number, overId: number, groupId?: number) =>
+  postJson("/api/budget/subcategories/reorder", { activeId, overId, groupId });
 
-export const archiveItem = (id: number) => updateItem(id, { isActive: false });
-export const restoreItem = (id: number) => updateItem(id, { isActive: true });
+export const archiveSubcategory = (id: number) => updateSubcategory(id, { isActive: false });
+export const restoreSubcategory = (id: number) => updateSubcategory(id, { isActive: true });
 
-export async function addKeywordToItem(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
+export async function addKeywordToSubcategory(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
   if (currentKeywords.some((k) => k.toLowerCase() === keyword.toLowerCase())) return;
-  await updateItem(id, { keywords: [...currentKeywords, keyword] });
+  await updateSubcategory(id, { keywords: [...currentKeywords, keyword] });
 }
 
-export async function removeKeywordFromItem(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
-  await updateItem(id, { keywords: currentKeywords.filter((k) => k.toLowerCase() !== keyword.toLowerCase()) });
+export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
+  await updateSubcategory(id, { keywords: currentKeywords.filter((k) => k.toLowerCase() !== keyword.toLowerCase()) });
 }

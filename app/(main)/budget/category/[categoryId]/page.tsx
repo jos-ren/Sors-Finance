@@ -26,9 +26,9 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-export default function BudgetItemPage({ params }: { params: Promise<{ itemId: string }> }) {
-  const { itemId } = use(params);
-  const id = parseInt(itemId, 10);
+export default function BudgetCategoryPage({ params }: { params: Promise<{ categoryId: string }> }) {
+  const { categoryId } = use(params);
+  const id = parseInt(categoryId, 10);
   const searchParams = useSearchParams();
   const now = new Date();
   const year = parseInt(searchParams.get("year") ?? String(now.getFullYear()), 10);
@@ -39,9 +39,8 @@ export default function BudgetItemPage({ params }: { params: Promise<{ itemId: s
   const fmt = (n: number) => formatAmount(n, currency);
 
   const hierarchy = useBudgetHierarchy(true);
-  const item = hierarchy?.items.find((i) => i.id === id);
-  const sub = hierarchy?.subcategories.find((s) => s.id === item?.subcategoryId);
-  const group = hierarchy?.groups.find((g) => g.id === sub?.groupId);
+  const category = hierarchy?.subcategories.find((c) => c.id === id);
+  const group = hierarchy?.groups.find((g) => g.id === category?.groupId);
 
   const { start, end } = useMemo(
     () => ({ start: new Date(year, month, 1), end: new Date(year, month + 1, 0, 23, 59, 59) }),
@@ -71,22 +70,16 @@ export default function BudgetItemPage({ params }: { params: Promise<{ itemId: s
               <BreadcrumbItem>{group.name}</BreadcrumbItem>
             </>
           )}
-          {sub && (
-            <>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>{sub.name}</BreadcrumbItem>
-            </>
-          )}
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>{item?.name ?? "Item"}</BreadcrumbPage>
+            <BreadcrumbPage>{category?.name ?? "Category"}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{item?.name ?? "Item"}</h1>
+          <h1 className="text-2xl font-semibold">{category?.name ?? "Category"}</h1>
           <p className="text-sm text-muted-foreground">
             {MONTH_NAMES[month]} {year} · {transactions?.length ?? 0} transaction(s)
           </p>

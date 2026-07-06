@@ -5,7 +5,7 @@
 
 import type { BudgetItemType } from "@/lib/db/types";
 
-export interface BudgetTreeItem {
+export interface BudgetTreeCategory {
   id: number;
   uuid: string;
   name: string;
@@ -14,23 +14,13 @@ export interface BudgetTreeItem {
   targetAmount: number | null;
   isActive: boolean;
   keywords: string[];
-  /** id of the `budgets` row for this item+period, if one exists. */
+  /** id of the `budgets` row for this category+period, if one exists. */
   budgetId: number | null;
   planned: number;
   /** Net spending in the period (amountOut − amountIn). */
   actual: number;
-  /** Lifetime net for goal items (sum across all periods); 0 for expenses. */
+  /** Lifetime net for goal categories (sum across all periods); 0 for expenses. */
   cumulative: number;
-}
-
-export interface BudgetTreeSubcategory {
-  id: number;
-  uuid: string;
-  name: string;
-  order: number;
-  planned: number;
-  actual: number;
-  items: BudgetTreeItem[];
 }
 
 export interface BudgetTreeGroup {
@@ -40,7 +30,7 @@ export interface BudgetTreeGroup {
   order: number;
   planned: number;
   actual: number;
-  subcategories: BudgetTreeSubcategory[];
+  categories: BudgetTreeCategory[];
 }
 
 export interface BudgetTreeSummary {
@@ -59,7 +49,7 @@ export interface BudgetTree {
 
 // ---- Yearly totals view -----------------------------------------------------
 
-export interface YearlySummaryItem {
+export interface YearlySummaryCategory {
   id: number;
   uuid: string;
   name: string;
@@ -71,18 +61,11 @@ export interface YearlySummaryItem {
   actualTotal: number;
 }
 
-export interface YearlySummarySubcategory {
-  id: number;
-  uuid: string;
-  name: string;
-  items: YearlySummaryItem[];
-}
-
 export interface YearlySummaryGroup {
   id: number;
   uuid: string;
   name: string;
-  subcategories: YearlySummarySubcategory[];
+  categories: YearlySummaryCategory[];
 }
 
 export interface YearlySummary {

@@ -6,7 +6,8 @@ import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { seedDefaultCategoriesForUser } from "@/lib/db/seed";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
 
-// GET /api/data - Export all data for the authenticated user (v3.0 hierarchy)
+// GET /api/data - Export all data for the authenticated user (v4.0 hierarchy:
+// Category Group → Category, i.e. budgetSubcategories is the leaf).
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
@@ -16,7 +17,6 @@ export async function GET(request: NextRequest) {
       categories,
       budgetGroups,
       budgetSubcategories,
-      budgetItems,
       budgets,
       imports,
       portfolioItems,
@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
       db.select().from(schema.categories).where(eq(schema.categories.userId, userId)),
       db.select().from(schema.budgetGroups).where(eq(schema.budgetGroups.userId, userId)),
       db.select().from(schema.budgetSubcategories).where(eq(schema.budgetSubcategories.userId, userId)),
-      db.select().from(schema.budgetItems).where(eq(schema.budgetItems.userId, userId)),
       db.select().from(schema.budgets).where(eq(schema.budgets.userId, userId)),
       db.select().from(schema.imports).where(eq(schema.imports.userId, userId)),
       db.select().from(schema.portfolioItems).where(eq(schema.portfolioItems.userId, userId)),
@@ -45,7 +44,6 @@ export async function GET(request: NextRequest) {
         categories,
         budgetGroups,
         budgetSubcategories,
-        budgetItems,
         budgets,
         imports,
         portfolioItems,
@@ -54,7 +52,7 @@ export async function GET(request: NextRequest) {
         settings,
         customImportTemplates,
         exportedAt: new Date().toISOString(),
-        version: "3.0", // budget hierarchy
+        version: "4.0", // 2-level budget hierarchy (Category Group → Category)
       },
       success: true,
     });
@@ -71,7 +69,6 @@ export async function GET(request: NextRequest) {
 async function clearUserBudgetData(userId: number) {
   await db.delete(schema.budgets).where(eq(schema.budgets.userId, userId));
   await db.delete(schema.transactions).where(eq(schema.transactions.userId, userId));
-  await db.delete(schema.budgetItems).where(eq(schema.budgetItems.userId, userId));
   await db.delete(schema.budgetSubcategories).where(eq(schema.budgetSubcategories.userId, userId));
   await db.delete(schema.budgetGroups).where(eq(schema.budgetGroups.userId, userId));
 }
@@ -106,15 +103,17 @@ export async function DELETE(request: NextRequest) {
 }
 
 // POST /api/data - Import data (restore from backup) for the authenticated user.
-// Supports v3.0 (hierarchy) exports and legacy v2.0 (flat categories) exports,
-// where non-system categories are converted into items under an "Ungrouped" group.
+// Supports v4.0 (2-level Category Group → Category), v3.0 (3-level, items
+// merged into their subcategory on import — same policy as the
+// budget_hierarchy_v2 data migration), and legacy v2.0 (flat categories,
+// converted into an Ungrouped category).
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
     const body = await request.json();
     const now = new Date();
 
-    // Clear existing data (FK-safe order): budgets → transactions → items → subs → groups.
+    // Clear existing data (FK-safe order): budgets → transactions → categories → groups.
     await db.delete(schema.portfolioSnapshots).where(eq(schema.portfolioSnapshots.userId, userId));
     await db.delete(schema.portfolioItems).where(eq(schema.portfolioItems.userId, userId));
     await db.delete(schema.portfolioAccounts).where(eq(schema.portfolioAccounts.userId, userId));
@@ -133,12 +132,13 @@ export async function POST(request: NextRequest) {
 
     // Maps from exported ids to newly-created ids.
     const categoryIdMap = new Map<number, number>(); // exported category id → system category id
-    const itemIdMap = new Map<number, number>(); // exported category/item id → new budget item id
+    const itemIdMap = new Map<number, number>(); // exported item/category id → new budget category (subcategory row) id
 
-    const isV3 = Array.isArray(body.budgetGroups) || Array.isArray(body.budgetItems);
+    const hasBudgetGroups = Array.isArray(body.budgetGroups);
+    const hasLegacyItems = Array.isArray(body.budgetItems); // v3.0 shape
 
-    if (isV3) {
-      // ---- v3.0: import the hierarchy directly --------------------------
+    if (hasBudgetGroups) {
+      // ---- v3.0/v4.0: import the hierarchy directly ----------------------
       const groupIdMap = new Map<number, number>();
       for (const g of body.budgetGroups ?? []) {
         const res = await db
@@ -153,31 +153,59 @@ export async function POST(request: NextRequest) {
         if (!groupId) continue;
         const res = await db
           .insert(schema.budgetSubcategories)
-          .values({ uuid: randomUUID(), name: s.name, groupId, order: s.order ?? 0, userId, createdAt: s.createdAt ? new Date(s.createdAt) : now, updatedAt: now })
+          .values({
+            uuid: randomUUID(),
+            name: s.name,
+            groupId,
+            keywords: s.keywords ?? [], // present on v4.0 exports; empty for v3.0 (folded in below)
+            itemType: s.itemType === "goal" ? "goal" : "expense",
+            targetAmount: s.targetAmount ?? null,
+            isActive: s.isActive ?? true,
+            order: s.order ?? 0,
+            userId,
+            createdAt: s.createdAt ? new Date(s.createdAt) : now,
+            updatedAt: now,
+          })
           .returning({ id: schema.budgetSubcategories.id });
         if (s.id && res[0]) subIdMap.set(s.id, res[0].id);
       }
-      for (const it of body.budgetItems ?? []) {
-        const subcategoryId = it.subcategoryId ? subIdMap.get(it.subcategoryId) : undefined;
-        if (!subcategoryId) continue;
-        const res = await db
-          .insert(schema.budgetItems)
-          .values({
-            uuid: randomUUID(),
-            name: it.name,
-            subcategoryId,
-            keywords: it.keywords ?? [],
-            itemType: it.itemType === "goal" ? "goal" : "expense",
-            targetAmount: it.targetAmount ?? null,
-            isActive: it.isActive ?? true,
-            order: it.order ?? 0,
-            userId,
-            createdAt: it.createdAt ? new Date(it.createdAt) : now,
-            updatedAt: now,
-          })
-          .returning({ id: schema.budgetItems.id });
-        if (it.id && res[0]) itemIdMap.set(it.id, res[0].id);
+
+      if (hasLegacyItems) {
+        // v3.0: fold each subcategory's items into it (union keywords, a goal
+        // item's type/target wins, active if any item was active), then point
+        // transactions/budgets at the subcategory instead of the old item.
+        const itemsBySub = new Map<number, Array<{ id: number; keywords?: string[]; itemType?: string; targetAmount?: number | null; isActive?: boolean }>>();
+        for (const it of body.budgetItems ?? []) {
+          if (!it.subcategoryId) continue;
+          if (!itemsBySub.has(it.subcategoryId)) itemsBySub.set(it.subcategoryId, []);
+          itemsBySub.get(it.subcategoryId)!.push(it);
+          const newSubId = subIdMap.get(it.subcategoryId);
+          if (it.id && newSubId) itemIdMap.set(it.id, newSubId);
+        }
+        for (const [oldSubId, items] of itemsBySub) {
+          const newSubId = subIdMap.get(oldSubId);
+          if (!newSubId) continue;
+          const keywords = Array.from(new Set(items.flatMap((it) => it.keywords ?? [])));
+          const goal = items.find((it) => it.itemType === "goal");
+          await db
+            .update(schema.budgetSubcategories)
+            .set({
+              keywords,
+              itemType: goal ? "goal" : "expense",
+              targetAmount: goal?.targetAmount ?? null,
+              isActive: items.some((it) => it.isActive !== false),
+              updatedAt: now,
+            })
+            .where(and(eq(schema.budgetSubcategories.id, newSubId), eq(schema.budgetSubcategories.userId, userId)));
+        }
+      } else {
+        // v4.0: the subcategory row already is the category transactions link to.
+        for (const s of body.budgetSubcategories ?? []) {
+          const newSubId = subIdMap.get(s.id);
+          if (s.id && newSubId) itemIdMap.set(s.id, newSubId);
+        }
       }
+
       // Map exported system categories → existing system categories by name.
       for (const cat of body.categories ?? []) {
         if (cat.isSystem && cat.id) {
@@ -186,16 +214,11 @@ export async function POST(request: NextRequest) {
         }
       }
     } else {
-      // ---- legacy v2.0: convert flat categories to an Ungrouped hierarchy
+      // ---- legacy v2.0: convert flat categories to an Ungrouped category
       const groupRes = await db
         .insert(schema.budgetGroups)
         .values({ uuid: randomUUID(), name: "Ungrouped", order: 0, userId, createdAt: now, updatedAt: now })
         .returning({ id: schema.budgetGroups.id });
-      const subRes = await db
-        .insert(schema.budgetSubcategories)
-        .values({ uuid: randomUUID(), name: "Ungrouped", groupId: groupRes[0].id, order: 0, userId, createdAt: now, updatedAt: now })
-        .returning({ id: schema.budgetSubcategories.id });
-      const ungroupedSubId = subRes[0].id;
 
       let order = 0;
       for (const cat of body.categories ?? []) {
@@ -205,11 +228,11 @@ export async function POST(request: NextRequest) {
           continue;
         }
         const res = await db
-          .insert(schema.budgetItems)
+          .insert(schema.budgetSubcategories)
           .values({
             uuid: randomUUID(),
             name: cat.name,
-            subcategoryId: ungroupedSubId,
+            groupId: groupRes[0].id,
             keywords: cat.keywords ?? [],
             itemType: "expense",
             targetAmount: null,
@@ -219,7 +242,7 @@ export async function POST(request: NextRequest) {
             createdAt: cat.createdAt ? new Date(cat.createdAt) : now,
             updatedAt: now,
           })
-          .returning({ id: schema.budgetItems.id });
+          .returning({ id: schema.budgetSubcategories.id });
         if (cat.id && res[0]) itemIdMap.set(cat.id, res[0].id);
       }
     }
@@ -241,12 +264,12 @@ export async function POST(request: NextRequest) {
       if (imp.id && res[0]) importIdMap.set(imp.id, res[0].id);
     }
 
-    // Import transactions — resolve one FK from either the item map or the
+    // Import transactions — resolve one FK from either the category map or the
     // (system) category map, honouring the one-FK rule.
     for (const t of body.transactions ?? []) {
       const mappedItem = t.budgetItemId ? itemIdMap.get(t.budgetItemId) : undefined;
-      // Legacy exports carry categoryId that may map to a converted item.
-      const legacyItem = !isV3 && t.categoryId ? itemIdMap.get(t.categoryId) : undefined;
+      // Legacy v2.0 exports carry categoryId that may map to a converted category.
+      const legacyItem = !hasBudgetGroups && t.categoryId ? itemIdMap.get(t.categoryId) : undefined;
       const mappedCategory = t.categoryId ? categoryIdMap.get(t.categoryId) : undefined;
       const { categoryId, budgetItemId } = normalizeAssignment({
         budgetItemId: mappedItem ?? legacyItem ?? null,
@@ -274,10 +297,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Import budgets — map to item id (v3 via budgetItemId, legacy via categoryId).
-    // Legacy yearly rows (month null) are dropped.
+    // Import budgets — map to category id (hierarchy exports via budgetItemId,
+    // legacy v2.0 via categoryId). Legacy yearly rows (month null) are dropped.
     for (const b of body.budgets ?? []) {
-      const itemId = isV3
+      const itemId = hasBudgetGroups
         ? (b.budgetItemId ? itemIdMap.get(b.budgetItemId) : undefined)
         : (b.categoryId ? itemIdMap.get(b.categoryId) : undefined);
       if (!itemId) continue;
