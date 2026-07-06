@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { Save, X, Settings2, Archive } from "lucide-react";
+import Link from "next/link";
+import { Save, X, Settings2, Archive, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toggle } from "@/components/ui/toggle";
@@ -89,6 +90,12 @@ export default function BudgetPage() {
                   Archived
                 </Button>
               )}
+              <Button asChild variant="outline" size="sm" className="gap-1.5">
+                <Link href="/budget/builder">
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Builder
+                </Link>
+              </Button>
               <Toggle pressed={manage} onPressedChange={setManage} variant="outline" size="sm" className="gap-1.5" aria-label="Manage budget structure">
                 <Settings2 className="h-4 w-4" />
                 Manage
