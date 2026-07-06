@@ -10,19 +10,22 @@ import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useUnsavedChanges } from "@/contexts/unsaved-changes-context";
-import { useBudgetTree, useAvailablePeriods, invalidateBudgets } from "@/hooks";
+import { useBudgetHierarchy, useBudgets, useIncomeTotal, useAvailablePeriods, invalidateBudgets } from "@/hooks";
 import { setBudget } from "@/lib/db/client";
-import { computeEffectiveTree, parsePending } from "@/lib/budget/effective-tree";
+import { parsePending } from "@/lib/budget/effective-tree";
 import { PeriodNavigator } from "@/components/features/budget/period-navigator";
 import { AllocationMeter } from "@/components/features/budget/builder/allocation-meter";
-import { AllocationItemRow } from "@/components/features/budget/builder/allocation-item-row";
+import { BuilderList, type BuilderGroupData } from "@/components/features/budget/builder/builder-list";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
+import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
 
 export default function BudgetBuilderPage() {
   const now = new Date();
   const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [pending, setPending] = useState<Map<number, string>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [detailItem, setDetailItem] = useState<DetailItem | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
@@ -38,8 +41,53 @@ export default function BudgetBuilderPage() {
     return m;
   }, [periods]);
 
-  const rawTree = useBudgetTree(selected.year, selected.month);
-  const effective = useMemo(() => (rawTree ? computeEffectiveTree(rawTree, pending) : undefined), [rawTree, pending]);
+  // Source structure from the full hierarchy so brand-new empty groups/subs show.
+  const hierarchy = useBudgetHierarchy(false);
+  const budgetRows = useBudgets(selected.year, selected.month);
+  const income = useIncomeTotal(selected.year, selected.month);
+
+  const savedPlanned = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const b of budgetRows ?? []) m.set(b.budgetItemId, b.amount);
+    return m;
+  }, [budgetRows]);
+
+  const groups = useMemo<BuilderGroupData[]>(() => {
+    if (!hierarchy) return [];
+    const subsByGroup = new Map<number, typeof hierarchy.subcategories>();
+    for (const s of hierarchy.subcategories) {
+      if (!subsByGroup.has(s.groupId)) subsByGroup.set(s.groupId, []);
+      subsByGroup.get(s.groupId)!.push(s);
+    }
+    const itemsBySub = new Map<number, typeof hierarchy.items>();
+    for (const i of hierarchy.items) {
+      if (!itemsBySub.has(i.subcategoryId)) itemsBySub.set(i.subcategoryId, []);
+      itemsBySub.get(i.subcategoryId)!.push(i);
+    }
+    return hierarchy.groups
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((group) => ({
+        group,
+        subs: (subsByGroup.get(group.id!) ?? [])
+          .sort((a, b) => a.order - b.order)
+          .map((sub) => ({
+            sub,
+            items: (itemsBySub.get(sub.id!) ?? [])
+              .sort((a, b) => a.order - b.order)
+              .map((item) => ({ item, saved: savedPlanned.get(item.id!) ?? 0 })),
+          })),
+      }));
+  }, [hierarchy, savedPlanned]);
+
+  const assigned = useMemo(() => {
+    let sum = 0;
+    for (const g of groups) for (const s of g.subs) for (const { item, saved } of s.items) sum += parsePending(pending.get(item.id!), saved);
+    return sum;
+  }, [groups, pending]);
+
+  const incomeVal = income ?? 0;
+  const left = incomeVal - assigned;
 
   useEffect(() => setPending(new Map()), [selected.year, selected.month]);
 
@@ -73,9 +121,12 @@ export default function BudgetBuilderPage() {
     return () => { setHasUnsavedChanges(false); setSaveHandler(null); };
   }, [pending.size, handleSave, setHasUnsavedChanges, setSaveHandler]);
 
-  const income = effective?.summary.incomeActual ?? 0;
-  const assigned = effective?.summary.totalBudgeted ?? 0;
-  const left = income - assigned;
+  const openDetail = useCallback((item: DetailItem) => {
+    setDetailItem(item);
+    setDetailOpen(true);
+  }, []);
+
+  const loading = hierarchy === undefined || budgetRows === undefined || income === undefined;
 
   return (
     <div className="space-y-5 p-6 pb-24">
@@ -96,60 +147,20 @@ export default function BudgetBuilderPage() {
         />
       </div>
 
-      {!effective ? (
+      {loading ? (
         <BudgetPageSkeleton />
-      ) : effective.groups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed py-16 text-center">
-          <p className="text-lg font-medium">Nothing to allocate yet</p>
-          <p className="max-w-sm text-sm text-muted-foreground">Create a budget on the Budget page first, then come back to allocate top-down.</p>
-        </div>
       ) : (
         <>
-          <AllocationMeter income={income} assigned={assigned} formatAmount={fmt} />
-
-          <div className="space-y-4">
-            {effective.groups.map((group) => {
-              const groupPct = income > 0 ? (group.planned / income) * 100 : 0;
-              return (
-                <div key={group.id} className="overflow-hidden rounded-xl border bg-card">
-                  <div className="border-b px-4 py-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{group.name}</span>
-                      <span className="flex items-center gap-2 text-sm tabular-nums">
-                        <span className="font-medium">{fmt(group.planned)}</span>
-                        {income > 0 && <span className="text-xs text-muted-foreground">{groupPct.toFixed(0)}%</span>}
-                      </span>
-                    </div>
-                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.min(100, groupPct)}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 px-4 py-3">
-                    {group.subcategories.map((sub) => (
-                      <div key={sub.id}>
-                        {sub.items.length > 1 && (
-                          <p className="pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{sub.name}</p>
-                        )}
-                        {sub.items.map((item) => (
-                          <AllocationItemRow
-                            key={item.id}
-                            item={item}
-                            income={income}
-                            leftToAssign={left}
-                            pendingValue={pending.get(item.id)}
-                            dirty={pending.has(item.id)}
-                            formatAmount={fmt}
-                            onChange={(v) => setPlanned(item.id, v)}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <AllocationMeter income={incomeVal} assigned={assigned} formatAmount={fmt} />
+          <BuilderList
+            groups={groups}
+            income={incomeVal}
+            leftToAssign={left}
+            pending={pending}
+            formatAmount={fmt}
+            onPlannedChange={setPlanned}
+            onOpenDetail={openDetail}
+          />
         </>
       )}
 
@@ -164,6 +175,8 @@ export default function BudgetBuilderPage() {
           </Button>
         </div>
       )}
+
+      <ItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
     </div>
   );
 }
