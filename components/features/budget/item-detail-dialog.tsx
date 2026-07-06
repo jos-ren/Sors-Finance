@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, Trash2, Archive, ArchiveRestore } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,7 @@ export interface DetailItem {
  * (Group › Subcategory), archive/restore, delete. Structure mutations save
  * immediately with a toast.
  */
-export function ItemDetailSheet({
+export function ItemDetailDialog({
   item,
   open,
   onOpenChange,
@@ -126,14 +126,14 @@ export function ItemDetailSheet({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Item details</SheetTitle>
-            <SheetDescription>Edit keywords, target, or move this item.</SheetDescription>
-          </SheetHeader>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="flex max-h-[85vh] flex-col gap-4 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Item details</DialogTitle>
+            <DialogDescription>Edit keywords, target, or move this item.</DialogDescription>
+          </DialogHeader>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+          <div className="-mr-2 flex-1 space-y-5 overflow-y-auto pr-2">
             <div className="space-y-1.5">
               <Label htmlFor="item-name">Name</Label>
               <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} />
@@ -225,12 +225,12 @@ export function ItemDetailSheet({
             </div>
           </div>
 
-          <SheetFooter>
+          <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDelete}

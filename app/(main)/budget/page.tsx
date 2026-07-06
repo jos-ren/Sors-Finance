@@ -27,7 +27,7 @@ import { BudgetSummaryHero, type AssignSuggestion } from "@/components/features/
 import { BudgetTreeView } from "@/components/features/budget/budget-tree";
 import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previous-month-card";
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
-import { ItemDetailSheet, type DetailItem } from "@/components/features/budget/item-detail-sheet";
+import { ItemDetailDialog, type DetailItem } from "@/components/features/budget/item-detail-dialog";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
 import { ManageTree } from "@/components/features/budget/manage/manage-tree";
 import { ArchivedItemsSheet } from "@/components/features/budget/manage/archived-items-sheet";
@@ -350,7 +350,7 @@ function MonthlyContent({
         </div>
       )}
 
-      <ItemDetailSheet item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
+      <ItemDetailDialog item={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
     </div>
   );
 }
