@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { updateSchedulerTime } from "@/lib/services/scheduler";
 
 const SNAPSHOT_TIME_KEY = "SNAPSHOT_TIME";
 const SNAPSHOT_ENABLED_KEY = "SNAPSHOT_ENABLED";
@@ -127,6 +128,10 @@ export async function PUT(request: NextRequest) {
           userId,
         });
       }
+
+      // Reschedule the running cron job — otherwise the new time only
+      // takes effect after an app restart
+      await updateSchedulerTime(time);
     }
 
     // Update enabled if provided

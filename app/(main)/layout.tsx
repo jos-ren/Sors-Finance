@@ -69,6 +69,21 @@ function ScrollableContent({ children }: { children: React.ReactNode }) {
   const hasRunToday = useRef(false);
 
   useEffect(() => {
+    // Seed the user's timezone from the browser on first authenticated load.
+    // The server no-ops if a TIMEZONE setting already exists, so the value
+    // chosen in Settings always wins.
+    fetch("/api/settings/timezone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    }).catch(() => {
+      // Non-critical; will retry on next load
+    });
+  }, []);
+
+  useEffect(() => {
     // First load snapshot check - run once per day
     const checkFirstLoadSnapshot = async () => {
       // Check localStorage for last snapshot check date

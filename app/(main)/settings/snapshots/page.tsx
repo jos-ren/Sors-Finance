@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Calendar, Clock, RefreshCw, Building2, Loader2 } from "lucide-react";
+import { Calendar, Clock, RefreshCw, Building2, Loader2, ScrollText } from "lucide-react";
 import { toast } from "sonner";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { InfoCard } from "@/components/ui/info-card";
@@ -13,6 +13,7 @@ import {
   RowGroup,
   ToggleRow,
   ActionRow,
+  NavigateRow,
 } from "@/components/features/settings/settings-shared";
 
 export default function SnapshotsSettingsPage() {
@@ -171,6 +172,19 @@ export default function SnapshotsSettingsPage() {
                   disabled={!snapshotEnabled}
                 />
               )}
+            </RowGroup>
+          </section>
+
+          {/* Troubleshooting section */}
+          <section className="space-y-2">
+            <SectionHeader label="Troubleshooting" />
+            <RowGroup>
+              <NavigateRow
+                icon={<ScrollText className="h-4 w-4" />}
+                title="Error Logs"
+                description="Review past scheduled runs and see why a snapshot or sync failed"
+                href="/settings/logs"
+              />
             </RowGroup>
           </section>
 

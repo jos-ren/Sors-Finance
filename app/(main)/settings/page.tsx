@@ -18,6 +18,7 @@ import {
   Tag,
   Copy,
   Code2,
+  ScrollText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -606,6 +607,12 @@ export default function SettingsPage() {
             title="Import Templates"
             description="Custom CSV and Excel column mapping templates"
             href="/settings/templates"
+          />
+          <NavigateRow
+            icon={<ScrollText className="h-4 w-4" />}
+            title="Error Logs"
+            description="Scheduled snapshot runs and sync or integration failures"
+            href="/settings/logs"
           />
         </RowGroup>
       </section>

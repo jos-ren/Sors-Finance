@@ -4,6 +4,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { setSessionCookie } from "@/lib/auth/cookies";
 import { seedDefaultCategoriesForUser, seedDefaultSettingsForUser } from "@/lib/db/seed";
+import { seedDefaultBudgetForUser } from "@/lib/db/budget-seed";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
@@ -94,8 +95,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Seed default categories and settings for the new user
+    // Seed system categories, the default budget hierarchy (with first-month
+    // amounts), and settings for the new user.
     await seedDefaultCategoriesForUser(result.id);
+    await seedDefaultBudgetForUser(result.id, { withAmounts: true });
     await seedDefaultSettingsForUser(result.id);
 
     // Create session

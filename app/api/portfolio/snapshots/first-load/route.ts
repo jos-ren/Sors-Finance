@@ -46,8 +46,7 @@ export async function POST(request: NextRequest) {
     if (plaidSyncEnabled || priceRefreshEnabled) {
       try {
         const { warmCurrencyCache } = await import('@/lib/services/currency-cache');
-        const cookies = request.headers.get('cookie') || '';
-        const cacheResult = await warmCurrencyCache(userId, request.nextUrl.origin, cookies);
+        const cacheResult = await warmCurrencyCache(userId);
         console.log(`[First Load] Currency cache warmed: ${cacheResult.refreshed} rates refreshed`);
       } catch (error) {
         console.error("[First Load] Error warming currency cache:", error);

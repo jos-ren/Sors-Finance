@@ -12,18 +12,16 @@ export {
   getAllSettings,
 } from "./settings";
 
-// Categories
+// Categories (system-only now: Income / Excluded / Uncategorized).
 export {
   getCategories,
   getCategoryById,
-  addCategory,
   updateCategory,
-  deleteCategory,
-  reorderCategories,
   addKeywordToCategory,
   removeKeywordFromCategory,
   getExcludedCategory,
   getUncategorizedCategory,
+  getIncomeCategory,
 } from "./categories";
 
 // Imports
@@ -41,17 +39,37 @@ export {
   deleteImportDraft,
 } from "./import-drafts";
 
-// Budgets
+// Budgets (item-based, monthly)
 export {
   getBudgets,
-  getBudgetForCategory,
   setBudget,
   deleteBudget,
   copyBudgetToMonth,
   findPreviousMonthWithBudgets,
   autoCopyBudgetsIfEmpty,
-  applyBudgetToPreviousMonths,
 } from "./budgets";
+
+// Budget hierarchy (Category Groups → Categories)
+export {
+  seedDefaultBudget,
+  getBudgetHierarchy,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  reorderGroups,
+  createSubcategory,
+  updateSubcategory,
+  deleteSubcategory,
+  reorderSubcategories,
+  archiveSubcategory,
+  restoreSubcategory,
+  addKeywordToSubcategory,
+  removeKeywordFromSubcategory,
+} from "./budget-hierarchy";
+export type { BudgetHierarchy, CreateCategoryInput, UpdateCategoryInput } from "./budget-hierarchy";
+
+// Budget tree + yearly summary
+export { getBudgetTree, getYearlySummary } from "./budget-tree";
 
 // Transactions
 export {
@@ -65,6 +83,8 @@ export {
   findDuplicateSignatures,
   getSpendingByCategory,
   getYTDSpendingByCategory,
+  getIncomeTotal,
+  getGoalProgress,
   getTotalSpending,
   getAllTimeTotals,
   getAllTimeSpendingByCategory,

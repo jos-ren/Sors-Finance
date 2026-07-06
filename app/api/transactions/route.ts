@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
 
 // GET /api/transactions?startDate=...&endDate=...&categoryId=...&source=...&limit=...&offset=...
 export async function GET(request: NextRequest) {
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const categoryId = searchParams.get("categoryId");
+    const budgetItemId = searchParams.get("budgetItemId");
     const source = searchParams.get("source");
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
@@ -28,6 +30,9 @@ export async function GET(request: NextRequest) {
     }
     if (categoryId) {
       conditions.push(eq(schema.transactions.categoryId, parseInt(categoryId, 10)));
+    }
+    if (budgetItemId) {
+      conditions.push(eq(schema.transactions.budgetItemId, parseInt(budgetItemId, 10)));
     }
     if (source) {
       conditions.push(eq(schema.transactions.source, source));
@@ -62,6 +67,7 @@ export async function GET(request: NextRequest) {
       sourceAccountName: row.sourceAccountName,
       note: row.note,
       categoryId: row.categoryId,
+      budgetItemId: row.budgetItemId,
       importId: row.importId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -90,6 +96,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const now = new Date();
+    const { categoryId, budgetItemId } = normalizeAssignment({
+      categoryId: body.categoryId,
+      budgetItemId: body.budgetItemId,
+    });
 
     const result = await db
       .insert(schema.transactions)
@@ -103,7 +113,8 @@ export async function POST(request: NextRequest) {
         netAmount: body.netAmount ?? (body.amountIn - body.amountOut),
         source: body.source || "Manual",
         note: body.note || null,
-        categoryId: body.categoryId || null,
+        categoryId,
+        budgetItemId,
         importId: body.importId || null,
         userId,
         createdAt: now,

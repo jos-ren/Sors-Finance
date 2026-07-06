@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db/connection";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
 
 /**
  * Normalize a date to YYYY-MM-DD format using local timezone
@@ -69,6 +70,11 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      const { categoryId, budgetItemId } = normalizeAssignment({
+        categoryId: t.categoryId,
+        budgetItemId: t.budgetItemId,
+      });
+
       toInsert.push({
         uuid: randomUUID(),
         date: new Date(t.date),
@@ -80,7 +86,8 @@ export async function POST(request: NextRequest) {
         source: t.source || "Manual",
         sourceMethod: t.sourceMethod || null,
         sourceAccountName: t.sourceAccountName || null,
-        categoryId: t.categoryId || null,
+        categoryId,
+        budgetItemId,
         importId: t.importId || null,
         userId,
         createdAt: now,

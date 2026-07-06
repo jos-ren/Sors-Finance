@@ -3,6 +3,9 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { findMatchingCategories } from "@/lib/categories/categorizer";
+import { buildMatchables } from "@/lib/budget/matchables";
+import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
+import { SYSTEM_CATEGORIES } from "@/lib/db/types";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -103,16 +106,46 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.netAmount !== undefined) updateValues.netAmount = updates.netAmount;
     if (updates.source !== undefined) updateValues.source = updates.source;
     if (updates.note !== undefined) updateValues.note = updates.note;
-    if (updates.categoryId !== undefined) updateValues.categoryId = updates.categoryId;
     if (updates.categoryLocked !== undefined) updateValues.categoryLocked = updates.categoryLocked;
 
-    // When unlocking without an explicit categoryId, re-run keyword matching
-    if (updates.categoryLocked === false && updates.categoryId === undefined) {
-      const cats = await db.select().from(schema.categories)
-        .where(eq(schema.categories.userId, userId));
-      const matchable = cats.filter((c) => !c.isSystem || c.name === "Income");
-      const matches = findMatchingCategories(existing[0].matchField, matchable);
-      updateValues.categoryId = matches.length === 1 ? matches[0].id : null;
+    // Apply the one-FK rule whenever an assignment is provided.
+    if (updates.categoryId !== undefined || updates.budgetItemId !== undefined) {
+      const { categoryId, budgetItemId } = normalizeAssignment({
+        categoryId: updates.categoryId,
+        budgetItemId: updates.budgetItemId,
+      });
+      updateValues.categoryId = categoryId;
+      updateValues.budgetItemId = budgetItemId;
+    }
+
+    // When unlocking without an explicit assignment, re-run keyword matching
+    // against active budget categories + the Income system category.
+    if (
+      updates.categoryLocked === false &&
+      updates.categoryId === undefined &&
+      updates.budgetItemId === undefined
+    ) {
+      const [activeItems, incomeCat] = await Promise.all([
+        db
+          .select()
+          .from(schema.budgetSubcategories)
+          .where(and(eq(schema.budgetSubcategories.userId, userId), eq(schema.budgetSubcategories.isActive, true))),
+        db
+          .select()
+          .from(schema.categories)
+          .where(and(eq(schema.categories.name, SYSTEM_CATEGORIES.INCOME), eq(schema.categories.userId, userId)))
+          .limit(1),
+      ]);
+      const matchables = buildMatchables(activeItems, incomeCat[0] ?? null);
+      const matches = findMatchingCategories(existing[0].matchField, matchables);
+      if (matches.length === 1) {
+        const m = matches[0];
+        updateValues.categoryId = m.kind === "system" ? m.refId : null;
+        updateValues.budgetItemId = m.kind === "item" ? m.refId : null;
+      } else {
+        updateValues.categoryId = null;
+        updateValues.budgetItemId = null;
+      }
     }
 
     await db

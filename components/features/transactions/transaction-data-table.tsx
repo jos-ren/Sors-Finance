@@ -64,7 +64,9 @@ import { EditTransactionDialog } from "@/components/features/transactions/edit-t
 import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { normalizeBankName } from "@/lib/icons/bank-logos";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
-import { updateTransaction } from "@/hooks";
+import { updateTransaction, invalidateTransactions } from "@/hooks";
+import { useBudgetHierarchy } from "@/hooks/use-budget";
+import { BudgetItemPicker, toPickerValue, fromPickerValue } from "@/components/features/budget/budget-item-picker";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency, useTimezone } from "@/contexts/settings-context";
 import { formatDate } from "@/lib/utils/formatters";
@@ -106,6 +108,10 @@ export function TransactionDataTable({
   const userCurrency = useCurrency();
   const userTimezone = useTimezone();
 
+  // Budget category names for resolving a transaction's assignment (category or system).
+  const hierarchy = useBudgetHierarchy(true);
+  const itemNames = useMemo(() => new Map((hierarchy?.subcategories ?? []).map((c) => [c.id!, c.name])), [hierarchy]);
+
   const handleResetCategory = useCallback(async (id: number) => {
     setResettingId(id);
     try {
@@ -115,12 +121,23 @@ export function TransactionDataTable({
     }
   }, []);
 
-  // Get category name by ID
-  const getCategoryName = (categoryId: number | null): string => {
-    if (categoryId === null) return "Uncategorized";
-    const category = categories.find((c) => c.id === categoryId);
-    return category?.name || "Unknown";
-  };
+  // Resolve a transaction's display name from its one-FK assignment.
+  const getAssignmentName = useCallback(
+    (t: Pick<DbTransaction, "categoryId" | "budgetItemId">): string => {
+      if (t.budgetItemId != null) return itemNames.get(t.budgetItemId) ?? "Unknown";
+      if (t.categoryId != null) return categories.find((c) => c.id === t.categoryId)?.name ?? "Unknown";
+      return "Uncategorized";
+    },
+    [itemNames, categories]
+  );
+
+  const handleAssign = useCallback(
+    async (id: number, value: ReturnType<typeof toPickerValue>) => {
+      await updateTransaction(id, { ...fromPickerValue(value), categoryLocked: true });
+      invalidateTransactions();
+    },
+    []
+  );
 
   // Get available years and months from transactions
   const { availableYears, availableMonths } = useMemo(() => {
@@ -276,22 +293,22 @@ export function TransactionDataTable({
         },
       },
       {
-        accessorKey: "categoryId",
+        accessorKey: "budgetItemId",
         header: "Category",
         enableSorting: false,
         cell: ({ row }) => {
-          const categoryId = row.getValue("categoryId") as number | null;
-          const categoryName = getCategoryName(categoryId);
-          const locked = row.original.categoryLocked;
+          const t = row.original;
+          const uncategorized = t.budgetItemId == null && t.categoryId == null;
+          const locked = t.categoryLocked;
           return (
             <div className="flex items-center gap-1.5">
-              <Badge
-                variant="secondary"
-                className={categoryId === null ? "text-amber-900 dark:text-amber-200" : ""}
-                style={categoryId === null ? { backgroundColor: "oklch(0.77 0.16 70 / 0.4)" } : undefined}
-              >
-                {categoryName}
-              </Badge>
+              <BudgetItemPicker
+                variant="badge"
+                value={toPickerValue(t.categoryId, t.budgetItemId)}
+                onChange={(v) => handleAssign(t.id!, v)}
+                placeholder="Uncategorized"
+                className={uncategorized ? "border-amber-500/50 text-amber-900 dark:text-amber-200" : ""}
+              />
               {locked && (
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -358,19 +375,22 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [categories, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency]
+    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency]
   );
 
   // Apply filters to transactions
   const filteredTransactions = useMemo(() => {
     let filtered = [...transactions];
 
-    // Category filter
+    // Category filter — "uncategorized" | "item:<id>" | "sys:<id>"
     if (categoryFilter !== "all") {
       if (categoryFilter === "uncategorized") {
-        filtered = filtered.filter((t) => t.categoryId === null);
-      } else {
-        const catId = parseInt(categoryFilter);
+        filtered = filtered.filter((t) => t.budgetItemId == null && t.categoryId == null);
+      } else if (categoryFilter.startsWith("item:")) {
+        const itemId = parseInt(categoryFilter.slice(5), 10);
+        filtered = filtered.filter((t) => t.budgetItemId === itemId);
+      } else if (categoryFilter.startsWith("sys:")) {
+        const catId = parseInt(categoryFilter.slice(4), 10);
         filtered = filtered.filter((t) => t.categoryId === catId);
       }
     }
@@ -438,13 +458,13 @@ export function TransactionDataTable({
         (t) =>
           t.description.toLowerCase().includes(searchLower) ||
           t.matchField.toLowerCase().includes(searchLower) ||
-          getCategoryName(t.categoryId).toLowerCase().includes(searchLower) ||
+          getAssignmentName(t).toLowerCase().includes(searchLower) ||
           (t.note?.toLowerCase().includes(searchLower) ?? false)
       );
     }
 
     return filtered;
-  }, [transactions, categoryFilter, sourceFilter, dateFilter, globalFilter, categories]);
+  }, [transactions, categoryFilter, sourceFilter, dateFilter, globalFilter, getAssignmentName]);
 
   const table = useReactTable({
     data: filteredTransactions,
@@ -611,10 +631,17 @@ export function TransactionDataTable({
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="uncategorized">Uncategorized</SelectItem>
+              {(hierarchy?.subcategories ?? [])
+                .filter((c) => c.isActive)
+                .map((c) => (
+                  <SelectItem key={`item-${c.id}`} value={`item:${c.id}`}>
+                    {c.name}
+                  </SelectItem>
+                ))}
               {categories
-                .filter((cat) => cat.name !== SYSTEM_CATEGORIES.UNCATEGORIZED)
+                .filter((cat) => cat.name === SYSTEM_CATEGORIES.INCOME || cat.name === SYSTEM_CATEGORIES.EXCLUDED)
                 .map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id!.toString()}>
+                  <SelectItem key={`sys-${cat.id}`} value={`sys:${cat.id}`}>
                     {cat.name}
                   </SelectItem>
                 ))}
@@ -768,7 +795,6 @@ export function TransactionDataTable({
         open={editingTransaction !== null}
         onOpenChange={(open) => !open && setEditingTransaction(null)}
         transaction={editingTransaction}
-        categories={categories}
       />
 
       {/* Bulk Delete Confirmation Dialog */}

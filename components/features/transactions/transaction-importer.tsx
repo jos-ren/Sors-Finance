@@ -43,11 +43,17 @@ import {
   useTransactions,
   useImportDrafts,
   invalidateImportDrafts,
-  addCategory,
   updateCategory,
 } from "@/hooks";
+import {
+  useBudgetHierarchy,
+  updateSubcategory,
+  createGroup,
+  createSubcategory,
+} from "@/hooks/use-budget";
 import { addTransactionsBulk, addImport, updateImport, deleteImport, findDuplicateSignatures, saveImportDraft, deleteImportDraft } from "@/lib/db/client";
 import { SYSTEM_CATEGORIES } from "@/lib/db";
+import type { DbCategory } from "@/lib/db/types";
 import { formatDateTime } from "@/lib/utils/formatters";
 import { useTimezone } from "@/contexts/settings-context";
 import type { ImportDraftData, DbImportDraft } from "@/lib/db/types";
@@ -94,12 +100,35 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     categorized: false,
   });
 
-  // Load categories and transactions from Dexie (live query)
+  // Load categories, budget items, and transactions (live queries)
   const dbCategories = useCategories();
   const dbTransactions = useTransactions();
+  const hierarchy = useBudgetHierarchy(false);
   const categories = useMemo(() => dbCategories || [], [dbCategories]);
 
-  // Track pending reprocess - when categories change, we need to recategorize
+  // Auto-categorization + assignment now target budget categories and the
+  // system categories together. `assignables` is a DbCategory-shaped,
+  // uuid-keyed list (active budget categories + Income/Excluded/Uncategorized)
+  // that the categorizer and the resolve/conflict UIs consume. `itemUuids`
+  // marks which uuids are budget categories so the save step can emit the
+  // correct FK.
+  const assignables = useMemo<DbCategory[]>(() => {
+    const items: DbCategory[] = (hierarchy?.subcategories ?? []).map((c) => ({
+      id: c.id,
+      uuid: c.uuid,
+      name: c.name,
+      keywords: c.keywords ?? [],
+      order: c.order,
+      isSystem: false,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    }));
+    return [...items, ...categories];
+  }, [hierarchy, categories]);
+
+  const itemUuids = useMemo(() => new Set((hierarchy?.subcategories ?? []).map((c) => c.uuid)), [hierarchy]);
+
+  // Track pending reprocess - when assignables change, we recategorize
   const pendingReprocess = useRef(false);
 
   // Outer scroll container ref for shared virtual scrolling
@@ -115,7 +144,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       setTransactions(prev => {
         if (prev.length === 0) return prev;
         pendingReprocess.current = false;
-        const recategorized = categorizeTransactions(prev, categories);
+        const recategorized = categorizeTransactions(prev, assignables);
         return recategorized.map((t, i) => {
           const original = prev[i];
           // Preserve the user's resolved conflict selection — if the user already
@@ -131,7 +160,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
         });
       });
     }
-  }, [categories]);
+  }, [assignables]);
 
   // Transactions that will actually be imported (excludes skipped duplicates)
   const transactionsToImport = useMemo(() => {
@@ -264,7 +293,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       });
 
       // Categorize transactions
-      const categorized = categorizeTransactions(withDuplicates, categories);
+      const categorized = categorizeTransactions(withDuplicates, assignables);
 
       // Mark transactions that are originally uncategorized (no category, not conflict)
       // This flag stays true even after keywords are added later
@@ -379,7 +408,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
       });
 
       // Categorize transactions
-      const categorized = categorizeTransactions(withDuplicates, categories);
+      const categorized = categorizeTransactions(withDuplicates, assignables);
 
       // Mark transactions that are originally uncategorized (no category, not conflict)
       // This flag stays true even after keywords are added later
@@ -451,40 +480,47 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
     );
   };
 
-  const handleAddKeyword = async (categoryId: string, keyword: string) => {
-    const category = categories.find((c) => c.uuid === categoryId);
-    if (!category || !category.id) return;
-
-    await updateCategory(category.id, {
-      keywords: [...category.keywords, keyword.trim()],
-    });
-    // Mark for reprocess when categories update via live query
+  // Keyword edits route to the budget category (via updateSubcategory) or to
+  // the system category (via updateCategory), keyed by uuid.
+  const persistKeywords = async (uuid: string, nextKeywords: string[]) => {
+    const target = assignables.find((c) => c.uuid === uuid);
+    if (!target || target.id == null) return;
+    if (itemUuids.has(uuid)) {
+      await updateSubcategory(target.id, { keywords: nextKeywords });
+    } else {
+      await updateCategory(target.id, { keywords: nextKeywords });
+    }
     pendingReprocess.current = true;
+  };
+
+  const handleAddKeyword = async (categoryId: string, keyword: string) => {
+    const target = assignables.find((c) => c.uuid === categoryId);
+    if (!target) return;
+    await persistKeywords(categoryId, [...target.keywords, keyword.trim()]);
   };
 
   const handleRemoveKeyword = async (categoryId: string, keyword: string) => {
-    const category = categories.find((c) => c.uuid === categoryId);
-    if (!category || !category.id) return;
-
-    await updateCategory(category.id, {
-      keywords: category.keywords.filter((k) => k !== keyword),
-    });
-    pendingReprocess.current = true;
+    const target = assignables.find((c) => c.uuid === categoryId);
+    if (!target) return;
+    await persistKeywords(categoryId, target.keywords.filter((k) => k !== keyword));
   };
 
   const handleEditKeyword = async (categoryId: string, oldKeyword: string, newKeyword: string) => {
-    const category = categories.find((c) => c.uuid === categoryId);
-    if (!category || !category.id) return;
-
-    await updateCategory(category.id, {
-      keywords: category.keywords.map((k) => (k === oldKeyword ? newKeyword : k)),
-    });
-    pendingReprocess.current = true;
+    const target = assignables.find((c) => c.uuid === categoryId);
+    if (!target) return;
+    await persistKeywords(categoryId, target.keywords.map((k) => (k === oldKeyword ? newKeyword : k)));
   };
 
+  // Creating a category during import creates a budget category under an
+  // "Ungrouped" group (created on demand if needed).
   const handleCreateCategory = async (name: string, keyword: string) => {
-    await addCategory(name, [keyword]);
-    // Mark for reprocess when categories update via live query
+    let groupId = hierarchy?.groups.find((g) => g.name === "Ungrouped")?.id
+      ?? hierarchy?.groups[0]?.id;
+    if (groupId == null) {
+      const group = await createGroup("Ungrouped");
+      groupId = group.id!;
+    }
+    await createSubcategory(name, groupId, { keywords: [keyword] });
     pendingReprocess.current = true;
   };
 
@@ -649,7 +685,9 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
 
       const convertToDbFormat = (txns: Transaction[]) => {
         return txns.map(t => {
-          const category = categories.find(c => c.uuid === t.categoryId);
+          // t.categoryId holds the matched uuid (budget item or system category).
+          const assignable = t.categoryId ? assignables.find(c => c.uuid === t.categoryId) : undefined;
+          const isItem = t.categoryId ? itemUuids.has(t.categoryId) : false;
           return {
             uuid: t.id,
             date: t.date,
@@ -661,7 +699,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             source: t.source,
             sourceMethod: t.sourceMethod,
             sourceAccountName: t.sourceAccountName,
-            categoryId: category?.id ?? null,
+            categoryId: isItem ? null : (assignable?.id ?? null),
+            budgetItemId: isItem ? (assignable?.id ?? null) : null,
             categoryLocked: false,
             importId: importIdMap.get(t.source) ?? null,
           };
@@ -1048,7 +1087,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             >
               <ConflictResolver
                 conflictTransactions={conflictTransactions}
-                categories={categories}
+                categories={assignables}
                 onResolve={handleResolveConflict}
                 onRemoveKeyword={handleRemoveKeyword}
                 onEditKeyword={handleEditKeyword}
@@ -1075,7 +1114,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             >
               <UncategorizedList
                 uncategorizedTransactions={uncategorizedTransactions}
-                categories={categories}
+                categories={assignables}
                 onAddKeyword={handleAddKeyword}
                 onCreateCategory={handleCreateCategory}
                 onChangeCategory={handleChangeUncategorizedCategory}
@@ -1098,7 +1137,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
             >
               <CategorizedList
                 transactions={categorizedTransactions}
-                categories={categories}
+                categories={assignables}
                 onChangeCategory={handleChangeCategorizedCategory}
               />
             </ResolveSection>
@@ -1151,7 +1190,7 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
           )}
 
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <ResultsView transactions={transactionsToImport} categories={categories} />
+            <ResultsView transactions={transactionsToImport} categories={assignables} />
           </div>
 
           <div className="flex justify-center gap-3 flex-shrink-0">

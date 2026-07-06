@@ -8,6 +8,7 @@
 import useSWR, { mutate } from "swr";
 import { useEffect, useState } from "react";
 import * as api from "@/lib/db/client";
+import { useBudgetHierarchy } from "./use-budget";
 import type {
   DbCategory,
   DbTransaction,
@@ -54,10 +55,17 @@ export function invalidateTransactions() {
   mutate((key: string) => typeof key === "string" && key.startsWith("trend"));
   mutate((key: string) => typeof key === "string" && key.startsWith("ytdSpending"));
   mutate("periods");
+  // Actuals feed the budget tree/yearly views + income + goal progress.
+  mutate((key: string) => typeof key === "string" && key.startsWith("budget-tree"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("budget-yearly"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("income"));
+  mutate("goal-progress");
 }
 
 export function invalidateBudgets() {
   mutate((key: string) => typeof key === "string" && key.startsWith("budgets"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("budget-tree"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("budget-yearly"));
 }
 
 export function invalidateImports() {
@@ -170,185 +178,22 @@ export function useTransactionsByMonth(year: number, month: number): DbTransacti
 // Budget Hooks
 // ============================================
 
-export function useBudgets(year: number, month?: number | null): DbBudget[] | undefined {
-  const { data } = useSWR(
-    `budgets/${year}/${month ?? "yearly"}`,
-    () => api.getBudgets(year, month),
-    swrConfig
-  );
+/** Monthly budget rows (item-based). Yearly mode is gone; use the budget tree
+ *  hooks in use-budget.ts for the budget page. */
+export function useBudgets(year: number, month: number): DbBudget[] | undefined {
+  const { data } = useSWR(`budgets/${year}/${month}`, () => api.getBudgets(year, month), swrConfig);
   return data;
 }
 
-export function useBudgetWithSpending(year: number, month: number) {
-  const budgets = useBudgets(year, month);
-  const categories = useCategories();
-  const spending = useSpendingByCategory(year, month);
-
-  if (!budgets || !categories || !spending) {
-    return undefined;
-  }
-
-  return budgets.map((budget) => {
-    const category = categories.find((c) => c.id === budget.categoryId);
-    const spent = spending.get(budget.categoryId) || 0;
-
-    return {
-      ...budget,
-      categoryName: category?.name || "Unknown",
-      spent,
-      remaining: budget.amount - spent,
-      percentUsed: budget.amount > 0 ? (spent / budget.amount) * 100 : 0,
-      isOverBudget: spent > budget.amount,
-      isNearLimit: spent >= budget.amount * 0.9 && spent <= budget.amount,
-    };
-  });
-}
-
-// ============================================
-// Budget Page Data Types
-// ============================================
-
-export interface BudgetCategoryRow {
-  categoryId: number;
-  categoryName: string;
-  isSystemCategory: boolean;
-  monthlyBudget: number | null;
-  monthlyBudgetId: number | null;
-  yearlyBudget: number | null;
-  yearlyBudgetId: number | null;
-  currentMonthSpending: number;
-  ytdSpending: number;
-  yearlySpending: number;
-  monthlyAllowance: number | null;
-  rollingBalance: number | null;
-  paceStatus: "under" | "on" | "over" | null;
-}
-
-export interface BudgetPageSummary {
-  totalMonthlyBudgeted: number;
-  totalYearlyBudgeted: number;
-  totalMonthlySpent: number;
-  totalYtdSpent: number;
-  monthlyRemaining: number;
-  yearlyRemaining: number;
-}
-
-export interface BudgetPageData {
-  rows: BudgetCategoryRow[];
-  summary: BudgetPageSummary;
-  hiddenCategories: DbCategory[];
-}
-
-export function useBudgetPageData(year: number, month: number): BudgetPageData | undefined {
-  const categories = useCategories();
-  const monthlyBudgets = useBudgets(year, month);
-  const yearlyBudgets = useBudgets(year, null);
-
-  const { data: currentMonthSpending } = useSWR(
-    `spending/${year}/${month}`,
-    () => api.getSpendingByCategory(year, month),
-    swrConfig
-  );
-
-  const { data: ytdSpending } = useSWR(
-    `ytdSpending/${year}`,
-    () => api.getYTDSpendingByCategory(year),
-    swrConfig
-  );
-
-  const { data: yearlySpending } = useSWR(
-    `spending/${year}/all`,
-    () => api.getSpendingByCategory(year),
-    swrConfig
-  );
-
-  if (
-    !categories ||
-    !monthlyBudgets ||
-    !yearlyBudgets ||
-    !currentMonthSpending ||
-    !ytdSpending ||
-    !yearlySpending
-  ) {
-    return undefined;
-  }
-
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonth = now.getMonth();
-
-  let monthsElapsed: number;
-  if (year < currentYear) {
-    monthsElapsed = 12;
-  } else if (year > currentYear) {
-    monthsElapsed = 0;
-  } else {
-    monthsElapsed = currentMonth + 1;
-  }
-
-  const hiddenCategories = categories.filter(c => !c.isSystem && c.excludeFromBudget);
-
-  const rows: BudgetCategoryRow[] = categories
-    .filter((c) => !c.isSystem && !c.excludeFromBudget)
-    .map((category) => {
-      const monthlyBudget = monthlyBudgets.find((b) => b.categoryId === category.id);
-      const yearlyBudget = yearlyBudgets.find((b) => b.categoryId === category.id);
-
-      const monthlyAmount = monthlyBudget?.amount ?? null;
-      const yearlyAmount = yearlyBudget?.amount ?? null;
-
-      const monthSpent = currentMonthSpending.get(category.id!) || 0;
-      const ytdSpent = ytdSpending.get(category.id!) || 0;
-      const yearSpent = yearlySpending.get(category.id!) || 0;
-
-      let monthlyAllowance: number | null = null;
-      let rollingBalance: number | null = null;
-      let paceStatus: "under" | "on" | "over" | null = null;
-
-      if (yearlyAmount !== null && monthsElapsed > 0) {
-        monthlyAllowance = yearlyAmount / 12;
-        const cumulativeBudget = monthlyAllowance * monthsElapsed;
-        rollingBalance = cumulativeBudget - ytdSpent;
-
-        if (rollingBalance > monthlyAllowance * 0.1) {
-          paceStatus = "under";
-        } else if (rollingBalance < -monthlyAllowance * 0.1) {
-          paceStatus = "over";
-        } else {
-          paceStatus = "on";
-        }
-      }
-
-      return {
-        categoryId: category.id!,
-        categoryName: category.name,
-        isSystemCategory: category.isSystem ?? false,
-        monthlyBudget: monthlyAmount,
-        monthlyBudgetId: monthlyBudget?.id ?? null,
-        yearlyBudget: yearlyAmount,
-        yearlyBudgetId: yearlyBudget?.id ?? null,
-        currentMonthSpending: monthSpent,
-        ytdSpending: ytdSpent,
-        yearlySpending: yearSpent,
-        monthlyAllowance,
-        rollingBalance,
-        paceStatus,
-      };
-    });
-
-  const summary: BudgetPageSummary = {
-    totalMonthlyBudgeted: rows.reduce((sum, r) => sum + (r.monthlyBudget || 0), 0),
-    totalYearlyBudgeted: rows.reduce((sum, r) => sum + (r.yearlyBudget || 0), 0),
-    totalMonthlySpent: rows.reduce((sum, r) => sum + r.currentMonthSpending, 0),
-    totalYtdSpent: rows.reduce((sum, r) => sum + r.ytdSpending, 0),
-    monthlyRemaining: 0,
-    yearlyRemaining: 0,
-  };
-  summary.monthlyRemaining = summary.totalMonthlyBudgeted - summary.totalMonthlySpent;
-  summary.yearlyRemaining = summary.totalYearlyBudgeted - summary.totalYtdSpent;
-
-  return { rows, summary, hiddenCategories };
-}
+// Re-export the hierarchy/tree hooks so existing `@/hooks` imports resolve.
+export {
+  useBudgetHierarchy,
+  useBudgetTree,
+  useYearlyBudgetSummary,
+  useArchivedBudgetCategories,
+  useGoalProgress,
+  useIncomeTotal,
+} from "./use-budget";
 
 // ============================================
 // Import Hooks
@@ -386,35 +231,38 @@ export function useYearlyTotals(year: number) {
   return data;
 }
 
-export function useSpendingByCategory(year: number, month?: number) {
-  const categories = useCategories();
+/**
+ * Map of budget category id → name (archived included), for resolving names on
+ * the dashboard's spending aggregations, which are now keyed by budget category id.
+ */
+export function useBudgetItemNames(): Map<number, string> | undefined {
+  const hierarchy = useBudgetHierarchy(true);
+  if (!hierarchy) return undefined;
+  return new Map(hierarchy.subcategories.map((c) => [c.id!, c.name]));
+}
 
-  const { data: spending } = useSWR(
+export function useSpendingByCategory(year: number, month?: number) {
+  const { data } = useSWR(
     `spending/${year}/${month ?? "all"}`,
     () => api.getSpendingByCategory(year, month),
     swrConfig
   );
-
-  if (!categories || !spending) {
-    return undefined;
-  }
-
-  return spending;
+  return data;
 }
 
 export function useSpendingByCategoryWithNames(year: number, month?: number) {
-  const categories = useCategories();
+  const names = useBudgetItemNames();
   const spending = useSpendingByCategory(year, month);
 
-  if (!categories || !spending) {
+  if (!names || !spending) {
     return undefined;
   }
 
-  return categories
-    .map((category) => ({
-      categoryId: category.id!,
-      categoryName: category.name,
-      amount: spending.get(category.id!) || 0,
+  return Array.from(spending.entries())
+    .map(([itemId, amount]) => ({
+      categoryId: itemId,
+      categoryName: names.get(itemId) ?? "Unknown",
+      amount,
     }))
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount);
@@ -430,7 +278,7 @@ export function useAllTimeTotals() {
 }
 
 export function useAllTimeSpendingByCategory() {
-  const categories = useCategories();
+  const names = useBudgetItemNames();
 
   const { data: spending } = useSWR(
     "spending/allTime",
@@ -438,15 +286,15 @@ export function useAllTimeSpendingByCategory() {
     swrConfig
   );
 
-  if (!categories || !spending) {
+  if (!names || !spending) {
     return undefined;
   }
 
-  return categories
-    .map((category) => ({
-      categoryId: category.id!,
-      categoryName: category.name,
-      amount: spending.get(category.id!) || 0,
+  return Array.from(spending.entries())
+    .map(([itemId, amount]) => ({
+      categoryId: itemId,
+      categoryName: names.get(itemId) ?? "Unknown",
+      amount,
     }))
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount);
@@ -519,12 +367,13 @@ export interface MonthlyExpenseCategorySeries {
 
 export function buildCategoryChartData(
   rows: CategoryTrendRow[] | undefined,
-  categories: DbCategory[] | undefined
+  // Now keyed by budget item; accepts any { id, name } list (items or categories).
+  namedEntities: Array<{ id?: number | null; name: string }> | undefined
 ): {
   chartRows: Array<Record<string, number | string>>;
   categorySeries: MonthlyExpenseCategorySeries[];
 } | undefined {
-  if (!rows || !categories) {
+  if (!rows || !namedEntities) {
     return undefined;
   }
 
@@ -536,11 +385,11 @@ export function buildCategoryChartData(
     }
   }
 
-  const categorySeries: MonthlyExpenseCategorySeries[] = categories
-    .map((category) => ({
-      categoryId: category.id!,
-      categoryName: category.name,
-      total: totalsByCategory.get(category.id!) || 0,
+  const categorySeries: MonthlyExpenseCategorySeries[] = namedEntities
+    .map((entity) => ({
+      categoryId: entity.id!,
+      categoryName: entity.name,
+      total: totalsByCategory.get(entity.id!) || 0,
     }))
     .filter((c) => c.total > 0)
     .sort((a, b) => b.total - a.total);
@@ -727,13 +576,7 @@ export function useNetWorthHistory(months: number = 12) {
 // Mutation Functions with Cache Invalidation
 // ============================================
 
-// Categories
-export async function addCategory(name: string, keywords: string[] = []): Promise<number> {
-  const id = await api.addCategory(name, keywords);
-  invalidateCategories();
-  return id;
-}
-
+// Categories — system categories only now; just keyword edits are supported.
 export async function updateCategory(
   id: number,
   updates: Partial<Omit<DbCategory, "id" | "uuid" | "createdAt">>
@@ -742,18 +585,6 @@ export async function updateCategory(
   invalidateCategories();
   invalidateTransactions();
   return result;
-}
-
-export async function deleteCategory(id: number): Promise<void> {
-  await api.deleteCategory(id);
-  invalidateCategories();
-  invalidateTransactions();
-  invalidateBudgets();
-}
-
-export async function reorderCategories(activeId: number, overId: number): Promise<void> {
-  await api.reorderCategories(activeId, overId);
-  invalidateCategories();
 }
 
 export async function addKeywordToCategory(categoryId: number, keyword: string): Promise<void> {
@@ -793,14 +624,14 @@ export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   invalidateTransactions();
 }
 
-// Budgets
+// Budgets (item-based, monthly)
 export async function setBudget(
-  categoryId: number,
+  budgetItemId: number,
   year: number,
-  month: number | null,
+  month: number,
   amount: number
 ): Promise<number> {
-  const id = await api.setBudget(categoryId, year, month, amount);
+  const id = await api.setBudget(budgetItemId, year, month, amount);
   invalidateBudgets();
   return id;
 }
@@ -812,9 +643,9 @@ export async function deleteBudget(id: number): Promise<void> {
 
 export async function copyBudgetToMonth(
   fromYear: number,
-  fromMonth: number | null,
+  fromMonth: number,
   toYear: number,
-  toMonth: number | null
+  toMonth: number
 ): Promise<number> {
   const count = await api.copyBudgetToMonth(fromYear, fromMonth, toYear, toMonth);
   invalidateBudgets();
@@ -927,14 +758,6 @@ export async function findPreviousMonthWithBudgets(
   maxMonthsBack?: number
 ): Promise<{ year: number; month: number } | null> {
   return api.findPreviousMonthWithBudgets(year, month, maxMonthsBack);
-}
-
-export async function getBudgetForCategory(
-  categoryId: number,
-  year: number,
-  month?: number | null
-): Promise<DbBudget | null> {
-  return api.getBudgetForCategory(categoryId, year, month);
 }
 
 // Re-export constants and types

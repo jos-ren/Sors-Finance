@@ -4,7 +4,7 @@
  * SQLite schema definitions matching the existing Dexie structure.
  */
 
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // ============================================
 // Users Table
@@ -57,7 +57,6 @@ export const categories = sqliteTable(
     keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
     order: integer("order").notNull().default(0),
     isSystem: integer("is_system", { mode: "boolean" }).default(false),
-    excludeFromBudget: integer("exclude_from_budget", { mode: "boolean" }).default(false),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -66,6 +65,63 @@ export const categories = sqliteTable(
     index("categories_order_idx").on(table.order),
     index("categories_name_idx").on(table.name),
     index("categories_user_idx").on(table.userId),
+  ]
+);
+
+// ============================================
+// Budget Hierarchy Tables (Group → Subcategory → Item)
+// ============================================
+// Zero-based budgeting hierarchy. Budget Items are the leaf level that
+// transactions attach to and that carry keywords + monthly planned amounts.
+
+export const budgetGroups = sqliteTable(
+  "budget_groups",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    name: text("name").notNull(),
+    order: integer("order").notNull().default(0),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("budget_groups_order_idx").on(table.order),
+    index("budget_groups_user_idx").on(table.userId),
+  ]
+);
+
+// Subcategories are the budgeting leaf ("Category" in the UI): they carry
+// keywords, expense/goal type, and target amount, and are what transactions
+// and monthly budget rows attach to. (Formerly this data lived one level
+// deeper on a now-removed `budget_items` table — see budget_hierarchy_v2.)
+export const budgetSubcategories = sqliteTable(
+  "budget_subcategories",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    name: text("name").notNull(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => budgetGroups.id, { onDelete: "cascade" }),
+    keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
+    itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
+    targetAmount: real("target_amount"), // nullable; goal progress target
+    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    order: integer("order").notNull().default(0),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("budget_subcategories_group_idx").on(table.groupId),
+    index("budget_subcategories_order_idx").on(table.order),
+    index("budget_subcategories_active_idx").on(table.isActive),
+    index("budget_subcategories_user_idx").on(table.userId),
   ]
 );
 
@@ -89,6 +145,7 @@ export const transactions = sqliteTable(
     sourceAccountName: text("source_account_name"), // Specific account name for tooltip
     note: text("note"),
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+    budgetItemId: integer("budget_item_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
     categoryLocked: integer("category_locked", { mode: "boolean" }).notNull().default(false),
     importId: integer("import_id").references(() => imports.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -98,9 +155,11 @@ export const transactions = sqliteTable(
   (table) => [
     index("transactions_date_idx").on(table.date),
     index("transactions_category_idx").on(table.categoryId),
+    index("transactions_budget_item_idx").on(table.budgetItemId),
     index("transactions_source_idx").on(table.source),
     index("transactions_import_idx").on(table.importId),
     index("transactions_date_category_idx").on(table.date, table.categoryId),
+    index("transactions_date_budget_item_idx").on(table.date, table.budgetItemId),
     index("transactions_user_idx").on(table.userId),
   ]
 );
@@ -113,11 +172,11 @@ export const budgets = sqliteTable(
   "budgets",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    categoryId: integer("category_id")
+    budgetItemId: integer("budget_item_id")
       .notNull()
-      .references(() => categories.id, { onDelete: "cascade" }),
+      .references(() => budgetSubcategories.id, { onDelete: "cascade" }),
     year: integer("year").notNull(),
-    month: integer("month"), // null for yearly budgets
+    month: integer("month").notNull(), // 0–11 (monthly only; yearly mode dropped)
     amount: real("amount").notNull(),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -125,8 +184,14 @@ export const budgets = sqliteTable(
   },
   (table) => [
     index("budgets_year_month_idx").on(table.year, table.month),
-    index("budgets_year_month_category_idx").on(table.year, table.month, table.categoryId),
+    index("budgets_year_month_item_idx").on(table.year, table.month, table.budgetItemId),
     index("budgets_user_idx").on(table.userId),
+    uniqueIndex("budgets_item_year_month_user_idx").on(
+      table.budgetItemId,
+      table.year,
+      table.month,
+      table.userId
+    ),
   ]
 );
 
@@ -366,11 +431,59 @@ export const importDrafts = sqliteTable(
 );
 
 // ============================================
+// System Logs Table
+// ============================================
+// Records scheduler runs, sync failures, and integration errors so users can
+// review them in Settings → Error Log instead of digging through server logs.
+
+export const systemLogs = sqliteTable(
+  "system_logs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    level: text("level").notNull(), // 'info' | 'warning' | 'error'
+    source: text("source").notNull(), // 'scheduler' | 'plaid_sync' | 'price_refresh' | 'snapshot' | 'currency_cache'
+    message: text("message").notNull(),
+    details: text("details", { mode: "json" }).$type<Record<string, unknown>>(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("system_logs_created_idx").on(table.createdAt),
+    index("system_logs_user_idx").on(table.userId),
+    index("system_logs_level_idx").on(table.level),
+  ]
+);
+
+// ============================================
+// Data Migrations Marker Table
+// ============================================
+// Marks one-off TS data migrations as applied so they run exactly once,
+// independently of the drizzle SQL migration journal.
+
+export const dataMigrations = sqliteTable(
+  "data_migrations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull().unique(),
+    appliedAt: integer("applied_at", { mode: "timestamp" }).notNull(),
+  }
+);
+
+// ============================================
 // Type Exports for Schema
 // ============================================
 
 export type CategoryRow = typeof categories.$inferSelect;
 export type CategoryInsert = typeof categories.$inferInsert;
+
+export type BudgetGroupRow = typeof budgetGroups.$inferSelect;
+export type BudgetGroupInsert = typeof budgetGroups.$inferInsert;
+
+export type BudgetSubcategoryRow = typeof budgetSubcategories.$inferSelect;
+export type BudgetSubcategoryInsert = typeof budgetSubcategories.$inferInsert;
+
+export type DataMigrationRow = typeof dataMigrations.$inferSelect;
+export type DataMigrationInsert = typeof dataMigrations.$inferInsert;
 
 export type TransactionRow = typeof transactions.$inferSelect;
 export type TransactionInsert = typeof transactions.$inferInsert;
@@ -406,6 +519,9 @@ export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInse
 
 export type ImportDraftRow = typeof importDrafts.$inferSelect;
 export type ImportDraftInsert = typeof importDrafts.$inferInsert;
+
+export type SystemLogRow = typeof systemLogs.$inferSelect;
+export type SystemLogInsert = typeof systemLogs.$inferInsert;
 
 // ============================================
 // Plaid Items Table
