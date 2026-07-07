@@ -36,11 +36,16 @@ interface FlowLink {
   value: number;
 }
 
-function buildMoneyFlow(tree: BudgetTree): { nodes: FlowNode[]; links: FlowLink[]; maxDepth: number } | null {
+function buildMoneyFlow(
+  tree: BudgetTree
+): { nodes: FlowNode[]; links: FlowLink[]; maxDepth: number; maxColumnCount: number } | null {
   const { incomeActual } = tree.summary;
   const nodes: FlowNode[] = [];
   const links: FlowLink[] = [];
   let maxDepth = 0;
+  // Nodes per column (depth 0 = Income), so the chart can grow tall enough
+  // that no column's rows get squeezed thin enough to clip their labels.
+  const depthCounts: number[] = [1];
 
   const incomeIdx = nodes.push({ name: "Income", color: INCOME_COLOR, value: incomeActual }) - 1;
 
@@ -52,6 +57,7 @@ function buildMoneyFlow(tree: BudgetTree): { nodes: FlowNode[]; links: FlowLink[
     const groupIdx = nodes.push({ name: g.name, color: GROUP_COLOR, value: g.actual }) - 1;
     links.push({ source: incomeIdx, target: groupIdx, value: g.actual });
     maxDepth = Math.max(maxDepth, 1);
+    depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
     for (const c of g.categories) {
       if (c.actual <= 0) continue;
@@ -60,6 +66,7 @@ function buildMoneyFlow(tree: BudgetTree): { nodes: FlowNode[]; links: FlowLink[
       const catIdx = nodes.push({ name: c.name, color, value: c.actual }) - 1;
       links.push({ source: groupIdx, target: catIdx, value: c.actual });
       maxDepth = Math.max(maxDepth, 2);
+      depthCounts[2] = (depthCounts[2] ?? 0) + 1;
     }
   }
 
@@ -68,10 +75,12 @@ function buildMoneyFlow(tree: BudgetTree): { nodes: FlowNode[]; links: FlowLink[
     const unspentIdx = nodes.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent }) - 1;
     links.push({ source: incomeIdx, target: unspentIdx, value: unspent });
     maxDepth = Math.max(maxDepth, 1);
+    depthCounts[1] = (depthCounts[1] ?? 0) + 1;
   }
 
   if (links.length === 0) return null;
-  return { nodes, links, maxDepth };
+  const maxColumnCount = Math.max(...depthCounts);
+  return { nodes, links, maxDepth, maxColumnCount };
 }
 
 function SankeyNode({
@@ -175,17 +184,22 @@ export function MoneyFlowSankey({
   const flow = useMemo(() => buildMoneyFlow(tree), [tree]);
 
   if (!flow) return null;
-  const { maxDepth, ...data } = flow;
+  const { maxDepth, maxColumnCount, ...data } = flow;
+  // Each row needs room for the two-line label (name + amount) plus
+  // nodePadding between rows — without this, a busy column (many groups or
+  // categories) squeezes rows thin enough that the bottom-most node's amount
+  // label spills past the chart's bottom edge and gets clipped.
+  const height = Math.max(360, maxColumnCount * 40 + 20);
 
   return (
     <div className="rounded-xl border bg-card p-4">
-      <ResponsiveContainer width="100%" height={360}>
+      <ResponsiveContainer width="100%" height={height}>
         <Sankey
           data={data}
           nodeWidth={12}
           nodePadding={20}
           linkCurvature={0.5}
-          margin={{ top: 8, right: 120, bottom: 8, left: 80 }}
+          margin={{ top: 8, right: 120, bottom: 16, left: 80 }}
           node={(props) => <SankeyNode {...(props as any)} maxDepth={maxDepth} formatAmountShort={formatAmountShort} />}
           link={(props) => <SankeyLinkPath {...(props as any)} />}
         >
