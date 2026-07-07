@@ -78,6 +78,11 @@ export function useIncomeTotal(year: number, month: number): number | undefined 
   return data;
 }
 
+export function usePlannedIncome(year: number, month: number): number | null | undefined {
+  const { data } = useSWR(`planned-income/${year}/${month}`, () => api.getPlannedIncome(year, month), swrConfig);
+  return data;
+}
+
 // ---- Mutation wrappers ------------------------------------------------------
 // Structure mutations save immediately and refresh the whole hierarchy.
 
@@ -148,6 +153,11 @@ export async function removeKeywordFromSubcategory(id: number, keyword: string, 
 export async function setBudgetAmount(budgetItemId: number, year: number, month: number, amount: number) {
   const id = await api.setBudget(budgetItemId, year, month, amount);
   invalidateBudgetTree();
+  return id;
+}
+export async function setPlannedIncomeAmount(year: number, month: number, amount: number) {
+  const id = await api.setPlannedIncome(year, month, amount);
+  mutate(`planned-income/${year}/${month}`);
   return id;
 }
 export async function copyBudgetToMonth(fromYear: number, fromMonth: number, toYear: number, toMonth: number) {

@@ -31,8 +31,6 @@ import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-vie
 import { CategoryDetailDialog, type DetailCategory } from "@/components/features/budget/category-detail-dialog";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
 
-const SUGGESTION_GROUPS = ["Savings", "Goals", "Flexible Spending"];
-
 export default function BudgetPage() {
   const now = new Date();
   const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
@@ -247,36 +245,16 @@ function MonthlyContent({
     return () => { setHasUnsavedChanges(false); setSaveHandler(null); };
   }, [pending.size, handleSave, setHasUnsavedChanges, setSaveHandler]);
 
-  const setPlanned = useCallback((itemId: number, value: string) => {
-    setPending((prev) => {
-      const next = new Map(prev);
-      next.set(itemId, value);
-      return next;
-    });
-  }, []);
-
-  const assignRemaining = useCallback((itemId: number, amount: number) => {
-    // Add the remaining amount to the category's current effective planned value.
-    let current = 0;
-    for (const g of effective.groups) for (const c of g.categories) if (c.id === itemId) current = c.planned;
-    setPlanned(itemId, (current + amount).toFixed(2));
-    focus(itemId);
-  }, [effective, setPlanned, focus]);
-
-  // Suggested assign targets (Savings/Goals/Flexible) + overspent chips.
-  const suggestions = useMemo<AssignSuggestion[]>(() => {
-    const out: AssignSuggestion[] = [];
-    for (const g of effective.groups) {
-      if (!SUGGESTION_GROUPS.includes(g.name)) continue;
-      for (const c of g.categories) out.push({ itemId: c.id, label: `${g.name} › ${c.name}` });
-    }
-    return out.slice(0, 8);
-  }, [effective]);
-
+  // Worst overspenders (actual over planned), for the on-budget hero's focus chips.
   const overspentChips = useMemo<AssignSuggestion[]>(() => {
-    const all: { itemId: number; label: string; planned: number }[] = [];
-    for (const g of effective.groups) for (const c of g.categories) all.push({ itemId: c.id, label: c.name, planned: c.planned });
-    return all.sort((a, b) => b.planned - a.planned).slice(0, 4).map(({ itemId, label }) => ({ itemId, label }));
+    const all: { itemId: number; label: string; overage: number }[] = [];
+    for (const g of effective.groups)
+      for (const c of g.categories) all.push({ itemId: c.id, label: c.name, overage: c.actual - c.planned });
+    return all
+      .filter((c) => c.overage > 0.005)
+      .sort((a, b) => b.overage - a.overage)
+      .slice(0, 4)
+      .map(({ itemId, label }) => ({ itemId, label }));
   }, [effective]);
 
   const openDetail = useCallback((category: BudgetTreeCategory) => {
@@ -298,9 +276,7 @@ function MonthlyContent({
       <BudgetSummaryHero
         tree={effective}
         formatAmount={fmt}
-        suggestions={suggestions}
         overspentChips={overspentChips}
-        onAssignRemaining={assignRemaining}
         onFocusItem={focus}
       />
 

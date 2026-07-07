@@ -86,6 +86,8 @@ export interface CreateCategoryInput {
   keywords?: string[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
+  /** Goal deadline as epoch ms. */
+  targetDate?: number | null;
 }
 
 export const createSubcategory = (name: string, groupId: number, extra?: Omit<CreateCategoryInput, "name" | "groupId">) =>
@@ -98,6 +100,8 @@ export interface UpdateCategoryInput {
   keywords?: string[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
+  /** Goal deadline as epoch ms. */
+  targetDate?: number | null;
   isActive?: boolean;
 }
 

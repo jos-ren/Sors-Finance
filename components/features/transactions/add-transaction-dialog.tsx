@@ -17,16 +17,19 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { addTransaction } from "@/hooks";
-import { BudgetItemPicker, fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
+import { BudgetItemPicker, fromPickerValue, toPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
 
 interface AddTransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Preset (and lock) the category/budget item, e.g. when adding from a category detail page. */
+  defaultBudgetItemId?: number;
 }
 
 export function AddTransactionDialog({
   open,
   onOpenChange,
+  defaultBudgetItemId,
 }: AddTransactionDialogProps) {
   const [date, setDate] = useState(() => {
     const today = new Date();
@@ -34,7 +37,7 @@ export function AddTransactionDialog({
   });
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [assignment, setAssignment] = useState<PickerValue>(null);
+  const [assignment, setAssignment] = useState<PickerValue>(() => toPickerValue(null, defaultBudgetItemId ?? null));
   const [note, setNote] = useState<string>("");
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,7 +47,7 @@ export function AddTransactionDialog({
     setDate(today.toISOString().split("T")[0]);
     setDescription("");
     setAmount("");
-    setAssignment(null);
+    setAssignment(toPickerValue(null, defaultBudgetItemId ?? null));
     setNote("");
     setTransactionType("expense");
   };
@@ -102,7 +105,7 @@ export function AddTransactionDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add Transaction</DialogTitle>
           <DialogDescription>
@@ -134,17 +137,6 @@ export function AddTransactionDialog({
             </RadioGroup>
           </div>
 
-          {/* Date */}
-          <div className="space-y-2">
-            <Label htmlFor="date">Date</Label>
-            <Input
-              id="date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
@@ -156,21 +148,39 @@ export function AddTransactionDialog({
             />
           </div>
 
-          {/* Amount */}
-          <div className="space-y-2">
-            <Label htmlFor="amount">Amount (CAD)</Label>
-            <CurrencyInput
-              id="amount"
-              placeholder="0.00"
-              value={amount}
-              onChange={setAmount}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            {/* Date */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (CAD)</Label>
+              <CurrencyInput
+                id="amount"
+                placeholder="0.00"
+                value={amount}
+                onChange={setAmount}
+              />
+            </div>
           </div>
 
           {/* Category / budget item */}
           <div className="space-y-2">
             <Label htmlFor="category">Category (optional)</Label>
-            <BudgetItemPicker value={assignment} onChange={setAssignment} placeholder="Uncategorized" />
+            <BudgetItemPicker
+              value={assignment}
+              onChange={setAssignment}
+              placeholder="Uncategorized"
+              disabled={defaultBudgetItemId != null}
+            />
           </div>
 
           {/* Note */}

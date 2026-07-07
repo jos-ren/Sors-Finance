@@ -134,6 +134,20 @@
       "when": 1783316665165,
       "tag": "0018_collapse_budget_items",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1783392977098,
+      "tag": "0019_faithful_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1783397930996,
+      "tag": "0020_cheerful_the_watchers",
+      "breakpoints": true
     }
   ]
 }

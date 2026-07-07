@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Settings,
   Loader2,
+  Target,
 } from "lucide-react";
 import { useUnsavedChanges } from "@/contexts/unsaved-changes-context";
 import {
@@ -45,6 +46,11 @@ const navItems = [
     title: "Budget",
     url: "/budget",
     icon: Wallet,
+  },
+  {
+    title: "Goals",
+    url: "/goals",
+    icon: Target,
   },
   {
     title: "Transactions",

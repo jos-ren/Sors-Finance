@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Save, X, Archive } from "lucide-react";
+import { Archive, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -18,7 +18,15 @@ import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useUnsavedChanges } from "@/contexts/unsaved-changes-context";
-import { useBudgetHierarchy, useBudgets, useIncomeTotal, useAvailablePeriods, invalidateBudgets } from "@/hooks";
+import {
+  useBudgetHierarchy,
+  useBudgets,
+  useIncomeTotal,
+  usePlannedIncome,
+  setPlannedIncomeAmount,
+  useAvailablePeriods,
+  invalidateBudgets,
+} from "@/hooks";
 import { setBudget } from "@/lib/db/client";
 import { parsePending } from "@/lib/budget/effective-tree";
 import { PeriodNavigator } from "@/components/features/budget/period-navigator";
@@ -32,14 +40,18 @@ export default function BudgetBuilderPage() {
   const now = new Date();
   const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [pending, setPending] = useState<Map<number, string>>(new Map());
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const savingRef = useRef(false);
   const [detailItem, setDetailItem] = useState<DetailCategory | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
 
   const { formatAmount } = usePrivacy();
   const currency = useCurrency();
-  const fmt = useCallback((n: number) => formatAmount(n, currency), [formatAmount, currency]);
+  const fmt = useCallback(
+    (n: number, showCode?: boolean) => formatAmount(n, currency, showCode),
+    [formatAmount, currency]
+  );
   const { setHasUnsavedChanges, setSaveHandler } = useUnsavedChanges();
 
   const sentinelRef = useSetPageHeader("Budget Builder");
@@ -54,7 +66,8 @@ export default function BudgetBuilderPage() {
   // Source structure from the full hierarchy so brand-new empty groups/subs show.
   const hierarchy = useBudgetHierarchy(false);
   const budgetRows = useBudgets(selected.year, selected.month);
-  const income = useIncomeTotal(selected.year, selected.month);
+  const actualIncome = useIncomeTotal(selected.year, selected.month);
+  const plannedIncome = usePlannedIncome(selected.year, selected.month);
 
   const savedPlanned = useMemo(() => {
     const m = new Map<number, number>();
@@ -86,9 +99,20 @@ export default function BudgetBuilderPage() {
     return sum;
   }, [groups, pending]);
 
-  const incomeVal = income ?? 0;
+  const incomeVal = plannedIncome ?? actualIncome ?? 0;
 
   useEffect(() => setPending(new Map()), [selected.year, selected.month]);
+
+  const handleIncomeChange = useCallback(
+    async (amount: number) => {
+      try {
+        await setPlannedIncomeAmount(selected.year, selected.month, amount);
+      } catch {
+        toast.error("Failed to save expected income");
+      }
+    },
+    [selected.year, selected.month]
+  );
 
   const setPlanned = useCallback((itemId: number, value: string) => {
     setPending((prev) => {
@@ -99,20 +123,44 @@ export default function BudgetBuilderPage() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    setSaving(true);
+    if (savingRef.current) return;
+    const entries = Array.from(pending.entries());
+    if (entries.length === 0) return;
+    savingRef.current = true;
+    setSaveState("saving");
     try {
-      for (const [itemId, val] of pending.entries()) {
+      for (const [itemId, val] of entries) {
         await setBudget(itemId, selected.year, selected.month, parsePending(val, 0));
       }
-      setPending(new Map());
+      // Only clear the values we actually saved — edits made mid-save stay pending.
+      setPending((prev) => {
+        const next = new Map(prev);
+        for (const [id, val] of entries) if (next.get(id) === val) next.delete(id);
+        return next;
+      });
       invalidateBudgets();
-      toast.success("Budget saved");
+      setSaveState("saved");
     } catch {
       toast.error("Failed to save budget");
+      setSaveState("idle");
     } finally {
-      setSaving(false);
+      savingRef.current = false;
     }
   }, [pending, selected.year, selected.month]);
+
+  // Autosave: debounce a beat after the last edit, then flush.
+  useEffect(() => {
+    if (pending.size === 0) return;
+    const t = setTimeout(() => { void handleSave(); }, 1000);
+    return () => clearTimeout(t);
+  }, [pending, handleSave]);
+
+  // Fade the "All changes saved" state back to the quiet idle dot.
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const t = setTimeout(() => setSaveState("idle"), 3000);
+    return () => clearTimeout(t);
+  }, [saveState]);
 
   useEffect(() => {
     setHasUnsavedChanges(pending.size > 0);
@@ -125,26 +173,30 @@ export default function BudgetBuilderPage() {
     setDetailOpen(true);
   }, []);
 
-  const loading = hierarchy === undefined || budgetRows === undefined || income === undefined;
+  const loading =
+    hierarchy === undefined || budgetRows === undefined || actualIncome === undefined || plannedIncome === undefined;
 
   return (
-    <div className="space-y-5 p-6 pb-24">
+    <div className="space-y-5 p-6">
       <div ref={sentinelRef} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/budget">Budget</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Builder</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
+        <div className="flex items-center gap-3">
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/budget">Budget</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Builder</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+          <SaveStatus saving={saveState === "saving" || pending.size > 0} justSaved={saveState === "saved"} />
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setArchivedOpen(true)}>
             <Archive className="h-4 w-4" /> Archived
@@ -165,10 +217,14 @@ export default function BudgetBuilderPage() {
         <BudgetPageSkeleton />
       ) : (
         <>
-          <AllocationMeter income={incomeVal} assigned={assigned} formatAmount={fmt} />
+          <AllocationMeter
+            income={incomeVal}
+            assigned={assigned}
+            formatAmount={fmt}
+            onIncomeChange={handleIncomeChange}
+          />
           <BuilderList
             groups={groups}
-            income={incomeVal}
             pending={pending}
             formatAmount={fmt}
             onPlannedChange={setPlanned}
@@ -177,20 +233,35 @@ export default function BudgetBuilderPage() {
         </>
       )}
 
-      {pending.size > 0 && (
-        <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border bg-card p-1.5 shadow-lg animate-in slide-in-from-bottom-4">
-          <span className="px-3 text-sm text-muted-foreground">{pending.size} unsaved</span>
-          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setPending(new Map())} disabled={saving}>
-            <X className="h-4 w-4" /> Cancel
-          </Button>
-          <Button size="sm" className={cn("gap-1.5 rounded-full")} onClick={handleSave} disabled={saving}>
-            <Save className="h-4 w-4" /> {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      )}
-
       <CategoryDetailDialog category={detailItem} open={detailOpen} onOpenChange={setDetailOpen} />
       <ArchivedItemsSheet open={archivedOpen} onOpenChange={setArchivedOpen} />
     </div>
+  );
+}
+
+/** Quiet Docs-style save indicator next to the breadcrumb: faint "Saved" when
+ *  idle, a slow spinner while (auto)saving, and a soft green "All changes
+ *  saved" pulse that fades back to idle. */
+function SaveStatus({ saving, justSaved }: { saving: boolean; justSaved: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex select-none items-center gap-1.5 text-xs transition-colors duration-500",
+        saving ? "text-muted-foreground" : justSaved ? "text-primary" : "text-muted-foreground/50"
+      )}
+      aria-live="polite"
+    >
+      {saving ? (
+        <>
+          <Loader2 className="h-3 w-3 animate-spin [animation-duration:1.5s]" /> Saving…
+        </>
+      ) : justSaved ? (
+        <>
+          <CheckCircle2 className="h-3 w-3 animate-pulse" /> All changes saved
+        </>
+      ) : (
+        <>• Saved</>
+      )}
+    </span>
   );
 }

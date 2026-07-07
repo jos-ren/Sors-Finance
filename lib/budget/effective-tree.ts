@@ -21,14 +21,16 @@ export function computeEffectiveTree(tree: BudgetTree, pending: Map<number, stri
     const categories = g.categories.map((c) => {
       const planned = parsePending(pending.get(c.id), c.planned);
       totalBudgeted += planned;
-      totalActual += c.actual;
+      // Goal spend draws from the goal's fund, not this month's budget —
+      // mirror the tree route and keep it out of spent-vs-planned rollups.
+      if (c.itemType !== "goal") totalActual += c.actual;
       return { ...c, planned };
     });
     return {
       ...g,
       categories,
       planned: categories.reduce((a, c) => a + c.planned, 0),
-      actual: categories.reduce((a, c) => a + c.actual, 0),
+      actual: categories.reduce((a, c) => a + (c.itemType === "goal" ? 0 : c.actual), 0),
     };
   });
 

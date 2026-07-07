@@ -1,18 +1,16 @@
 "use client";
 
-import { Target, MoreHorizontal, GripVertical } from "lucide-react";
+import { useState } from "react";
+import { Target, Pencil, Trash2, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { toast } from "sonner";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { InlineRename } from "@/components/features/budget/manage/inline-edit";
+import { deleteSubcategory } from "@/hooks/use-budget";
 
 export interface BuilderItem {
   id: number;
@@ -23,31 +21,25 @@ export interface BuilderItem {
 
 /**
  * Builder allocation row: a dedicated drag handle, inline rename,
- * % of income, a $ input, and a details menu.
+ * a $ input, and edit/delete actions.
  */
 export function AllocationItemRow({
   item,
-  income,
   pendingValue,
-  dirty,
-  formatAmount,
   onChange,
   onRename,
   onOpenDetail,
 }: {
   item: BuilderItem;
-  income: number;
   pendingValue: string | undefined;
-  dirty: boolean;
-  formatAmount: (n: number) => string;
   onChange: (value: string) => void;
   onRename: (name: string) => void;
   onOpenDetail: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `sub:${item.id}` });
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const planned = item.planned;
   const inputValue = pendingValue !== undefined ? pendingValue : planned ? planned.toFixed(2) : "";
-  const pctOfIncome = income > 0 ? (planned / income) * 100 : 0;
 
   return (
     <div
@@ -62,9 +54,6 @@ export function AllocationItemRow({
       <div className="flex min-w-0 flex-[2] items-center gap-1.5">
         {item.itemType === "goal" && <Target className="h-3.5 w-3.5 shrink-0 text-primary" />}
         <InlineRename value={item.name} onCommit={onRename} className="text-sm" />
-        {income > 0 && (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{pctOfIncome.toFixed(0)}%</span>
-        )}
       </div>
 
       <div className="relative w-28 shrink-0">
@@ -74,20 +63,46 @@ export function AllocationItemRow({
           onChange={onChange}
           placeholder="0.00"
           size="sm"
-          className={cn("h-8 pl-5 text-right text-sm tabular-nums", dirty && "border-primary ring-1 ring-primary/30")}
+          className="h-8 pl-5 text-right text-sm tabular-nums"
         />
       </div>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onOpenDetail}>Category details…</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0 text-muted-foreground"
+        onClick={onOpenDetail}
+        aria-label={`Edit ${item.name}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+        onClick={() => setConfirmDelete(true)}
+        aria-label={`Delete ${item.name}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Delete "${item.name}"?`}
+        description="Deletes the category. Assigned transactions become uncategorized."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={async () => {
+          try {
+            const res = await deleteSubcategory(item.id);
+            toast.success(res.transactions > 0 ? `Category deleted · ${res.transactions} transaction(s) uncategorized` : "Category deleted");
+          } catch {
+            toast.error("Failed to delete category");
+          }
+        }}
+      />
     </div>
   );
 }
