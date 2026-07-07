@@ -74,6 +74,18 @@ export async function GET(request: NextRequest) {
     const cumulativeByCategory = new Map<number, number>();
     for (const r of lifetimeActuals) if (r.categoryId !== null) cumulativeByCategory.set(r.categoryId, r.total ?? 0);
 
+    // Lifetime allocations per category (goal sinking funds: contributed)
+    const lifetimeAllocations = await db
+      .select({
+        categoryId: schema.budgets.budgetItemId,
+        total: sql<number>`SUM(${schema.budgets.amount})`,
+      })
+      .from(schema.budgets)
+      .where(eq(schema.budgets.userId, userId))
+      .groupBy(schema.budgets.budgetItemId);
+    const contributedByCategory = new Map<number, number>();
+    for (const r of lifetimeAllocations) contributedByCategory.set(r.categoryId, r.total ?? 0);
+
     // Income actual for the period (Income system category, net inflow)
     const incomeCat = await db
       .select({ id: schema.categories.id })
@@ -118,6 +130,9 @@ export async function GET(request: NextRequest) {
             const planned = budget?.amount ?? 0;
             const actual = actualByCategory.get(c.id) ?? 0;
             const itemType = (c.itemType as BudgetItemType) ?? "expense";
+            // Goal sinking-fund figures: allocations fill the fund, spend draws it down.
+            const contributed = itemType === "goal" ? contributedByCategory.get(c.id) ?? 0 : 0;
+            const spent = itemType === "goal" ? cumulativeByCategory.get(c.id) ?? 0 : 0;
             return {
               id: c.id,
               uuid: c.uuid,
@@ -131,14 +146,20 @@ export async function GET(request: NextRequest) {
               planned,
               actual,
               cumulative: itemType === "goal" ? cumulativeByCategory.get(c.id) ?? 0 : 0,
+              contributed,
+              spent,
+              available: contributed - spent,
             } satisfies BudgetTreeCategory;
           })
           // Drop archived categories that have no activity this period.
           .filter((c) => c.isActive || c.planned !== 0 || c.actual !== 0);
 
+        // Goal spending draws from the goal's fund, not this month's budget,
+        // so it is excluded from spent-vs-planned rollups (no false overspend).
+        // Goal planned still counts — it's real assigned income.
         for (const c of treeCategories) {
           totalBudgeted += c.planned;
-          totalActual += c.actual;
+          if (c.itemType !== "goal") totalActual += c.actual;
         }
 
         return {
@@ -147,7 +168,7 @@ export async function GET(request: NextRequest) {
           name: g.name,
           order: g.order,
           planned: treeCategories.reduce((a, c) => a + c.planned, 0),
-          actual: treeCategories.reduce((a, c) => a + c.actual, 0),
+          actual: treeCategories.reduce((a, c) => a + (c.itemType === "goal" ? 0 : c.actual), 0),
           categories: treeCategories,
         } satisfies BudgetTreeGroup;
       })

@@ -49,6 +49,7 @@ export function invalidateCategories() {
 export function invalidateTransactions() {
   // Invalidate transaction queries
   mutate((key: string) => typeof key === "string" && key.startsWith("transactions"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("budget-item-tx"));
   // Also invalidate dashboard aggregations that depend on transactions
   mutate((key: string) => typeof key === "string" && key.startsWith("totals"));
   mutate((key: string) => typeof key === "string" && key.startsWith("spending"));
@@ -143,6 +144,7 @@ export function useTransactions(options?: {
   startDate?: Date;
   endDate?: Date;
   categoryId?: number;
+  budgetItemId?: number;
   source?: string;
   limit?: number;
 }): DbTransaction[] | undefined {
@@ -193,7 +195,12 @@ export {
   useArchivedBudgetCategories,
   useGoalProgress,
   useIncomeTotal,
+  usePlannedIncome,
+  setPlannedIncomeAmount,
 } from "./use-budget";
+
+// Goals (sinking funds)
+export { useGoals, useGoal, invalidateGoals } from "./use-goals";
 
 // ============================================
 // Import Hooks

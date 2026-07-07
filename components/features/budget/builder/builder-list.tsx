@@ -9,6 +9,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -48,9 +49,8 @@ export interface BuilderGroupData {
 }
 
 interface SharedProps {
-  income: number;
   pending: Map<number, string>;
-  formatAmount: (n: number) => string;
+  formatAmount: (n: number, showCode?: boolean) => string;
   onPlannedChange: (categoryId: number, value: string) => void;
   onOpenDetail: (category: DetailCategory) => void;
 }
@@ -65,6 +65,12 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
+
+  const collisionDetection: CollisionDetection = (args) => {
+    const activeType = String(args.active.id).split(":")[0];
+    const filtered = args.droppableContainers.filter((c) => String(c.id).startsWith(`${activeType}:`));
+    return closestCenter({ ...args, droppableContainers: filtered });
+  };
 
   const handleDragEnd = async (e: DragEndEvent) => {
     const { active, over } = e;
@@ -81,13 +87,15 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
       <div className="space-y-4">
-        <SortableContext items={groups.map((g) => `group:${g.group.id}`)} strategy={verticalListSortingStrategy}>
-          {groups.map((g) => (
-            <BuilderGroup key={g.group.id} data={g} {...shared} />
-          ))}
-        </SortableContext>
+        <div className="divide-y overflow-hidden rounded-xl border bg-card">
+          <SortableContext items={groups.map((g) => `group:${g.group.id}`)} strategy={verticalListSortingStrategy}>
+            {groups.map((g) => (
+              <BuilderGroup key={g.group.id} data={g} {...shared} />
+            ))}
+          </SortableContext>
+        </div>
         <AddInline label="Add group" onAdd={async (name) => { await createGroup(name); }} />
       </div>
     </DndContext>
@@ -96,18 +104,17 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
 
 function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedProps) {
   const { group, categories } = data;
-  const { income, pending, formatAmount, onPlannedChange, onOpenDetail } = shared;
+  const { pending, formatAmount, onPlannedChange, onOpenDetail } = shared;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `group:${group.id}` });
 
   const allocated = categories.reduce((a, { category, saved }) => a + effective(category.id!, saved, pending), 0);
-  const pct = income > 0 ? (allocated / income) * 100 : 0;
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn("overflow-hidden rounded-xl border bg-card", isDragging && "opacity-60")}
+      className={cn("bg-card", isDragging && "opacity-60")}
     >
       <div className="border-b px-4 py-3">
         <div className="flex items-center justify-between gap-2">
@@ -115,18 +122,14 @@ function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedPr
             <button className="-m-1 shrink-0 cursor-grab touch-none p-1 text-muted-foreground" {...attributes} {...listeners} aria-label="Drag category group">
               <GripVertical className="h-4 w-4" />
             </button>
-            <InlineRename value={group.name} onCommit={(name) => updateGroup(group.id!, { name })} className="font-semibold" />
+            <InlineRename value={group.name} onCommit={(name) => updateGroup(group.id!, { name })} className="text-base font-semibold" />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium tabular-nums">{formatAmount(allocated)}</span>
-            {income > 0 && <span className="text-xs text-muted-foreground tabular-nums">{pct.toFixed(0)}%</span>}
+            <span className="cursor-default text-base font-medium tabular-nums">{formatAmount(allocated, false)}</span>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
-        </div>
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
       </div>
 
@@ -137,10 +140,7 @@ function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedPr
               <AllocationItemRow
                 key={category.id}
                 item={{ id: category.id!, name: category.name, itemType: category.itemType, planned: effective(category.id!, saved, pending) }}
-                income={income}
                 pendingValue={pending.get(category.id!)}
-                dirty={pending.has(category.id!)}
-                formatAmount={formatAmount}
                 onChange={(v) => onPlannedChange(category.id!, v)}
                 onRename={(name) => updateSubcategory(category.id!, { name })}
                 onOpenDetail={() =>

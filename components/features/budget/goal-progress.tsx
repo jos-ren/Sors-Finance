@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Goal progress bar + "$3,200 of $5,000 · 64%" microcopy for goal items.
- * `saved` is the lifetime cumulative net; `target` the optional target.
+ * `saved` is the lifetime contributed (allocations); `target` the optional target.
  */
 export function GoalProgress({
   saved,

@@ -1,9 +1,10 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
+import { Plus, Pencil } from "lucide-react";
 import useSWR from "swr";
 import {
   Breadcrumb,
@@ -13,6 +14,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,8 @@ import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useBudgetHierarchy } from "@/hooks";
 import { getTransactions } from "@/lib/db/client";
+import { AddTransactionDialog } from "@/components/features/transactions/add-transaction-dialog";
+import { CategoryDetailDialog } from "@/components/features/budget/category-detail-dialog";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -54,6 +58,8 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
   );
 
   const total = transactions?.reduce((a, t) => a + (t.amountOut - t.amountIn), 0) ?? 0;
+  const [addOpen, setAddOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   return (
     <div className="space-y-5 p-6">
@@ -84,8 +90,37 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
             {MONTH_NAMES[month]} {year} · {transactions?.length ?? 0} transaction(s)
           </p>
         </div>
-        <span className="text-xl font-semibold tabular-nums">{fmt(total)}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xl font-semibold tabular-nums">{fmt(total)}</span>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditOpen(true)} disabled={!category}>
+            <Pencil className="h-4 w-4" />
+            Edit
+          </Button>
+          <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Transaction
+          </Button>
+        </div>
       </div>
+
+      <AddTransactionDialog open={addOpen} onOpenChange={setAddOpen} defaultBudgetItemId={id} />
+      <CategoryDetailDialog
+        category={
+          category
+            ? {
+                id: category.id!,
+                name: category.name,
+                itemType: category.itemType,
+                targetAmount: category.targetAmount ?? null,
+                isActive: category.isActive,
+                keywords: category.keywords ?? [],
+                groupId: category.groupId,
+              }
+            : null
+        }
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
 
       <Card>
         <CardContent className="p-0">

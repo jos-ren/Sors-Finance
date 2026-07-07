@@ -49,6 +49,9 @@ export {
   autoCopyBudgetsIfEmpty,
 } from "./budgets";
 
+// Planned income (manual expected-income override, monthly)
+export { getPlannedIncome, setPlannedIncome } from "./planned-income";
+
 // Budget hierarchy (Category Groups → Categories)
 export {
   seedDefaultBudget,
@@ -70,6 +73,9 @@ export type { BudgetHierarchy, CreateCategoryInput, UpdateCategoryInput } from "
 
 // Budget tree + yearly summary
 export { getBudgetTree, getYearlySummary } from "./budget-tree";
+
+// Goals (sinking funds)
+export { getGoals, getGoal } from "./goals";
 
 // Transactions
 export {

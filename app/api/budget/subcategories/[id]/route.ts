@@ -34,6 +34,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.order !== undefined) values.order = updates.order;
     if (updates.keywords !== undefined) values.keywords = updates.keywords;
     if (updates.targetAmount !== undefined) values.targetAmount = updates.targetAmount;
+    if (updates.targetDate !== undefined)
+      values.targetDate = updates.targetDate != null ? new Date(updates.targetDate) : null;
     if (updates.isActive !== undefined) values.isActive = updates.isActive;
     if (updates.itemType !== undefined) values.itemType = updates.itemType === "goal" ? "goal" : "expense";
     if (updates.groupId !== undefined) {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Target, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BudgetTreeCategory } from "@/lib/budget/types";
-// import { GoalProgress } from "./goal-progress";
+import { GoalProgress } from "./goal-progress";
 
 /**
  * A budget category row: expand chevron (only if it has transactions this
@@ -66,17 +66,18 @@ export function BudgetItemRow({
             <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">archived</span>
           )}
         </span>
-        {/* {isGoal && (
+        {isGoal && (
           <GoalProgress
-            saved={item.cumulative}
+            saved={item.contributed}
             target={item.targetAmount}
             formatAmount={formatAmountShort}
             className="mt-0.5 max-w-[220px]"
           />
-        )} */}
+        )}
 
+        {/* Goal rows read as fund status (money left), not monthly spend. */}
         <span className="shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-          {formatAmountShort(item.actual)}
+          {isGoal ? `${formatAmountShort(item.available)} available` : formatAmountShort(item.actual)}
         </span>
       </Link>
     </div>

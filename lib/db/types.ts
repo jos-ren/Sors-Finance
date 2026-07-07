@@ -50,6 +50,7 @@ export interface DbBudgetSubcategory {
   keywords: string[];
   itemType: BudgetItemType;
   targetAmount?: number | null;
+  targetDate?: Date | null;
   isActive: boolean;
   order: number;
   createdAt: Date;
@@ -90,6 +91,16 @@ export interface DbBudget {
   budgetItemId: number;
   year: number;
   month: number; // 0–11 (monthly only)
+  amount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** One flat expected-income value per month, set manually by the user. */
+export interface DbPlannedIncome {
+  id?: number;
+  year: number;
+  month: number; // 0–11
   amount: number;
   createdAt: Date;
   updatedAt: Date;

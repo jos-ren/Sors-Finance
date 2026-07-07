@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
-    const { name, groupId, keywords = [], itemType = "expense", targetAmount = null } = await request.json();
+    const { name, groupId, keywords = [], itemType = "expense", targetAmount = null, targetDate = null } = await request.json();
     if (!name || !groupId) {
       return NextResponse.json({ error: "name and groupId are required", success: false }, { status: 400 });
     }
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         keywords,
         itemType: itemType === "goal" ? "goal" : "expense",
         targetAmount,
+        targetDate: targetDate != null ? new Date(targetDate) : null,
         isActive: true,
         order,
         userId,

@@ -109,6 +109,7 @@ export const budgetSubcategories = sqliteTable(
     keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
     itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
     targetAmount: real("target_amount"), // nullable; goal progress target
+    targetDate: integer("target_date", { mode: "timestamp" }), // nullable; goal deadline for pace
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     order: integer("order").notNull().default(0),
     userId: integer("user_id")
@@ -192,6 +193,30 @@ export const budgets = sqliteTable(
       table.month,
       table.userId
     ),
+  ]
+);
+
+// ============================================
+// Planned Income Table
+// ============================================
+// One flat expected-income value per month, set by the user (e.g. to budget
+// against biweekly pay before it's actually landed as "Income" transactions).
+
+export const plannedIncome = sqliteTable(
+  "planned_income",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    year: integer("year").notNull(),
+    month: integer("month").notNull(), // 0–11
+    amount: real("amount").notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [
+    index("planned_income_year_month_idx").on(table.year, table.month),
+    index("planned_income_user_idx").on(table.userId),
+    uniqueIndex("planned_income_year_month_user_idx").on(table.year, table.month, table.userId),
   ]
 );
 
@@ -490,6 +515,9 @@ export type TransactionInsert = typeof transactions.$inferInsert;
 
 export type BudgetRow = typeof budgets.$inferSelect;
 export type BudgetInsert = typeof budgets.$inferInsert;
+
+export type PlannedIncomeRow = typeof plannedIncome.$inferSelect;
+export type PlannedIncomeInsert = typeof plannedIncome.$inferInsert;
 
 export type ImportRow = typeof imports.$inferSelect;
 export type ImportInsert = typeof imports.$inferInsert;
