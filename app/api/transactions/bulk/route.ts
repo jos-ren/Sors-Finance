@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
         sourceAccountName: t.sourceAccountName || null,
         categoryId,
         budgetItemId,
+        reviewStatus: t.reviewStatus === "pending" ? "pending" : "reviewed",
+        conflictCategories: Array.isArray(t.conflictCategories) ? t.conflictCategories : null,
         importId: t.importId || null,
         userId,
         createdAt: now,

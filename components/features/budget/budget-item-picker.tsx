@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Search, Ban, Inbox, TrendingUp } from "lucide-react";
+import { Check, ChevronsUpDown, ChevronDown, Search, Ban, Inbox, TrendingUp, Plus, ArrowLeft, FolderPlus, Loader2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
-import { useBudgetHierarchy } from "@/hooks/use-budget";
+import { useBudgetHierarchy, createGroup, createSubcategory } from "@/hooks/use-budget";
 import { useCategories } from "@/hooks";
 
 export type PickerValue = { kind: "item" | "system"; id: number } | null;
@@ -38,17 +39,25 @@ export function BudgetItemPicker({
   variant = "input",
   disabled = false,
   placeholder = "Uncategorized",
+  allowCreate = false,
   className,
 }: {
   value: PickerValue;
   onChange: (value: PickerValue) => void;
-  variant?: "input" | "badge";
+  variant?: "input" | "badge" | "inline";
   disabled?: boolean;
   placeholder?: string;
+  /** When true, offer to create a new category (and group) if the typed text has no match. */
+  allowCreate?: boolean;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Create-category sub-view state.
+  const [createName, setCreateName] = useState<string | null>(null);
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const hierarchy = useBudgetHierarchy(false);
   const categories = useCategories();
@@ -106,10 +115,64 @@ export function BudgetItemPicker({
 
   const isSelected = (kind: "item" | "system", id: number) => value?.kind === kind && value.id === id;
 
+  // Offer to create only when there's a query with no exact (case-insensitive) name match.
+  const trimmedQuery = query.trim();
+  const hasExactMatch =
+    trimmedQuery.length > 0 &&
+    [...options, ...systemOptions].some((o) => o.name.toLowerCase() === q);
+  const showCreate = allowCreate && trimmedQuery.length > 0 && !hasExactMatch;
+
+  const resetCreate = () => {
+    setCreateName(null);
+    setShowNewGroup(false);
+    setNewGroupName("");
+  };
+
+  const createUnder = async (groupId: number) => {
+    if (createName == null || creating) return;
+    setCreating(true);
+    try {
+      const sub = await createSubcategory(createName.trim(), groupId);
+      if (sub?.id != null) select({ kind: "item", id: sub.id });
+      resetCreate();
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createUnderNewGroup = async () => {
+    if (!newGroupName.trim() || createName == null || creating) return;
+    setCreating(true);
+    try {
+      const group = await createGroup(newGroupName.trim());
+      if (group?.id != null) {
+        const sub = await createSubcategory(createName.trim(), group.id);
+        if (sub?.id != null) select({ kind: "item", id: sub.id });
+      }
+      resetCreate();
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setQuery(""); resetCreate(); } }}>
       <PopoverTrigger asChild disabled={disabled}>
-        {variant === "badge" ? (
+        {variant === "inline" ? (
+          // Seamless underlined field that blends into a sentence.
+          <button
+            type="button"
+            disabled={disabled}
+            className={cn(
+              "inline-flex max-w-full items-center gap-0.5 border-b border-dashed border-muted-foreground/40 font-semibold text-foreground transition-colors hover:border-primary hover:text-primary focus-visible:border-primary focus-visible:outline-none",
+              !currentLabel && "text-muted-foreground",
+              className
+            )}
+          >
+            <span className="truncate">{currentLabel ?? placeholder}</span>
+            <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
+          </button>
+        ) : variant === "badge" ? (
           <button
             type="button"
             disabled={disabled}
@@ -138,50 +201,107 @@ export function BudgetItemPicker({
         )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
-        <div className="flex items-center gap-2 border-b px-3">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search categories…"
-            className="h-9 border-0 px-0 shadow-none focus-visible:ring-0"
-            autoFocus
-          />
-        </div>
-        <div className="max-h-72 overflow-y-auto p-1">
-          {/* Clear / Uncategorized */}
-          <OptionButton selected={!value} onClick={() => select(null)}>
-            <Inbox className="h-4 w-4 text-muted-foreground" />
-            Uncategorized
-          </OptionButton>
-
-          {grouped.map(([label, items]) => (
-            <div key={label} className="pt-1">
-              <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-              {items.map((o) => (
-                <OptionButton key={`item-${o.id}`} selected={isSelected("item", o.id)} onClick={() => select({ kind: "item", id: o.id })}>
-                  <span className="truncate">{o.name}</span>
+        {createName != null ? (
+          // Create-category sub-view: choose a group (or make a new one).
+          <div>
+            <div className="flex items-center gap-2 border-b px-2 py-2">
+              <button
+                type="button"
+                onClick={resetCreate}
+                className="flex h-6 w-6 items-center justify-center rounded hover:bg-accent"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+              <span className="truncate text-sm">
+                Add <span className="font-semibold">{createName}</span> to a group
+              </span>
+            </div>
+            <div className="max-h-72 overflow-y-auto p-1">
+              {(hierarchy?.groups ?? []).map((g) => (
+                <OptionButton key={`group-${g.id}`} selected={false} onClick={() => g.id != null && createUnder(g.id)}>
+                  <span className="truncate">{g.name}</span>
                 </OptionButton>
               ))}
-            </div>
-          ))}
 
-          {filteredSystem.length > 0 && (
-            <div className="mt-1 border-t pt-1">
-              <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System</p>
-              {filteredSystem.map((o) => (
-                <OptionButton key={`sys-${o.id}`} selected={isSelected("system", o.id)} onClick={() => select({ kind: "system", id: o.id })}>
-                  {SYSTEM_ICON[o.name]}
-                  <span className="truncate">{o.name}</span>
+              {showNewGroup ? (
+                <div className="flex items-center gap-1.5 px-2 py-1.5">
+                  <Input
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") createUnderNewGroup(); }}
+                    placeholder="New group name"
+                    className="h-8 text-sm"
+                    autoFocus
+                  />
+                  <Button size="sm" className="h-8" onClick={createUnderNewGroup} disabled={!newGroupName.trim() || creating}>
+                    {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add"}
+                  </Button>
+                </div>
+              ) : (
+                <OptionButton selected={false} onClick={() => setShowNewGroup(true)}>
+                  <FolderPlus className="h-4 w-4 text-muted-foreground" />
+                  New group…
                 </OptionButton>
-              ))}
+              )}
             </div>
-          )}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 border-b px-3">
+              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={allowCreate ? "Search or type to create…" : "Search categories…"}
+                className="h-9 border-0 bg-transparent rounded-none px-0 shadow-none focus-visible:ring-0"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto p-1">
+              {/* Clear / Uncategorized */}
+              <OptionButton selected={!value} onClick={() => select(null)}>
+                <Inbox className="h-4 w-4 text-muted-foreground" />
+                Uncategorized
+              </OptionButton>
 
-          {grouped.length === 0 && filteredSystem.length === 0 && (
-            <p className="px-2 py-6 text-center text-sm text-muted-foreground">No matches</p>
-          )}
-        </div>
+              {grouped.map(([label, items]) => (
+                <div key={label} className="pt-1">
+                  <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                  {items.map((o) => (
+                    <OptionButton key={`item-${o.id}`} selected={isSelected("item", o.id)} onClick={() => select({ kind: "item", id: o.id })}>
+                      <span className="truncate">{o.name}</span>
+                    </OptionButton>
+                  ))}
+                </div>
+              ))}
+
+              {filteredSystem.length > 0 && (
+                <div className="mt-1 border-t pt-1">
+                  <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">System</p>
+                  {filteredSystem.map((o) => (
+                    <OptionButton key={`sys-${o.id}`} selected={isSelected("system", o.id)} onClick={() => select({ kind: "system", id: o.id })}>
+                      {SYSTEM_ICON[o.name]}
+                      <span className="truncate">{o.name}</span>
+                    </OptionButton>
+                  ))}
+                </div>
+              )}
+
+              {showCreate && (
+                <div className="mt-1 border-t pt-1">
+                  <OptionButton selected={false} onClick={() => { setCreateName(trimmedQuery); setShowNewGroup(false); }}>
+                    <Plus className="h-4 w-4 text-primary" />
+                    <span className="truncate">Create &ldquo;{trimmedQuery}&rdquo;</span>
+                  </OptionButton>
+                </div>
+              )}
+
+              {grouped.length === 0 && filteredSystem.length === 0 && !showCreate && (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">No matches</p>
+              )}
+            </div>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   );

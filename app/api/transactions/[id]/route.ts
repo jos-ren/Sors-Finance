@@ -107,6 +107,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.source !== undefined) updateValues.source = updates.source;
     if (updates.note !== undefined) updateValues.note = updates.note;
     if (updates.categoryLocked !== undefined) updateValues.categoryLocked = updates.categoryLocked;
+    if (updates.reviewStatus !== undefined) updateValues.reviewStatus = updates.reviewStatus;
+    if (updates.conflictCategories !== undefined) updateValues.conflictCategories = updates.conflictCategories;
 
     // Apply the one-FK rule whenever an assignment is provided.
     if (updates.categoryId !== undefined || updates.budgetItemId !== undefined) {
