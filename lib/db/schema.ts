@@ -148,6 +148,10 @@ export const transactions = sqliteTable(
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     budgetItemId: integer("budget_item_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
     categoryLocked: integer("category_locked", { mode: "boolean" }).notNull().default(false),
+    // "pending" = awaiting review in the ledger inbox; "reviewed" = cleared (default for legacy/manual rows)
+    reviewStatus: text("review_status").notNull().default("reviewed"),
+    // When set, the row was a multi-keyword conflict at import; holds the conflicting matchable uuids
+    conflictCategories: text("conflict_categories", { mode: "json" }).$type<string[]>(),
     importId: integer("import_id").references(() => imports.id, { onDelete: "set null" }),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
@@ -158,6 +162,7 @@ export const transactions = sqliteTable(
     index("transactions_category_idx").on(table.categoryId),
     index("transactions_budget_item_idx").on(table.budgetItemId),
     index("transactions_source_idx").on(table.source),
+    index("transactions_review_status_idx").on(table.reviewStatus),
     index("transactions_import_idx").on(table.importId),
     index("transactions_date_category_idx").on(table.date, table.categoryId),
     index("transactions_date_budget_item_idx").on(table.date, table.budgetItemId),
@@ -431,31 +436,6 @@ export const currencyExchangeRates = sqliteTable(
 );
 
 // ============================================
-// Import Drafts Table
-// ============================================
-
-export const importDrafts = sqliteTable(
-  "import_drafts",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    uuid: text("uuid").notNull().unique(),
-    name: text("name").notNull(),
-    importSource: text("import_source").notNull(), // "manual" | "plaid"
-    currentStep: text("current_step").notNull(), // WizardStep
-    transactionCount: integer("transaction_count").notNull().default(0),
-    draftData: text("draft_data", { mode: "json" }).notNull(), // Full serialized state
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-  },
-  (table) => [
-    index("import_drafts_user_idx").on(table.userId),
-  ]
-);
-
-// ============================================
 // System Logs Table
 // ============================================
 // Records scheduler runs, sync failures, and integration errors so users can
@@ -544,9 +524,6 @@ export type Session = typeof sessions.$inferSelect;
 
 export type CurrencyExchangeRateRow = typeof currencyExchangeRates.$inferSelect;
 export type CurrencyExchangeRateInsert = typeof currencyExchangeRates.$inferInsert;
-
-export type ImportDraftRow = typeof importDrafts.$inferSelect;
-export type ImportDraftInsert = typeof importDrafts.$inferInsert;
 
 export type SystemLogRow = typeof systemLogs.$inferSelect;
 export type SystemLogInsert = typeof systemLogs.$inferInsert;

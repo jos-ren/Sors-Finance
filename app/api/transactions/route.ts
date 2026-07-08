@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
       note: row.note,
       categoryId: row.categoryId,
       budgetItemId: row.budgetItemId,
+      categoryLocked: row.categoryLocked,
+      reviewStatus: row.reviewStatus,
+      conflictCategories: row.conflictCategories,
       importId: row.importId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -138,10 +141,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/transactions (bulk delete)
+// DELETE /api/transactions (bulk delete, or all=true to wipe every transaction)
 export async function DELETE(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
+
+    if (request.nextUrl.searchParams.get("all") === "true") {
+      const result = await db
+        .delete(schema.transactions)
+        .where(eq(schema.transactions.userId, userId))
+        .returning({ id: schema.transactions.id });
+
+      return NextResponse.json({ data: { deleted: result.length }, success: true });
+    }
 
     const { ids } = await request.json();
 

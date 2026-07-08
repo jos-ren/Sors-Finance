@@ -14,7 +14,6 @@ import type {
   DbTransaction,
   DbBudget,
   DbImport,
-  DbImportDraft,
   DbPortfolioAccount,
   DbPortfolioItem,
   DbPortfolioSnapshot,
@@ -209,15 +208,6 @@ export { useGoals, useGoal, invalidateGoals } from "./use-goals";
 export function useImports(): DbImport[] | undefined {
   const { data } = useSWR("imports", () => api.getImports(), swrConfig);
   return data;
-}
-
-export function useImportDrafts(): DbImportDraft[] | undefined {
-  const { data } = useSWR("import-drafts", () => api.getImportDrafts(), swrConfig);
-  return data;
-}
-
-export function invalidateImportDrafts() {
-  mutate("import-drafts");
 }
 
 // ============================================
@@ -629,6 +619,12 @@ export async function deleteTransaction(id: number): Promise<void> {
 export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   await api.deleteTransactionsBulk(ids);
   invalidateTransactions();
+}
+
+export async function deleteAllTransactions(): Promise<{ deleted: number }> {
+  const result = await api.deleteAllTransactions();
+  invalidateTransactions();
+  return result;
 }
 
 // Budgets (item-based, monthly)

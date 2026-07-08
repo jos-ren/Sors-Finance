@@ -77,6 +77,8 @@ export interface DbTransaction {
   categoryId: number | null;
   budgetItemId: number | null;
   categoryLocked: boolean;
+  reviewStatus: "pending" | "reviewed"; // "pending" = in the ledger review inbox
+  conflictCategories: string[] | null; // conflicting matchable uuids when a multi-keyword conflict
   importId: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -119,63 +121,6 @@ export interface DbImport {
   batchId?: string | null;
   method?: string | null;
   importedAt: Date;
-}
-
-// ============================================
-// Import Draft Types
-// ============================================
-
-export interface ImportDraftData {
-  currentStep: string;
-  importSource: "manual" | "plaid";
-  transactions: SerializedTransaction[];
-  plaidEndDate: string | null;
-  sectionsOpen: {
-    conflicts: boolean;
-    uncategorized: boolean;
-    duplicates: boolean;
-    categorized: boolean;
-  };
-  errors: string[];
-  /** File metadata only (File objects can't be serialized) */
-  filesMeta: Array<{
-    name: string;
-    bankId: string | null;
-    templateName?: string;
-  }>;
-}
-
-/** Transaction with date as ISO string for JSON serialization */
-export interface SerializedTransaction {
-  id: string;
-  date: string; // ISO string
-  description: string;
-  matchField: string;
-  amountOut: number;
-  amountIn: number;
-  netAmount: number;
-  source: string;
-  sourceMethod?: "Plaid" | "CSV" | "Manual";
-  sourceAccountName?: string;
-  categoryId: string | null;
-  isConflict: boolean;
-  conflictingCategories?: string[];
-  isDuplicate?: boolean;
-  importDuplicate?: boolean;
-  skipDuplicate?: boolean;
-  wasUncategorized?: boolean;
-}
-
-export interface DbImportDraft {
-  id?: number;
-  uuid: string;
-  name: string;
-  importSource: string;
-  currentStep: string;
-  transactionCount: number;
-  draftData: ImportDraftData;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 // ============================================

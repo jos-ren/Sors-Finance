@@ -73,6 +73,13 @@ export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete transactions");
 }
 
+export async function deleteAllTransactions(): Promise<{ deleted: number }> {
+  const res = await fetch("/api/transactions?all=true", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete all transactions");
+  const { data } = await res.json();
+  return data;
+}
+
 export async function addTransactionsBulk(
   transactions: Array<Omit<DbTransaction, "id" | "uuid" | "createdAt" | "updatedAt">>,
   options?: { skipDuplicates?: boolean }
