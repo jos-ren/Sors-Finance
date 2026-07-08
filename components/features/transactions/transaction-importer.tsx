@@ -1018,8 +1018,8 @@ export function TransactionImporter({ onComplete, onCancel }: TransactionImporte
               }
             >
               You can view and manage all your categories on the{" "}
-              <Link href="/settings/categories" className="font-medium underline underline-offset-4 hover:text-primary">
-                Settings → Configs
+              <Link href="/settings/keywords" className="font-medium underline underline-offset-4 hover:text-primary">
+                Settings → Keywords
               </Link>
               .
             </InfoCard>

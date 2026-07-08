@@ -631,6 +631,12 @@ export async function deleteTransactionsBulk(ids: number[]): Promise<void> {
   invalidateTransactions();
 }
 
+export async function deleteAllTransactions(): Promise<{ deleted: number }> {
+  const result = await api.deleteAllTransactions();
+  invalidateTransactions();
+  return result;
+}
+
 // Budgets (item-based, monthly)
 export async function setBudget(
   budgetItemId: number,

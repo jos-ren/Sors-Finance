@@ -271,14 +271,14 @@ function MonthlyContent({
 
   return (
     <div className="space-y-4 pb-24">
-      <MoneyFlowSankey tree={tree} formatAmountShort={fmtShort} />
-
       <BudgetSummaryHero
         tree={effective}
         formatAmount={fmt}
         overspentChips={overspentChips}
         onFocusItem={focus}
       />
+
+      <MoneyFlowSankey tree={tree} formatAmountShort={fmtShort} />
 
       {previous && monthEmpty && (
         <CopyPreviousMonthCard

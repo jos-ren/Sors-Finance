@@ -84,6 +84,7 @@ export {
   updateTransaction,
   deleteTransaction,
   deleteTransactionsBulk,
+  deleteAllTransactions,
   addTransactionsBulk,
   categorizeTransaction,
   findDuplicateSignatures,

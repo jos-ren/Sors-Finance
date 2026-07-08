@@ -2,23 +2,16 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, FileSpreadsheet, FileX, Upload, FileClock, Trash2 } from "lucide-react";
 import { useSetPageHeader, useIsInHeader } from "@/contexts/page-header-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { TransactionImporter } from "@/components/features/transactions/transaction-importer";
 import { TransactionDataTable } from "@/components/features/transactions/transaction-data-table";
 import { AddTransactionDialog } from "@/components/features/transactions/add-transaction-dialog";
-import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk, invalidateTransactions, invalidateImports } from "@/hooks";
+import { useImports, useTransactions, useCategories, useImportDrafts, invalidateImportDrafts, deleteTransaction, deleteTransactionsBulk } from "@/hooks";
 import { IconBadge } from "@/components/ui/icon-badge";
 import { deleteImportDraft } from "@/lib/db/client";
 import { usePrivacy } from "@/contexts/privacy-context";
@@ -79,7 +72,7 @@ function TransactionHeaderActions({ onAdd, onImport }: { onAdd: () => void; onIm
 }
 
 export default function TransactionsPage() {
-  const [isImportOpen, setIsImportOpen] = useState(false);
+  const router = useRouter();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const imports = useImports();
   const importDrafts = useImportDrafts();
@@ -88,13 +81,6 @@ export default function TransactionsPage() {
   const userCurrency = useCurrency();
   const userTimezone = useTimezone();
   const categories = useCategories();
-
-  const handleImportComplete = () => {
-    invalidateTransactions();
-    invalidateImports();
-    invalidateImportDrafts();
-    setIsImportOpen(false);
-  };
 
   const handleDeleteDraft = async (id: number) => {
     try {
@@ -108,8 +94,8 @@ export default function TransactionsPage() {
 
   // Header actions for sticky header
   const headerActions = useMemo(
-    () => <TransactionHeaderActions onAdd={() => setIsAddOpen(true)} onImport={() => setIsImportOpen(true)} />,
-    []
+    () => <TransactionHeaderActions onAdd={() => setIsAddOpen(true)} onImport={() => router.push("/transactions/import")} />,
+    [router]
   );
 
   // Set page header and get sentinel ref
@@ -158,7 +144,7 @@ export default function TransactionsPage() {
               <Plus className="h-4 w-4 mr-2" />
               Add Transaction
             </Button>
-            <Button onClick={() => setIsImportOpen(true)}>
+            <Button onClick={() => router.push("/transactions/import")}>
               <Upload className="h-4 w-4 mr-2" />
               Import
             </Button>
@@ -255,22 +241,6 @@ export default function TransactionsPage() {
             )}
           </RowGroup>
         </section>
-
-        {/* Import Dialog */}
-        <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-          <DialogContent className="max-w-[calc(100vw-4rem)] w-[1400px] h-[85vh] flex flex-col overflow-hidden">
-            <DialogHeader>
-              <DialogTitle>Import Transactions</DialogTitle>
-              <DialogDescription>
-                Upload your bank statements and categorize transactions
-              </DialogDescription>
-            </DialogHeader>
-            <TransactionImporter
-              onComplete={handleImportComplete}
-              onCancel={() => setIsImportOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
 
         {/* Add Transaction Dialog */}
         <AddTransactionDialog open={isAddOpen} onOpenChange={setIsAddOpen} />

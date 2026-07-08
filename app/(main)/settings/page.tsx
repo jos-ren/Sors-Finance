@@ -51,6 +51,7 @@ import {
 } from "@/lib/db/client";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuth } from "@/contexts/auth-context";
+import { deleteAllTransactions } from "@/hooks";
 import { cn } from "@/lib/utils";
 import {
   SectionHeader,
@@ -157,6 +158,9 @@ export default function SettingsPage() {
   // Dialog / UI states
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
+  const [showWipeTransactionsDialog, setShowWipeTransactionsDialog] = useState(false);
+  const [wipeTransactionsConfirmText, setWipeTransactionsConfirmText] = useState("");
+  const [isWipingTransactions, setIsWipingTransactions] = useState(false);
 
   // Preferences
   const [autoCopyBudgets, setAutoCopyBudgets] = useState(false);
@@ -283,6 +287,24 @@ export default function SettingsPage() {
       window.location.href = "/login";
     } catch {
       toast.error("Failed to delete account");
+    }
+  };
+
+  const handleWipeTransactions = async () => {
+    if (wipeTransactionsConfirmText !== "DELETE ALL TRANSACTIONS") {
+      toast.error("Please type 'DELETE ALL TRANSACTIONS' to confirm");
+      return;
+    }
+    setIsWipingTransactions(true);
+    try {
+      const { deleted } = await deleteAllTransactions();
+      toast.success(`Deleted ${deleted} transaction${deleted === 1 ? "" : "s"}`);
+      setShowWipeTransactionsDialog(false);
+      setWipeTransactionsConfirmText("");
+    } catch {
+      toast.error("Failed to delete transactions");
+    } finally {
+      setIsWipingTransactions(false);
     }
   };
 
@@ -598,9 +620,9 @@ export default function SettingsPage() {
         <RowGroup>
           <NavigateRow
             icon={<Tag className="h-4 w-4" />}
-            title="Categories"
-            description="Manage transaction categories and auto-categorization keywords"
-            href="/settings/categories"
+            title="Keywords"
+            description="Manage auto-categorization keywords for all categories"
+            href="/settings/keywords"
           />
           <NavigateRow
             icon={<FileText className="h-4 w-4" />}
@@ -667,6 +689,13 @@ export default function SettingsPage() {
                 </Button>
               </>
             }
+          />
+          <NavigateRow
+            icon={<Trash2 className="h-4 w-4" />}
+            title="Wipe All Transactions"
+            description="Permanently delete every transaction. Categories and budgets are kept"
+            onClick={() => setShowWipeTransactionsDialog(true)}
+            destructive
           />
           <NavigateRow
             icon={<Trash2 className="h-4 w-4" />}
@@ -826,6 +855,50 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Wipe All Transactions Dialog */}
+      <AlertDialog
+        open={showWipeTransactionsDialog}
+        onOpenChange={(open) => {
+          setShowWipeTransactionsDialog(open);
+          if (!open) setWipeTransactionsConfirmText("");
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wipe all transactions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete every transaction in your account. Categories, budgets,
+              and keywords are kept. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-2">
+                Type <code className="bg-muted px-1 py-0.5 rounded">DELETE ALL TRANSACTIONS</code> to
+                confirm:
+              </p>
+              <Input
+                value={wipeTransactionsConfirmText}
+                onChange={(e) => setWipeTransactionsConfirmText(e.target.value)}
+                placeholder="Type here..."
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setWipeTransactionsConfirmText("")}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleWipeTransactions}
+              disabled={wipeTransactionsConfirmText !== "DELETE ALL TRANSACTIONS" || isWipingTransactions}
+            >
+              {isWipingTransactions ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Wipe Transactions"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Account Dialog */}
       <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
