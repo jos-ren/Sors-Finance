@@ -58,6 +58,8 @@ export function CategoryDetailDialog({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [editingKeywordIndex, setEditingKeywordIndex] = useState<number | null>(null);
+  const [editingKeywordText, setEditingKeywordText] = useState("");
   const keywordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -99,6 +101,26 @@ export function CategoryDetailDialog({
 
   const setKeywordAt = (index: number, updates: Partial<Keyword>) => {
     setKeywords(keywords.map((k, i) => (i === index ? { ...k, ...updates } : k)));
+  };
+
+  const startEditKeyword = (index: number) => {
+    setEditingKeywordIndex(index);
+    setEditingKeywordText(keywords[index].text);
+  };
+
+  const cancelEditKeyword = () => setEditingKeywordIndex(null);
+
+  const commitEditKeyword = () => {
+    if (editingKeywordIndex === null) return;
+    const index = editingKeywordIndex;
+    const next = editingKeywordText.trim();
+    setEditingKeywordIndex(null);
+    if (!next || next.toLowerCase() === keywords[index].text.toLowerCase()) return;
+    if (keywords.some((k, i) => i !== index && k.text.toLowerCase() === next.toLowerCase())) {
+      toast.error(`"${next}" is already a keyword on this category`);
+      return;
+    }
+    setKeywordAt(index, { text: next });
   };
 
   const handleSave = async () => {
@@ -234,18 +256,49 @@ export function CategoryDetailDialog({
                         key={`${kw.text}-${index}`}
                         variant="secondary"
                         className={cn(
-                          "cursor-default gap-1 pl-1",
+                          "h-6 gap-1 pl-2 pr-1",
                           conflictWith &&
                             "border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
                         )}
                       >
                         {conflictWith && <TriangleAlert className="h-3 w-3" />}
+                        {editingKeywordIndex === index ? (
+                          <input
+                            autoFocus
+                            value={editingKeywordText}
+                            onChange={(e) => setEditingKeywordText(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={commitEditKeyword}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitEditKeyword();
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEditKeyword();
+                              }
+                            }}
+                            className="w-24 bg-transparent text-xs outline-none"
+                            aria-label={`Edit keyword ${kw.text}`}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditKeyword(index)}
+                            className="cursor-text text-left"
+                            aria-label={`Edit keyword ${kw.text}`}
+                            title="Click to edit"
+                          >
+                            {kw.text}
+                          </button>
+                        )}
                         <select
                           value={kw.mode}
                           onChange={(e) => setKeywordAt(index, { mode: e.target.value as KeywordMatchMode })}
                           onClick={(e) => e.stopPropagation()}
                           aria-label={`Match mode for ${kw.text}`}
-                          className="cursor-pointer rounded bg-transparent text-[10px] uppercase tracking-wide text-muted-foreground outline-none"
+                          className="cursor-pointer rounded border-l border-border/60 bg-transparent pl-1 text-[9px] uppercase tracking-wide text-muted-foreground outline-none"
                         >
                           {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
                             <option key={m} value={m}>
@@ -253,7 +306,6 @@ export function CategoryDetailDialog({
                             </option>
                           ))}
                         </select>
-                        {kw.text}
                         <button
                           type="button"
                           className="cursor-pointer"

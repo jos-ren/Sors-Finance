@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox } from "lucide-react";
+import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +31,7 @@ import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
 import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
+import { cn } from "@/lib/utils";
 import type { DbTransaction, Keyword, KeywordMatchMode } from "@/lib/db/types";
 
 const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
@@ -55,6 +56,7 @@ export function ReviewInbox() {
   const userCurrency = useCurrency();
 
   // Local UI state
+  const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState<Set<number>>(new Set());
   const [overrides, setOverrides] = useState<Map<number, PickerValue>>(new Map()); // suggestion FK changes
   const [picks, setPicks] = useState<Map<number, PickerValue>>(new Map()); // uncategorized: chosen but not committed
@@ -265,14 +267,27 @@ export function ReviewInbox() {
             {pending.length}
           </Badge>
         </div>
-        {suggestionCount > 0 && (
-          <Button size="sm" onClick={approveAll} disabled={busy.size > 0}>
-            <Check className="h-4 w-4 mr-1.5" />
-            Approve All ({suggestionCount})
+        <div className="flex items-center gap-2">
+          {suggestionCount > 0 && (
+            <Button size="sm" onClick={approveAll} disabled={busy.size > 0}>
+              <Check className="h-4 w-4 mr-1.5" />
+              Approve All ({suggestionCount})
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-muted-foreground"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "Expand Needs Review" : "Collapse Needs Review"}
+            aria-expanded={!collapsed}
+          >
+            <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "-rotate-90")} />
           </Button>
-        )}
+        </div>
       </div>
 
+      {!collapsed && (
       <div className="divide-y divide-border/60">
         {pending.map((t) => {
           const kind = rowKind(t);
@@ -461,6 +476,7 @@ export function ReviewInbox() {
           );
         })}
       </div>
+      )}
     </section>
   );
 }

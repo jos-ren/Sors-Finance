@@ -14,6 +14,18 @@ import type { Keyword, KeywordMatchMode } from "@/lib/db/types";
 
 const VALID_MODES: KeywordMatchMode[] = ["contains", "startsWith", "exact"];
 
+/**
+ * Relative precision of each mode — higher wins when two keywords with the
+ * same text but different modes both match a transaction (see
+ * `findMatchingCategories` in `lib/categories/categorizer.ts`, and the
+ * cross-category conflict warnings on the keyword settings/editor UIs).
+ */
+export const MODE_SPECIFICITY: Record<KeywordMatchMode, number> = {
+  contains: 0,
+  startsWith: 1,
+  exact: 2,
+};
+
 /** True if `text` satisfies `keyword` under its match mode (case-insensitive). */
 export function matchesKeyword(text: string, keyword: Keyword): boolean {
   const t = text.toLowerCase();

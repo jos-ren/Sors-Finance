@@ -1,16 +1,7 @@
 import { Transaction, CategorizationSummary } from "@/types";
 import { DbCategory } from "@/lib/db";
-import type { Keyword, KeywordMatchMode } from "@/lib/db/types";
-import { matchesKeyword } from "@/lib/categories/keyword";
-
-// More specific modes outrank broader ones when resolving which category
-// "wins" a transaction that multiple keywords technically match — see
-// findMatchingCategories.
-const MODE_SPECIFICITY: Record<KeywordMatchMode, number> = {
-  contains: 0,
-  startsWith: 1,
-  exact: 2,
-};
+import type { Keyword } from "@/lib/db/types";
+import { matchesKeyword, MODE_SPECIFICITY } from "@/lib/categories/keyword";
 
 // Type alias for categories that can be used with the categorizer
 // Supports both legacy Category (id: string) and DbCategory (uuid: string)
