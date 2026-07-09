@@ -83,6 +83,8 @@ export function AddTransactionDialog({
         ...fromPickerValue(assignment),
         categoryLocked: false,
         importId: null,
+        reviewStatus: "reviewed",
+        conflictCategories: null,
       });
 
       toast.success("Transaction added successfully");
