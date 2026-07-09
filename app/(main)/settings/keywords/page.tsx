@@ -109,7 +109,7 @@ export default function KeywordsSettingsPage() {
     const q = query.toLowerCase();
     const countMatches = (keywords: string[]) => keywords.filter((k) => k.toLowerCase().includes(q)).length;
     return (
-      visibleSystem.reduce((sum, c) => sum + countMatches(c.keywords ?? []), 0) +
+      visibleSystem.reduce((sum, c) => sum + countMatches(c.category.keywords ?? []), 0) +
       visibleGroups.reduce((sum, g) => sum + g.subcategories.reduce((s, sub) => s + countMatches(sub.keywords ?? []), 0), 0)
     );
   }, [visibleSystem, visibleGroups, query]);
