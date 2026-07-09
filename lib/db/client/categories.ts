@@ -2,7 +2,7 @@
  * Client-side API wrapper for category operations
  */
 
-import type { DbCategory, UpdateCategoryResult } from "../types";
+import type { DbCategory, UpdateCategoryResult, KeywordMatchMode } from "../types";
 
 export async function getCategories(): Promise<DbCategory[]> {
   const res = await fetch("/api/categories");
@@ -43,13 +43,17 @@ export async function updateCategory(
   return data;
 }
 
-export async function addKeywordToCategory(categoryId: number, keyword: string): Promise<void> {
+export async function addKeywordToCategory(
+  categoryId: number,
+  keyword: string,
+  mode: KeywordMatchMode = "contains"
+): Promise<void> {
   const category = await getCategoryById(categoryId);
   if (!category) throw new Error("Category not found");
 
   const keywords = [...category.keywords];
-  if (!keywords.some((k) => k.toLowerCase() === keyword.toLowerCase())) {
-    keywords.push(keyword);
+  if (!keywords.some((k) => k.text.toLowerCase() === keyword.toLowerCase())) {
+    keywords.push({ text: keyword, mode });
     await updateCategory(categoryId, { keywords });
   }
 }
@@ -58,7 +62,7 @@ export async function removeKeywordFromCategory(categoryId: number, keyword: str
   const category = await getCategoryById(categoryId);
   if (!category) throw new Error("Category not found");
 
-  const keywords = category.keywords.filter((k) => k.toLowerCase() !== keyword.toLowerCase());
+  const keywords = category.keywords.filter((k) => k.text.toLowerCase() !== keyword.toLowerCase());
   await updateCategory(categoryId, { keywords });
 }
 

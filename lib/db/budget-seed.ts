@@ -12,6 +12,7 @@ import { db, schema } from "./connection";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { DEFAULT_BUDGET_CATEGORY_GROUPS } from "./budget-hierarchy-data";
+import { normalizeKeywords } from "../categories/keyword";
 
 export { DEFAULT_BUDGET_CATEGORY_GROUPS };
 export type { SeedBudgetCategory, SeedBudgetCategoryGroup } from "./budget-hierarchy-data";
@@ -57,7 +58,7 @@ export async function seedDefaultBudgetForUser(
           uuid: randomUUID(),
           name: category.name,
           groupId: groupRow.id,
-          keywords: category.keywords,
+          keywords: normalizeKeywords(category.keywords),
           itemType: category.itemType ?? "expense",
           targetAmount: category.targetAmount ?? null,
           isActive: true,

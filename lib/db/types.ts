@@ -8,11 +8,20 @@
 // Category Types
 // ============================================
 
+/** How a keyword's text is compared against a transaction's matchField. */
+export type KeywordMatchMode = "contains" | "startsWith" | "exact";
+
+/** A single auto-categorization rule: text + how it's matched. */
+export interface Keyword {
+  text: string;
+  mode: KeywordMatchMode;
+}
+
 export interface DbCategory {
   id?: number;
   uuid: string;
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
   order: number;
   isSystem?: boolean;
   createdAt: Date;
@@ -47,7 +56,7 @@ export interface DbBudgetSubcategory {
   uuid: string;
   name: string;
   groupId: number;
-  keywords: string[];
+  keywords: Keyword[];
   itemType: BudgetItemType;
   targetAmount?: number | null;
   targetDate?: Date | null;

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useCategories,
@@ -15,9 +16,15 @@ import {
   invalidateTransactions,
 } from "@/hooks";
 import { useBudgetHierarchy, updateSubcategory, deleteSubcategory } from "@/hooks/use-budget";
-import { SYSTEM_CATEGORIES, type DbCategory } from "@/lib/db/types";
+import { SYSTEM_CATEGORIES, type DbCategory, type Keyword, type KeywordMatchMode } from "@/lib/db/types";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { SettingsBreadcrumb, SettingsPageHeader, SectionHeader } from "@/components/features/settings/settings-shared";
+
+const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
+  contains: "Contains",
+  startsWith: "Starts with",
+  exact: "Exact match",
+};
 
 const SYSTEM_DESCRIPTIONS: Record<string, string> = {
   [SYSTEM_CATEGORIES.INCOME]: "Transactions matching these keywords are counted as income (drives Available to Assign).",
@@ -31,10 +38,10 @@ const SYSTEM_DESCRIPTIONS: Record<string, string> = {
  * Income) plus every user-made category from the budget hierarchy, grouped
  * by Category Group.
  */
-function matchesQuery(keywords: string[], query: string) {
+function matchesQuery(keywords: Keyword[], query: string) {
   if (!query) return true;
   const q = query.toLowerCase();
-  return keywords.some((k) => k.toLowerCase().includes(q));
+  return keywords.some((k) => k.text.toLowerCase().includes(q));
 }
 
 function highlightMatch(text: string, query: string) {
@@ -107,7 +114,7 @@ export default function KeywordsSettingsPage() {
   const totalMatchCount = useMemo(() => {
     if (!query) return 0;
     const q = query.toLowerCase();
-    const countMatches = (keywords: string[]) => keywords.filter((k) => k.toLowerCase().includes(q)).length;
+    const countMatches = (keywords: Keyword[]) => keywords.filter((k) => k.text.toLowerCase().includes(q)).length;
     return (
       visibleSystem.reduce((sum, c) => sum + countMatches(c.category.keywords ?? []), 0) +
       visibleGroups.reduce((sum, g) => sum + g.subcategories.reduce((s, sub) => s + countMatches(sub.keywords ?? []), 0), 0)
@@ -181,19 +188,20 @@ export default function KeywordsSettingsPage() {
 
 interface KeywordCardProps {
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
   description?: string;
   editable?: boolean;
-  persist: (next: string[]) => Promise<void>;
+  persist: (next: Keyword[]) => Promise<void>;
   onDelete?: () => void;
   query?: string;
 }
 
 function KeywordCard({ name, keywords: initialKeywords, description, editable = true, persist, onDelete, query = "" }: KeywordCardProps) {
-  const [keywords, setKeywords] = useState<string[]>(initialKeywords);
+  const [keywords, setKeywords] = useState<Keyword[]>(initialKeywords);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<KeywordMatchMode>("contains");
 
-  const save = async (next: string[]) => {
+  const save = async (next: Keyword[]) => {
     const prev = keywords;
     setKeywords(next);
     try {
@@ -204,10 +212,15 @@ function KeywordCard({ name, keywords: initialKeywords, description, editable = 
     }
   };
 
+  const setModeAt = (index: number, next: KeywordMatchMode) => {
+    save(keywords.map((k, i) => (i === index ? { ...k, mode: next } : k)));
+  };
+
   const add = () => {
     const kw = input.trim();
-    if (kw && !keywords.some((k) => k.toLowerCase() === kw.toLowerCase())) {
-      save([...keywords, kw]);
+    if (kw && !keywords.some((k) => k.text.toLowerCase() === kw.toLowerCase())) {
+      save([...keywords, { text: kw, mode }]);
+      setMode("contains");
     }
     setInput("");
   };
@@ -234,10 +247,25 @@ function KeywordCard({ name, keywords: initialKeywords, description, editable = 
       {editable && (
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-1.5">
-            {keywords.map((kw) => (
-              <Badge key={kw} variant="secondary" className="gap-1">
-                {highlightMatch(kw, query)}
-                <button onClick={() => save(keywords.filter((k) => k !== kw))} aria-label={`Remove ${kw}`}>
+            {keywords.map((kw, index) => (
+              <Badge key={`${kw.text}-${index}`} variant="secondary" className="gap-1 pl-1">
+                <select
+                  value={kw.mode}
+                  onChange={(e) => setModeAt(index, e.target.value as KeywordMatchMode)}
+                  aria-label={`Match mode for ${kw.text}`}
+                  className="cursor-pointer rounded bg-transparent text-[10px] uppercase tracking-wide text-muted-foreground outline-none"
+                >
+                  {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
+                    <option key={m} value={m}>
+                      {MATCH_MODE_LABELS[m]}
+                    </option>
+                  ))}
+                </select>
+                {highlightMatch(kw.text, query)}
+                <button
+                  onClick={() => save(keywords.filter((_, i) => i !== index))}
+                  aria-label={`Remove ${kw.text}`}
+                >
                   <X className="h-3 w-3" />
                 </button>
               </Badge>
@@ -245,6 +273,18 @@ function KeywordCard({ name, keywords: initialKeywords, description, editable = 
             {keywords.length === 0 && <span className="text-xs text-muted-foreground">No keywords yet</span>}
           </div>
           <div className="flex gap-2">
+            <Select value={mode} onValueChange={(v) => setMode(v as KeywordMatchMode)}>
+              <SelectTrigger size="sm" className="w-36 shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {MATCH_MODE_LABELS[m]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -280,7 +320,7 @@ function SystemCategoryCard({
 }: {
   id: number;
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
   description?: string;
   editable: boolean;
   query?: string;
@@ -301,7 +341,7 @@ function SystemCategoryCard({
   );
 }
 
-function SubcategoryCard({ id, name, keywords, query }: { id: number; name: string; keywords: string[]; query?: string }) {
+function SubcategoryCard({ id, name, keywords, query }: { id: number; name: string; keywords: Keyword[]; query?: string }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const handleDelete = async () => {

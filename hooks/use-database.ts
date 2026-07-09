@@ -24,6 +24,7 @@ import type {
   PriceMode,
   ItemType,
   HistorySource,
+  KeywordMatchMode,
 } from "@/lib/db/types";
 import { SYSTEM_CATEGORIES, BUCKET_TYPES } from "@/lib/db/types";
 
@@ -584,8 +585,12 @@ export async function updateCategory(
   return result;
 }
 
-export async function addKeywordToCategory(categoryId: number, keyword: string): Promise<void> {
-  await api.addKeywordToCategory(categoryId, keyword);
+export async function addKeywordToCategory(
+  categoryId: number,
+  keyword: string,
+  mode?: KeywordMatchMode
+): Promise<void> {
+  await api.addKeywordToCategory(categoryId, keyword, mode);
   invalidateCategories();
 }
 

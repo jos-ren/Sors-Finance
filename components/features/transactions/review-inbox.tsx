@@ -5,6 +5,13 @@ import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox } from "lucid
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   BudgetItemPicker,
@@ -21,9 +28,16 @@ import {
 } from "@/hooks";
 import { useBudgetHierarchy, addKeywordToSubcategory } from "@/hooks/use-budget";
 import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
+import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
-import type { DbTransaction } from "@/lib/db/types";
+import type { DbTransaction, Keyword, KeywordMatchMode } from "@/lib/db/types";
+
+const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
+  contains: "contains",
+  startsWith: "starts with",
+  exact: "exactly matches",
+};
 
 type RowKind = "suggestion" | "conflict" | "uncategorized";
 
@@ -45,6 +59,7 @@ export function ReviewInbox() {
   const [overrides, setOverrides] = useState<Map<number, PickerValue>>(new Map()); // suggestion FK changes
   const [picks, setPicks] = useState<Map<number, PickerValue>>(new Map()); // uncategorized: chosen but not committed
   const [ruleText, setRuleText] = useState<Map<number, string>>(new Map());
+  const [ruleMode, setRuleMode] = useState<Map<number, KeywordMatchMode>>(new Map());
   const [bulkApply, setBulkApply] = useState<Map<number, boolean>>(new Map()); // default on when siblings exist
 
   const pending = useMemo(
@@ -54,7 +69,7 @@ export function ReviewInbox() {
 
   // id → { uuid, name, keywords } lookups for resolving names + keyword promotion.
   const subById = useMemo(() => {
-    const m = new Map<number, { uuid: string; name: string; keywords: string[] }>();
+    const m = new Map<number, { uuid: string; name: string; keywords: Keyword[] }>();
     for (const s of hierarchy?.subcategories ?? []) {
       if (s.id != null) m.set(s.id, { uuid: s.uuid, name: s.name, keywords: s.keywords ?? [] });
     }
@@ -62,7 +77,7 @@ export function ReviewInbox() {
   }, [hierarchy]);
 
   const catById = useMemo(() => {
-    const m = new Map<number, { uuid: string; name: string; keywords: string[] }>();
+    const m = new Map<number, { uuid: string; name: string; keywords: Keyword[] }>();
     for (const c of categories ?? []) {
       if (c.id != null) m.set(c.id, { uuid: c.uuid, name: c.name, keywords: c.keywords ?? [] });
     }
@@ -93,13 +108,13 @@ export function ReviewInbox() {
     });
 
   /** Append a keyword to the chosen category (budget item or system) + refresh matches. */
-  const promoteKeyword = async (value: PickerValue, pattern: string) => {
+  const promoteKeyword = async (value: PickerValue, pattern: string, mode: KeywordMatchMode = "contains") => {
     if (!value || !pattern.trim()) return;
     if (value.kind === "item") {
       const sub = subById.get(value.id);
-      await addKeywordToSubcategory(value.id, pattern.trim(), sub?.keywords ?? []);
+      await addKeywordToSubcategory(value.id, pattern.trim(), sub?.keywords ?? [], mode);
     } else {
-      await addKeywordToCategory(value.id, pattern.trim());
+      await addKeywordToCategory(value.id, pattern.trim(), mode);
     }
     invalidateTransactions();
   };
@@ -111,7 +126,7 @@ export function ReviewInbox() {
     try {
       const chosen = overrides.get(t.id) ?? toPickerValue(t.categoryId, t.budgetItemId);
       const match = matchGlobalDictionary(t.matchField, dictionaryTargets);
-      if (match) await promoteKeyword(chosen, match.pattern);
+      if (match) await promoteKeyword(chosen, match.pattern, match.mode);
       await updateTransaction(t.id, {
         ...fromPickerValue(chosen),
         reviewStatus: "reviewed",
@@ -154,10 +169,11 @@ export function ReviewInbox() {
     }
   };
 
-  /** Pending, uncategorized rows whose matchField contains `pattern` (excluding `exceptId`). */
-  const matchingSiblings = (pattern: string, exceptId: number): DbTransaction[] => {
-    const p = pattern.trim().toLowerCase();
+  /** Pending, uncategorized rows whose matchField satisfies `pattern` under `mode` (excluding `exceptId`). */
+  const matchingSiblings = (pattern: string, mode: KeywordMatchMode, exceptId: number): DbTransaction[] => {
+    const p = pattern.trim();
     if (!p) return [];
+    const keyword: Keyword = { text: p, mode };
     return pending.filter(
       (o) =>
         o.id != null &&
@@ -165,7 +181,7 @@ export function ReviewInbox() {
         o.categoryId == null &&
         o.budgetItemId == null &&
         (!o.conflictCategories || o.conflictCategories.length === 0) &&
-        o.matchField.toLowerCase().includes(p)
+        matchesKeyword(o.matchField, keyword)
     );
   };
 
@@ -176,6 +192,11 @@ export function ReviewInbox() {
       return next;
     });
     setRuleText((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+    setRuleMode((prev) => {
       const next = new Map(prev);
       next.delete(id);
       return next;
@@ -197,12 +218,13 @@ export function ReviewInbox() {
     const value = picks.get(t.id);
     if (!value) return;
     const pattern = (ruleText.get(t.id) ?? t.matchField).trim();
+    const mode = ruleMode.get(t.id) ?? "contains";
     const doBulk = (bulkApply.get(t.id) ?? true) && pattern.length > 0;
-    const siblings = doBulk ? matchingSiblings(pattern, t.id) : [];
+    const siblings = doBulk ? matchingSiblings(pattern, mode, t.id) : [];
 
     setBusyFor(t.id, true);
     try {
-      if (saveRule && pattern) await promoteKeyword(value, pattern);
+      if (saveRule && pattern) await promoteKeyword(value, pattern, mode);
 
       // Apply the category to matching siblings first (approve them too).
       for (const sib of siblings) {
@@ -335,8 +357,9 @@ export function ReviewInbox() {
               {/* Rule composer — appears once a category is chosen for an uncategorized row */}
               {kind === "uncategorized" && pickedValue && t.id != null && !isBusy && (() => {
                 const rt = ruleText.get(t.id) ?? t.matchField;
+                const rm = ruleMode.get(t.id) ?? "contains";
                 const bulk = bulkApply.get(t.id) ?? true;
-                const siblingCount = matchingSiblings(rt, t.id).length;
+                const siblingCount = matchingSiblings(rt, rm, t.id).length;
                 const canSaveRule = rt.trim().length > 0;
                 return (
                   <div className="mt-2 flex flex-col gap-4 rounded-lg border bg-background/60 px-6 py-5">
@@ -347,7 +370,28 @@ export function ReviewInbox() {
 
                     {/* Tier 2 — the core logic sentence */}
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-2 text-sm leading-7 text-muted-foreground">
-                      <span>If description contains</span>
+                      <span>If description</span>
+                      <Select
+                        value={rm}
+                        onValueChange={(v) =>
+                          setRuleMode((prev) => {
+                            const next = new Map(prev);
+                            next.set(t.id!, v as KeywordMatchMode);
+                            return next;
+                          })
+                        }
+                      >
+                        <SelectTrigger size="sm" className="h-7 w-auto border-0 border-b border-dashed border-muted-foreground/40 bg-transparent px-0.5 text-sm font-semibold text-foreground shadow-none hover:border-primary focus:border-solid focus:border-primary data-[state=open]:border-solid">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
+                            <SelectItem key={m} value={m}>
+                              {MATCH_MODE_LABELS[m]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <input
                         value={rt}
                         onChange={(e) =>

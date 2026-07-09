@@ -8,13 +8,15 @@
  * category, so the importer/save step can emit exactly one FK.
  */
 
+import type { Keyword } from "@/lib/db/types";
+
 export type MatchableKind = "item" | "system";
 
 export interface Matchable {
   /** uuid used as the categorizer's match id (draft transactions carry this). */
   uuid: string;
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
   kind: MatchableKind;
   /** DB row id of the underlying budget item or category. */
   refId: number;
@@ -24,7 +26,7 @@ interface MinimalItem {
   id: number;
   uuid: string;
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
   isActive?: boolean;
 }
 
@@ -32,7 +34,7 @@ interface MinimalCategory {
   id: number;
   uuid: string;
   name: string;
-  keywords: string[];
+  keywords: Keyword[];
 }
 
 /**

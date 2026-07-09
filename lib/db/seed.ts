@@ -12,12 +12,17 @@ import { db, schema } from "./connection";
 import { eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { SYSTEM_CATEGORIES } from "./types";
+import { normalizeKeywords } from "../categories/keyword";
 
 // System categories (always created first, cannot be deleted)
 const SYSTEM_CATEGORY_DEFS = [
-  { name: SYSTEM_CATEGORIES.UNCATEGORIZED, keywords: [], isSystem: true },
-  { name: SYSTEM_CATEGORIES.EXCLUDED, keywords: [], isSystem: true },
-  { name: SYSTEM_CATEGORIES.INCOME, keywords: ["SALARY", "PAYROLL", "DEPOSIT", "DIRECT DEP", "VENMO", "ZELLE", "ACH CREDIT"], isSystem: true },
+  { name: SYSTEM_CATEGORIES.UNCATEGORIZED, keywords: normalizeKeywords([]), isSystem: true },
+  { name: SYSTEM_CATEGORIES.EXCLUDED, keywords: normalizeKeywords([]), isSystem: true },
+  {
+    name: SYSTEM_CATEGORIES.INCOME,
+    keywords: normalizeKeywords(["SALARY", "PAYROLL", "DEPOSIT", "DIRECT DEP", "VENMO", "ZELLE", "ACH CREDIT"]),
+    isSystem: true,
+  },
 ];
 
 /**

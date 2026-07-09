@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, isNull, or } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { subcategoryDeleteImpact } from "@/lib/budget/hierarchy-db";
+import { matchesKeyword, normalizeKeywords } from "@/lib/categories/keyword";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -32,7 +33,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const values: Record<string, unknown> = { updatedAt: now };
     if (updates.name !== undefined) values.name = updates.name;
     if (updates.order !== undefined) values.order = updates.order;
-    if (updates.keywords !== undefined) values.keywords = updates.keywords;
+    const keywords = updates.keywords !== undefined ? normalizeKeywords(updates.keywords) : undefined;
+    if (keywords !== undefined) values.keywords = keywords;
     if (updates.targetAmount !== undefined) values.targetAmount = updates.targetAmount;
     if (updates.targetDate !== undefined)
       values.targetDate = updates.targetDate != null ? new Date(updates.targetDate) : null;
@@ -58,7 +60,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     // On keyword change, assign matching uncategorized transactions to this category.
     const result = { assigned: 0 };
-    if (updates.keywords !== undefined && Array.isArray(updates.keywords)) {
+    if (keywords !== undefined) {
       const uncategorizedCat = await db
         .select({ id: schema.categories.id })
         .from(schema.categories)
@@ -82,10 +84,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           )
         );
 
-      const keywords = (updates.keywords as string[]).map((k) => k.toLowerCase());
       for (const t of candidates) {
-        const text = t.matchField.toLowerCase();
-        if (keywords.some((kw) => text.includes(kw))) {
+        if (keywords.some((kw) => matchesKeyword(t.matchField, kw))) {
           await db
             .update(schema.transactions)
             .set({ budgetItemId: subId, categoryId: null, updatedAt: now })

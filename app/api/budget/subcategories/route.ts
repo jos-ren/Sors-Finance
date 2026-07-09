@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db/connection";
 import { asc, sql, eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { normalizeKeywords } from "@/lib/categories/keyword";
 
 // GET /api/budget/subcategories[?groupId=&includeArchived=]
 export async function GET(request: NextRequest) {
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
         uuid: randomUUID(),
         name,
         groupId,
-        keywords,
+        keywords: normalizeKeywords(keywords),
         itemType: itemType === "goal" ? "goal" : "expense",
         targetAmount,
         targetDate: targetDate != null ? new Date(targetDate) : null,

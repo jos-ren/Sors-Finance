@@ -5,6 +5,7 @@
  */
 
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { Keyword } from "./types";
 
 // ============================================
 // Users Table
@@ -54,7 +55,7 @@ export const categories = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     uuid: text("uuid").notNull().unique(),
     name: text("name").notNull(),
-    keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
+    keywords: text("keywords", { mode: "json" }).$type<Keyword[]>().notNull().default([]),
     order: integer("order").notNull().default(0),
     isSystem: integer("is_system", { mode: "boolean" }).default(false),
     userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
@@ -106,7 +107,7 @@ export const budgetSubcategories = sqliteTable(
     groupId: integer("group_id")
       .notNull()
       .references(() => budgetGroups.id, { onDelete: "cascade" }),
-    keywords: text("keywords", { mode: "json" }).$type<string[]>().notNull().default([]),
+    keywords: text("keywords", { mode: "json" }).$type<Keyword[]>().notNull().default([]),
     itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
     targetAmount: real("target_amount"), // nullable; goal progress target
     targetDate: integer("target_date", { mode: "timestamp" }), // nullable; goal deadline for pace
