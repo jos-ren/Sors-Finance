@@ -132,6 +132,12 @@ const STEMS = {
   books: ["book"],
   office: ["office"],
   entertainment: ["entertain", "movie", "event"],
+  homeServices: ["home service", "handyman", "home repair", "maintenance", "contractor"],
+  shipping: ["shipping", "postage", "courier", "mail"],
+  micromobility: ["bike share", "scooter", "micromobility", "rideshare", "transport"],
+  legal: ["legal", "lawyer", "attorney", "accounting", "accountant", "notary"],
+  laundry: ["laundry", "dry clean"],
+  storage: ["storage", "self storage"],
 } as const;
 
 export const GLOBAL_DICTIONARY: GlobalEntry[] = [
@@ -178,12 +184,16 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "aldi", "sprouts", "winco", "h-e-b", "heb ", "meijer", "hy-vee", "hyvee",
     "food 4 less", "king soopers", "fred meyer", "the fresh market", "shoprite",
     "acme market", "giant eagle", "giant food", "food city", "smart & final",
-    "piggly wiggly", "grocery outlet",
+    "piggly wiggly", "grocery outlet", "market basket", "stater bros", "weis markets",
+    "ingles market", "winn-dixie", "winn dixie", "lucky supermarket", "save mart",
+    "raley's", "raleys", "schnucks", "jewel-osco", "jewel osco", "brookshire's",
+    "brookshires", "foodland",
     // Canada
     "loblaw", "no frills", "real canadian superstore", "superstore", "sobeys",
     "freshco", "food basics", "fortinos", "zehrs", "save-on-foods", "save on foods",
     "longo", "farm boy", "t&t supermarket", "provigo", "your independent grocer",
-    "valu-mart", "your independent", "nofrills",
+    "valu-mart", "your independent", "nofrills", "thrifty foods", "buy-low foods",
+    "quality foods", "co-op food",
     // generic descriptors
     "supermarket", "grocery",
   ),
@@ -209,12 +219,18 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "white castle", "del taco", "el pollo loco", "qdoba", "moe's southwest", "firehouse subs",
     "zaxby", "bojangle", "checkers", "church's chicken", "long john silver", "a&w",
     "boston pizza", "swiss chalet", "harvey's", "mary brown", "tim hortons",
+    "noodles & company", "noodles and company", "jamba juice", "smoothie king",
+    "potbelly", "taco time", "freshii", "mucho burrito", "mr. sub", "mr sub",
+    "pizza pizza", "sweetgreen", "cava grill", "chopt",
+    "captain d's", "wingstreet",
     // sit-down chains
     "applebee", "olive garden", "red lobster", "outback", "texas roadhouse",
     "cheesecake factory", "buffalo wild wings", "ihop", "denny", "cracker barrel",
     "chili's", "tgi friday", "red robin", "ruby tuesday", "waffle house", "first watch",
     "the keg", "montana's", "kelsey", "east side mario", "milestones", "earls kitchen",
-    "cactus club", "jack astor",
+    "cactus club", "jack astor", "p.f. chang", "pf chang", "corner bakery",
+    "corelife eatery", "boston market", "bonefish grill", "carrabba's", "yard house",
+    "bj's restaurant", "hooters",
     // generic descriptors
     "restaurant", "pizza", "sushi", "steakhouse", "diner", "bistro", "grill",
   ),
@@ -226,6 +242,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.coffee,
     "starbucks", "dunkin", "peet's coffee", "peets coffee", "dutch bros", "caribou coffee",
     "costa coffee", "second cup", "tim horton", "philz coffee", "blue bottle",
+    "biggby coffee", "scooter's coffee", "la colombe", "stumptown coffee",
+    "country style", "coffee time", "the coffee bean",
     "coffee", "espresso", "cafe",
   ),
 
@@ -239,6 +257,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "quiktrip", "casey's", "circle k", "arco", "sinclair", "kwik trip", "kwik star",
     "racetrac", "race trac", "flying j", "pilot travel", "love's travel", "loves travel",
     "petro-canada", "petro canada", "petrocan", "esso", "husky", "ultramar", "mobil gas",
+    "76 gas", "irving oil", "murphy usa", "murphy express", "on the run", "pioneer gas",
     "gas station", "fuel", "gasoline",
   ),
   // "bp" as startsWith (not contains) so it doesn't fire inside unrelated words.
@@ -258,13 +277,16 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "metrolinx", "presto fare", "translink", "compass card", "clipper card",
     "septa", "wmata", "nj transit", "caltrain", "sound transit", "bart ",
     "mta ", "path train", "ttc ", "sto ", "stm ", "oc transpo",
+    "trimet", "muni metro", "king county metro", "chicago transit", "cta ",
+    "bc transit", "calgary transit", "edmonton transit", "winnipeg transit",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
   // PARKING & TOLLS
   // ══════════════════════════════════════════════════════════════════════════
   c(STEMS.parking, "parkmobile", "spothero", "paybyphone", "impark", "laz parking",
-    "parkwhiz", "premium parking", "green p", "parking"),
+    "parkwhiz", "premium parking", "green p", "diamond parking", "republic parking",
+    "sp+ parking", "indigo parking", "central parking", "parking"),
   c(STEMS.tolls, "e-zpass", "ez pass", "fastrak", "sunpass", "407 etr", "toll ", "tolls"),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -274,7 +296,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.auto,
     "autozone", "o'reilly auto", "oreilly auto", "advance auto", "napa auto", "pep boys",
     "jiffy lube", "valvoline", "midas", "meineke", "firestone", "goodyear", "discount tire",
-    "les schwab", "carmax", "mr lube", "kal tire", "car wash", "oil change", "auto parts",
+    "les schwab", "carmax", "mr lube", "kal tire", "tires plus", "big o tires",
+    "national tire", "grease monkey", "econo lube",
+    "car wash", "oil change", "auto parts",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -285,7 +309,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "netflix", "hulu", "disney plus", "disney+", "disneyplus", "hbo max", "hbomax",
     "peacock", "paramount", "discovery+", "discovery plus", "crunchyroll", "sling tv",
     "fubo", "starz", "showtime", "espn+", "espn plus", "crave", "britbox", "tubi",
-    "mubi", "curiositystream", "shudder", "dazn",
+    "mubi", "curiositystream", "shudder", "dazn", "acorn tv", "philo", "vudu",
+    "plex pass", "amc+", "amc plus",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -294,7 +319,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
   c(
     STEMS.music,
     "spotify", "tidal", "pandora", "soundcloud", "siriusxm", "sirius xm",
-    "deezer", "iheartradio", "audiomack",
+    "deezer", "iheartradio", "audiomack", "napster", "qobuz", "boomplay",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -307,8 +332,13 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "zoom.us", "zoom video", "slack", "linkedin premium", "github", "gitlab", "figma",
     "atlassian", "squarespace", "wix.com", "godaddy", "namecheap", "mailchimp",
     "docusign", "quickbooks", "intuit", "norton", "mcafee", "malwarebytes",
+    "asana", "trello", "monday.com", "airtable", "zapier", "hubspot", "salesforce",
+    "shopify", "webflow", "typeform", "calendly", "loom", "miro", "intercom",
+    "zendesk", "freshbooks", "xero", "wave apps", "gusto payroll", "bamboohr",
+    "replit", "vercel", "netlify", "digitalocean", "heroku", "cloudflare",
     // AI
     "openai", "chatgpt", "anthropic", "claude.ai", "perplexity", "midjourney", "cursor",
+    "github copilot", "gemini advanced",
     // news / reading / creators
     "patreon", "substack", "medium.com", "nytimes", "ny times", "wall street journal",
     "wsj ", "washington post", "the athletic", "the economist", "onlyfans",
@@ -322,7 +352,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "playstation", "nintendo", "steam games", "steampowered", "valve", "epic games",
     "epicgames", "riot games", "blizzard", "battle.net", "electronic arts", "ea games",
     "ubisoft", "roblox", "minecraft", "twitch", "discord", "gamestop", "humble bundle",
-    "rockstar games", "game pass", "geforce now",
+    "rockstar games", "game pass", "geforce now", "nintendo eshop", "2k games",
+    "square enix", "bandai namco", "capcom", "sega games", "warner bros games",
+    "take-two interactive",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -338,6 +370,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "neiman marcus", "dollar general", "dollar tree", "dollarama", "family dollar",
     "five below", "big lots", "canadian tire", "hudson's bay", "the bay", "winners",
     "homesense", "giant tiger", "qvc", "hsn", "temu", "wish.com", "aliexpress",
+    "zappos", "groupon", "living social", "michaels store", "joann fabric",
+    "hobby lobby", "party city", "spencer's gifts", "hot topic", "claire's",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -351,7 +385,11 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "j crew", "j.crew", "ann taylor", "chico's", "talbots", "victoria's secret",
     "gymshark", "patagonia", "the north face", "columbia sportswear", "levi", "wrangler",
     "tommy hilfiger", "calvin klein", "ralph lauren", "guess", "primark", "shein",
-    "asos", "boohoo", "fashion nova", "aritzia",
+    "asos", "boohoo", "fashion nova", "aritzia", "torrid", "lane bryant",
+    "eddie bauer", "l.l.bean", "llbean", "ll bean", "duluth trading", "carhartt",
+    "dickies", "champion apparel", "fila", "supreme.com", "brooks brothers",
+    "men's wearhouse", "mens wearhouse", "jos a bank", "moores clothing",
+    "mark's work wearhouse",
     // footwear
     "foot locker", "footlocker", "dsw", "famous footwear", "shoe carnival", "journeys",
     "vans", "converse", "skechers", "crocs", "timberland", "dr martens", "birkenstock",
@@ -368,7 +406,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "best buy", "bestbuy", "apple store", "apple.com", "micro center", "microcenter",
     "newegg", "b&h photo", "canada computers", "the source", "memory express",
     "dell.com", "hp.com", "lenovo", "samsung", "logitech", "gopro", "bose", "sonos",
-    "nvidia", "razer", "canon", "nikon", "visions electronics",
+    "nvidia", "razer", "canon", "nikon", "visions electronics", "fry's electronics",
+    "frys electronics", "microsoft store", "asus store", "acer store", "jbl.com",
+    "beats by dre", "garmin", "fitbit", "roku",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -379,7 +419,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "home depot", "homedepot", "lowe's", "lowes", "menards", "ace hardware",
     "harbor freight", "tractor supply", "true value", "rona", "home hardware",
     "lee valley", "sherwin williams", "sherwin-williams", "benjamin moore",
-    "floor & decor", "hardware",
+    "floor & decor", "orchard supply", "do it best", "kent building supplies",
+    "windsor plywood", "hardware",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -391,7 +432,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "williams sonoma", "williams-sonoma", "bed bath", "the brick", "leon's", "leons",
     "ashley homestore", "ashley furniture", "restoration hardware", "structube",
     "la-z-boy", "ethan allen", "room & board", "at home", "the container store",
-    "sur la table", "wayfair", "bouclair",
+    "sur la table", "wayfair", "bouclair", "article furniture", "burrow.com",
+    "joybird", "world market", "cost plus world market",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -401,6 +443,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.pharmacy,
     "cvs", "walgreens", "rite aid", "riteaid", "duane reade", "shoppers drug mart",
     "shoppers drug", "rexall", "london drugs", "pharmasave", "jean coutu", "pharmaprix",
+    "medicine shoppe", "familymeds",
     "pharmacy", "drug mart", "drugstore",
   ),
 
@@ -411,7 +454,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.health,
     "quest diagnostic", "labcorp", "kaiser permanente", "minuteclinic", "one medical",
     "teladoc", "goodrx", "lenscrafters", "warby parker", "pearle vision", "america's best",
-    "davita", "clinic", "dental", "dentist", "orthodont", "optometr", "physiotherapy",
+    "davita", "zocdoc", "hims.com", "hers.com", "ro.co", "curology",
+    "clinic", "dental", "dentist", "orthodont", "optometr", "physiotherapy",
     "chiropract", "urgent care", "medical center", "family practice",
   ),
 
@@ -425,6 +469,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "life time", "24 hour fitness", "ymca", "snap fitness", "f45", "pure barre",
     "soulcycle", "club pilates", "peloton", "goodlife fitness", "goodlife", "fit4less",
     "movati", "world gym", "blink fitness", "crunch fitness", "esporta",
+    "barry's bootcamp", "title boxing", "ufc gym", "chuze fitness", "in-shape fitness",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -438,6 +483,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "reliant energy", "constellation energy", "direct energy", "just energy",
     "hydro quebec", "hydro-quebec", "bc hydro", "hydro one", "enmax", "epcor",
     "fortisbc", "toronto hydro", "alectra", "waste management", "republic services",
+    "we energies", "avista utilities", "puget sound energy", "national fuel gas",
+    "atmos energy", "nicor gas", "peoples gas",
     "water bill", "sewer", "sanitation",
   ),
 
@@ -453,6 +500,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "rogers", "telus", "fido", "koodo", "virgin plus", "freedom mobile",
     "videotron", "chatr", "public mobile", "lucky mobile", "teksavvy",
     "bell canada", "bell mobility", "bell mts", "shaw mobile", "shaw cable", "shaw internet",
+    "consumer cellular", "visible wireless", "ting mobile", "tello mobile", "red pocket",
+    "simple mobile",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -464,7 +513,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "farmers ins", "usaa", "travelers ins", "aflac", "metlife", "prudential", "aetna",
     "cigna", "humana", "anthem", "blue cross", "blue shield", "sun life", "manulife",
     "canada life", "intact ins", "aviva", "belairdirect", "the co-operators", "wawanesa",
-    "td insurance", "insurance",
+    "td insurance", "esurance", "the hartford", "erie insurance", "amica insurance",
+    "chubb insurance", "safeco",
+    "insurance",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -476,7 +527,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "atm withdrawal", "wire fee", "foreign transaction fee", "annual fee",
     "interest charge", "finance charge", "overlimit",
     "paypal", "venmo", "zelle", "cash app", "cashapp", "wise transfer", "western union",
-    "moneygram", "e-transfer", "interac", "remitly",
+    "moneygram", "e-transfer", "interac", "remitly", "moneris", "chime bank",
+    "varo bank", "current bank", "greenlight card",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -488,6 +540,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "td ameritrade", "merrill", "morgan stanley", "webull", "sofi invest", "acorns",
     "betterment", "wealthfront", "m1 finance", "interactive brokers", "wealthsimple",
     "questrade", "coinbase", "kraken", "binance", "gemini exchange", "crypto.com",
+    "public.com", "stash invest", "ally invest", "tastyworks", "moomoo", "etoro",
+    "ndax", "shakepay", "bitbuy",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -500,6 +554,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "hawaiian airlines", "allegiant air", "sun country", "air canada", "westjet",
     "porter airlines", "flair airlines", "lufthansa", "british airways", "air france",
     "klm", "emirates", "qatar airways", "ryanair", "easyjet", "aeromexico",
+    "icelandair", "turkish airlines", "singapore airlines", "cathay pacific",
+    "china eastern", "china southern", "copa airlines", "avianca", "latam airlines",
+    "volaris",
     "airlines", "air lines", "airline",
   ),
 
@@ -514,6 +571,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "motel 6", "best western", "la quinta", "comfort inn", "quality inn", "fairfield inn",
     "residence inn", "intercontinental", "radisson", "crowne plaza", "kimpton",
     "airbnb", "vrbo", "travelodge", "econo lodge", "red roof", "extended stay",
+    "oyo rooms", "the standard hotel", "1 hotels", "aloft hotel", "element hotel",
+    "w hotel", "st regis",
     "hotel", "motel",
   ),
 
@@ -524,6 +583,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.travel,
     "expedia", "booking.com", "priceline", "kayak", "orbitz", "travelocity",
     "hotwire", "tripadvisor", "hopper", "trivago", "costco travel",
+    "google flights", "skyscanner", "cheapoair", "getyourguide", "viator",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -543,7 +603,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.pets,
     "petsmart", "petco", "chewy", "pet supplies plus", "pet valu", "petland",
     "global pet foods", "ren's pets", "barkbox", "bark box", "rover.com", "wag walking",
-    "banfield", "vca ", "veterinar", "animal hospital", "pet store",
+    "banfield", "vca ", "petflow", "only natural pet", "pet supermarket",
+    "trupanion", "healthy paws",
+    "veterinar", "animal hospital", "pet store",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -554,7 +616,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "buybuy baby", "buy buy baby", "carter's", "carters", "oshkosh", "the children's place",
     "childrens place", "gymboree", "toys r us", "toysrus", "build-a-bear", "lego",
     "fisher price", "babylist", "kindercare", "la petite academy", "primrose school",
-    "montessori", "daycare", "childcare",
+    "montessori", "melissa & doug", "step2", "kidkraft", "stride rite",
+    "daycare", "childcare",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -565,6 +628,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "coursera", "udemy", "udacity", "skillshare", "masterclass", "khan academy",
     "chegg", "duolingo", "pearson", "mcgraw hill", "nelnet", "sallie mae", "kaplan",
     "princeton review", "kumon", "sylvan learning", "quizlet", "brilliant.org",
+    "codecademy", "outschool", "varsity tutors", "wyzant", "edx.org",
     "tuition", "university", "college", "student loan",
   ),
 
@@ -578,7 +642,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "aspca", "humane society", "planned parenthood", "world wildlife", "sierra club",
     "gofundme", "donorbox", "charity", "donation",
   ),
-  c(["charit", "donation", "thrift", "shopping"], "goodwill"),
+  c(["charit", "donation", "thrift", "shopping"], "goodwill", "value village", "savers thrift"),
 
   // ══════════════════════════════════════════════════════════════════════════
   // BEAUTY / PERSONAL CARE
@@ -588,7 +652,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "sephora", "ulta beauty", "ulta ", "sally beauty", "mac cosmetics", "bath & body works",
     "bath and body works", "the body shop", "lush", "sport clips", "great clips",
     "supercuts", "fantastic sams", "european wax", "drybar", "massage envy",
-    "hand & stone", "aveda", "glossier", "salon", "barber", "nail salon", "day spa",
+    "hand & stone", "aveda", "glossier", "dermalogica", "olaplex", "e.l.f. cosmetics",
+    "elf cosmetics", "nyx cosmetics", "fenty beauty", "the ordinary skincare",
+    "salon", "barber", "nail salon", "day spa",
     "haircut",
   ),
 
@@ -598,7 +664,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
   c(
     STEMS.alcohol,
     "total wine", "bevmo", "abc fine wine", "spec's", "binny's", "lcbo", "the beer store",
-    "beer store", "saq ", "wine rack", "liquor store", "liquor", "brewery", "brewing co",
+    "beer store", "saq ", "wine rack", "drizly", "minibar delivery", "party source",
+    "liquor store", "liquor", "brewery", "brewing co",
     "distillery", "winery", "tavern", "taproom", "bottle shop",
   ),
 
@@ -608,7 +675,8 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
   c(
     STEMS.convenience,
     "7-eleven", "7 eleven", "seven eleven", "couche-tard", "couche tard", "cumberland farms",
-    "royal farms", "am/pm", "ampm", "mac's convenience", "quickie", "convenience store",
+    "royal farms", "am/pm", "ampm", "mac's convenience", "quickie", "loop neighborhood",
+    "stripes convenience", "convenience store",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -618,6 +686,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     STEMS.taxes,
     "irs ", "internal revenue", "canada revenue", "revenue canada", "cra ", "us treasury",
     "franchise tax", "dept of revenue", "property tax", "turbotax", "h&r block", "hr block",
+    "jackson hewitt", "liberty tax", "freetaxusa",
     "service ontario", "service canada", "dmv ", "passport",
   ),
 
@@ -627,7 +696,9 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
   c(
     STEMS.books,
     "barnes & noble", "barnes and noble", "books-a-million", "half price books",
-    "indigo", "chapters", "coles books", "thriftbooks", "abebooks", "kobo", "bookstore",
+    "indigo", "chapters", "coles books", "thriftbooks", "abebooks", "kobo",
+    "powell's books", "strand book store", "waterstones", "book depository",
+    "bookstore",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -636,7 +707,7 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
   c(
     STEMS.office,
     "staples", "office depot", "officemax", "office max", "quill.com", "uline",
-    "w.b. mason", "grand & toy",
+    "w.b. mason", "grand & toy", "vistaprint", "moo.com",
   ),
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -647,7 +718,75 @@ export const GLOBAL_DICTIONARY: GlobalEntry[] = [
     "amc theat", "regal cinema", "cinemark", "cineplex", "landmark cinema",
     "marcus theat", "alamo drafthouse", "fandango", "atom tickets", "ticketmaster",
     "stubhub", "live nation", "seatgeek", "eventbrite", "vivid seats", "dave & buster",
-    "topgolf", "imax", "cinema", "movie theat", "playhouse",
+    "topgolf", "imax", "showclix", "axs.com", "bowlero", "main event entertainment",
+    "chuck e cheese", "round1 entertainment",
+    "cinema", "movie theat", "playhouse",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HOME SERVICES / REPAIR (contractors, cleaning, pest control, security, movers)
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.homeServices,
+    "angi.com", "angie's list", "homeadvisor", "thumbtack", "taskrabbit",
+    "adt security", "simplisafe", "vivint", "terminix", "orkin", "rentokil",
+    "mr. rooter", "mr rooter", "roto-rooter", "rotorooter", "servicemaster",
+    "molly maid", "merry maids", "the maids", "handy.com",
+    "two men and a truck", "pods moving", "u-pack", "allied van lines",
+    "north american van lines", "mayflower moving", "ars rescue rooter",
+    "stanley steemer", "chem-dry", "trugreen", "lawn doctor", "scotts lawn",
+    "1-800-got-junk", "1800gotjunk", "got junk", "junk removal", "puls tech",
+    "porch.com", "networx",
+    "plumbing", "plumber", "electrician", "hvac", "exterminator", "pest control",
+    "landscaping", "lawn care", "locksmith", "roofing", "roofer",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHIPPING / POSTAGE / COURIER
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.shipping,
+    "usps", "fedex", "ups store", "dhl", "canada post", "purolator",
+    "the ups store", "stamps.com", "pitney bowes", "shipstation",
+    "postage", "courier",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BIKE / SCOOTER SHARE (micromobility — Uber/Lyft rideshare split above)
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.micromobility,
+    "citi bike", "citibike", "bixi", "lime bike", "limebike", "bird rides",
+    "spin scooter", "veo ride", "jump bike", "capital bikeshare", "divvy bike",
+    "helbiz",
+    "bike share", "scooter share",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LEGAL / PROFESSIONAL SERVICES  (H&R Block/TurboTax already under Taxes)
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.legal,
+    "legalzoom", "rocket lawyer", "avvo.com", "legalshield", "law office", "law firm",
+    "law group", "notary public", "cpa firm", "attorney at law",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LAUNDRY / DRY CLEANING
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.laundry,
+    "dry cleaners", "dry cleaning", "laundromat", "laundry service", "zips cleaners",
+    "tide cleaners", "wash n fold",
+  ),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SELF STORAGE
+  // ══════════════════════════════════════════════════════════════════════════
+  c(
+    STEMS.storage,
+    "public storage", "extra space storage", "cubesmart", "life storage",
+    "u-haul storage", "storagemart", "simply self storage", "sparefoot",
   ),
 ];
 
