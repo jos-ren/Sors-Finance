@@ -279,7 +279,7 @@ export function FileUpload({
             detectionReason: "Custom mapping configured",
             validationErrors: [],
             validationWarnings: [],
-            templateName: templateName, // Store template name for use as source
+            templateName: templateName ?? f.templateName, // Keep existing template name if editing without saving a new one
           }
         : f
     );
