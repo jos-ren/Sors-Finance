@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { eq, and, isNull, or } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { matchesKeyword, normalizeKeywords } from "@/lib/categories/keyword";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -73,10 +74,11 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Only keyword edits are supported", success: false }, { status: 400 });
     }
 
+    const keywords = normalizeKeywords(updates.keywords);
     const now = new Date();
     await db
       .update(schema.categories)
-      .set({ keywords: updates.keywords, updatedAt: now })
+      .set({ keywords, updatedAt: now })
       .where(and(eq(schema.categories.id, categoryId), eq(schema.categories.userId, userId)));
 
     // Recategorize currently-uncategorized transactions matching the new keywords
@@ -103,10 +105,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         )
       );
 
-    const keywords = (updates.keywords as string[]).map((k) => k.toLowerCase());
     for (const t of candidates) {
-      const text = t.matchField.toLowerCase();
-      if (keywords.some((kw) => text.includes(kw))) {
+      if (keywords.some((kw) => matchesKeyword(t.matchField, kw))) {
         await db
           .update(schema.transactions)
           .set({ categoryId, budgetItemId: null, updatedAt: now })

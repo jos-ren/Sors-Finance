@@ -136,8 +136,8 @@ export default function GoalDetailPage({ params }: { params: Promise<{ goalId: s
                 size="lg"
               />
               <div className="grid grid-cols-3 gap-3 border-t pt-4 text-sm">
-                <Readout label="Contributed" value={fmt(goal.contributed)} />
-                <Readout label="Spent" value={fmt(goal.spent)} />
+                <Readout label="Available" value={fmt(goal.available)} />
+                <Readout label="This month" value={fmt(goal.thisMonthContributed)} />
                 <Readout label="Target" value={goal.targetAmount != null ? fmt(goal.targetAmount) : "—"} />
               </div>
             </CardContent>

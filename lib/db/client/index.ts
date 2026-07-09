@@ -24,6 +24,9 @@ export {
   getIncomeCategory,
 } from "./categories";
 
+// Keywords
+export { deleteAllKeywords } from "./keywords";
+
 // Imports
 export {
   getImports,

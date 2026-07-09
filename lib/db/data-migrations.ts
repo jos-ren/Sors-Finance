@@ -12,10 +12,12 @@
 import { sqlite } from "./connection";
 import { migrateBudgetHierarchy } from "./migrate-budget-hierarchy";
 import { migrateCollapseBudgetItems } from "./migrate-collapse-budget-items";
+import { migrateKeywordModes } from "./migrate-keyword-modes";
 import path from "path";
 
 const HIERARCHY_MARKER = "budget_hierarchy_v1";
 const COLLAPSE_ITEMS_MARKER = "budget_hierarchy_v2_collapse_items";
+const KEYWORD_MODES_MARKER = "keyword_match_modes_v1";
 
 function markerApplied(name: string): boolean {
   const row = sqlite.prepare("SELECT 1 FROM data_migrations WHERE name = ?").get(name);
@@ -44,6 +46,7 @@ function tableExists(name: string): boolean {
 export async function runDataMigrations(): Promise<void> {
   await runHierarchyMigration();
   await runCollapseBudgetItemsMigration();
+  await runKeywordModesMigration();
 }
 
 async function runHierarchyMigration(): Promise<void> {
@@ -96,4 +99,13 @@ async function runCollapseBudgetItemsMigration(): Promise<void> {
   setMarker(COLLAPSE_ITEMS_MARKER);
 
   console.log("[DB] Data migration complete: budget_hierarchy_v2_collapse_items");
+}
+
+async function runKeywordModesMigration(): Promise<void> {
+  if (markerApplied(KEYWORD_MODES_MARKER)) return;
+
+  console.log("[DB] Running data migration: keyword_match_modes_v1");
+  migrateKeywordModes(sqlite);
+  setMarker(KEYWORD_MODES_MARKER);
+  console.log("[DB] Data migration complete: keyword_match_modes_v1");
 }

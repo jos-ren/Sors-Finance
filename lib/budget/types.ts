@@ -3,7 +3,7 @@
  * yearly totals view. Kept dependency-free so both client and server import it.
  */
 
-import type { BudgetItemType } from "@/lib/db/types";
+import type { BudgetItemType, Keyword } from "@/lib/db/types";
 
 export interface BudgetTreeCategory {
   id: number;
@@ -13,7 +13,7 @@ export interface BudgetTreeCategory {
   itemType: BudgetItemType;
   targetAmount: number | null;
   isActive: boolean;
-  keywords: string[];
+  keywords: Keyword[];
   /** id of the `budgets` row for this category+period, if one exists. */
   budgetId: number | null;
   planned: number;

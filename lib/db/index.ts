@@ -21,6 +21,8 @@ export type {
   PriceMode,
   AddPortfolioItemData,
   UpdateCategoryResult,
+  Keyword,
+  KeywordMatchMode,
 } from "./types";
 
 export { SYSTEM_CATEGORIES, BUCKET_TYPES } from "./types";

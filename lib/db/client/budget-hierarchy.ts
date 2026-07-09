@@ -3,7 +3,7 @@
  * Categories): CRUD, reorder, archive/restore, keyword add/remove.
  */
 
-import type { DbBudgetGroup, DbBudgetSubcategory, BudgetItemType } from "../types";
+import type { DbBudgetGroup, DbBudgetSubcategory, BudgetItemType, Keyword, KeywordMatchMode } from "../types";
 
 export interface BudgetHierarchy {
   groups: DbBudgetGroup[];
@@ -83,7 +83,7 @@ export const reorderGroups = (activeId: number, overId: number) =>
 export interface CreateCategoryInput {
   name: string;
   groupId: number;
-  keywords?: string[];
+  keywords?: Keyword[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
   /** Goal deadline as epoch ms. */
@@ -97,7 +97,7 @@ export interface UpdateCategoryInput {
   name?: string;
   order?: number;
   groupId?: number;
-  keywords?: string[];
+  keywords?: Keyword[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
   /** Goal deadline as epoch ms. */
@@ -117,11 +117,16 @@ export const reorderSubcategories = (activeId: number, overId: number, groupId?:
 export const archiveSubcategory = (id: number) => updateSubcategory(id, { isActive: false });
 export const restoreSubcategory = (id: number) => updateSubcategory(id, { isActive: true });
 
-export async function addKeywordToSubcategory(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
-  if (currentKeywords.some((k) => k.toLowerCase() === keyword.toLowerCase())) return;
-  await updateSubcategory(id, { keywords: [...currentKeywords, keyword] });
+export async function addKeywordToSubcategory(
+  id: number,
+  keyword: string,
+  currentKeywords: Keyword[],
+  mode: KeywordMatchMode = "contains"
+): Promise<void> {
+  if (currentKeywords.some((k) => k.text.toLowerCase() === keyword.toLowerCase())) return;
+  await updateSubcategory(id, { keywords: [...currentKeywords, { text: keyword, mode }] });
 }
 
-export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: string[]): Promise<void> {
-  await updateSubcategory(id, { keywords: currentKeywords.filter((k) => k.toLowerCase() !== keyword.toLowerCase()) });
+export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: Keyword[]): Promise<void> {
+  await updateSubcategory(id, { keywords: currentKeywords.filter((k) => k.text.toLowerCase() !== keyword.toLowerCase()) });
 }

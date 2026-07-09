@@ -14,8 +14,14 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import type { BudgetItemType } from "@/lib/db/types";
+import type { BudgetItemType, Keyword, KeywordMatchMode } from "@/lib/db/types";
 import { useBudgetHierarchy, updateSubcategory, deleteSubcategory, archiveSubcategory, restoreSubcategory } from "@/hooks/use-budget";
+
+const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
+  contains: "Contains",
+  startsWith: "Starts with",
+  exact: "Exact match",
+};
 
 export interface DetailCategory {
   id: number;
@@ -23,7 +29,7 @@ export interface DetailCategory {
   itemType: BudgetItemType;
   targetAmount: number | null;
   isActive: boolean;
-  keywords: string[];
+  keywords: Keyword[];
   groupId?: number;
 }
 
@@ -45,12 +51,15 @@ export function CategoryDetailDialog({
   const [name, setName] = useState("");
   const [isGoal, setIsGoal] = useState(false);
   const [target, setTarget] = useState("");
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
+  const [keywordMode, setKeywordMode] = useState<KeywordMatchMode>("contains");
   const [groupId, setGroupId] = useState<number | undefined>();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [editingKeywordIndex, setEditingKeywordIndex] = useState<number | null>(null);
+  const [editingKeywordText, setEditingKeywordText] = useState("");
   const keywordInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -71,7 +80,7 @@ export function CategoryDetailDialog({
     if (!hierarchy || !category) return m;
     for (const sub of hierarchy.subcategories) {
       if (sub.id === category.id || !sub.isActive) continue;
-      for (const kw of sub.keywords ?? []) m.set(kw.toLowerCase(), sub.name);
+      for (const kw of sub.keywords ?? []) m.set(kw.text.toLowerCase(), sub.name);
     }
     return m;
   }, [hierarchy, category]);
@@ -80,13 +89,38 @@ export function CategoryDetailDialog({
 
   const isDuplicate =
     keywordInput.trim() !== "" &&
-    keywords.some((k) => k.toLowerCase() === keywordInput.trim().toLowerCase());
+    keywords.some((k) => k.text.toLowerCase() === keywordInput.trim().toLowerCase());
 
   const addKeyword = () => {
     const kw = keywordInput.trim();
-    if (!kw || keywords.some((k) => k.toLowerCase() === kw.toLowerCase())) return;
-    setKeywords([...keywords, kw]);
+    if (!kw || keywords.some((k) => k.text.toLowerCase() === kw.toLowerCase())) return;
+    setKeywords([...keywords, { text: kw, mode: keywordMode }]);
     setKeywordInput("");
+    setKeywordMode("contains");
+  };
+
+  const setKeywordAt = (index: number, updates: Partial<Keyword>) => {
+    setKeywords(keywords.map((k, i) => (i === index ? { ...k, ...updates } : k)));
+  };
+
+  const startEditKeyword = (index: number) => {
+    setEditingKeywordIndex(index);
+    setEditingKeywordText(keywords[index].text);
+  };
+
+  const cancelEditKeyword = () => setEditingKeywordIndex(null);
+
+  const commitEditKeyword = () => {
+    if (editingKeywordIndex === null) return;
+    const index = editingKeywordIndex;
+    const next = editingKeywordText.trim();
+    setEditingKeywordIndex(null);
+    if (!next || next.toLowerCase() === keywords[index].text.toLowerCase()) return;
+    if (keywords.some((k, i) => i !== index && k.text.toLowerCase() === next.toLowerCase())) {
+      toast.error(`"${next}" is already a keyword on this category`);
+      return;
+    }
+    setKeywordAt(index, { text: next });
   };
 
   const handleSave = async () => {
@@ -95,7 +129,9 @@ export function CategoryDetailDialog({
       // Don't lose a keyword that was typed but never tokenized with Enter.
       const typed = keywordInput.trim();
       const finalKeywords =
-        typed && !keywords.some((k) => k.toLowerCase() === typed.toLowerCase()) ? [...keywords, typed] : keywords;
+        typed && !keywords.some((k) => k.text.toLowerCase() === typed.toLowerCase())
+          ? [...keywords, { text: typed, mode: keywordMode }]
+          : keywords;
       await updateSubcategory(category.id, {
         name: name.trim() || category.name,
         itemType: isGoal ? "goal" : "expense",
@@ -213,35 +249,78 @@ export function CategoryDetailDialog({
                   {keywords.length === 0 && (
                     <span className="py-0.5 text-muted-foreground">No keywords yet</span>
                   )}
-                  {keywords.map((kw) => {
-                    const conflictWith = conflicts.get(kw.toLowerCase());
+                  {keywords.map((kw, index) => {
+                    const conflictWith = conflicts.get(kw.text.toLowerCase());
                     const tag = (
                       <Badge
-                        key={kw}
+                        key={`${kw.text}-${index}`}
                         variant="secondary"
                         className={cn(
-                          "cursor-default gap-1",
+                          "h-6 gap-1 pl-2 pr-1",
                           conflictWith &&
                             "border-amber-500/60 bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 dark:text-amber-400"
                         )}
                       >
                         {conflictWith && <TriangleAlert className="h-3 w-3" />}
-                        {kw}
+                        {editingKeywordIndex === index ? (
+                          <input
+                            autoFocus
+                            value={editingKeywordText}
+                            onChange={(e) => setEditingKeywordText(e.target.value)}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={commitEditKeyword}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                commitEditKeyword();
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEditKeyword();
+                              }
+                            }}
+                            className="w-24 bg-transparent text-xs outline-none"
+                            aria-label={`Edit keyword ${kw.text}`}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startEditKeyword(index)}
+                            className="cursor-text text-left"
+                            aria-label={`Edit keyword ${kw.text}`}
+                            title="Click to edit"
+                          >
+                            {kw.text}
+                          </button>
+                        )}
+                        <select
+                          value={kw.mode}
+                          onChange={(e) => setKeywordAt(index, { mode: e.target.value as KeywordMatchMode })}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Match mode for ${kw.text}`}
+                          className="cursor-pointer rounded border-l border-border/60 bg-transparent pl-1 text-[9px] uppercase tracking-wide text-muted-foreground outline-none"
+                        >
+                          {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
+                            <option key={m} value={m}>
+                              {MATCH_MODE_LABELS[m]}
+                            </option>
+                          ))}
+                        </select>
                         <button
                           type="button"
                           className="cursor-pointer"
-                          onClick={() => setKeywords(keywords.filter((k) => k !== kw))}
-                          aria-label={`Remove keyword ${kw}`}
+                          onClick={() => setKeywords(keywords.filter((_, i) => i !== index))}
+                          aria-label={`Remove keyword ${kw.text}`}
                         >
                           <X className="h-3 w-3" />
                         </button>
                       </Badge>
                     );
                     return conflictWith ? (
-                      <Tooltip key={kw}>
+                      <Tooltip key={`${kw.text}-${index}`}>
                         <TooltipTrigger asChild>{tag}</TooltipTrigger>
                         <TooltipContent side="top" className="max-w-[260px]">
-                          This overrides “{kw}” in your {conflictWith} category.
+                          This overrides “{kw.text}” in your {conflictWith} category.
                         </TooltipContent>
                       </Tooltip>
                     ) : (
@@ -251,6 +330,18 @@ export function CategoryDetailDialog({
                 </div>
               </TooltipProvider>
               <div className="flex gap-2 pt-1">
+                <Select value={keywordMode} onValueChange={(v) => setKeywordMode(v as KeywordMatchMode)}>
+                  <SelectTrigger size="sm" className="w-36 shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(MATCH_MODE_LABELS) as KeywordMatchMode[]).map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {MATCH_MODE_LABELS[m]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   ref={keywordInputRef}
                   id="category-keywords"

@@ -5,6 +5,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { seedDefaultCategoriesForUser } from "@/lib/db/seed";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
+import { normalizeKeywords, dedupeKeywords } from "@/lib/categories/keyword";
 
 // GET /api/data - Export all data for the authenticated user (v4.0 hierarchy:
 // Category Group → Category, i.e. budgetSubcategories is the leaf).
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
             uuid: randomUUID(),
             name: s.name,
             groupId,
-            keywords: s.keywords ?? [], // present on v4.0 exports; empty for v3.0 (folded in below)
+            keywords: normalizeKeywords(s.keywords), // present on v4.0 exports; empty for v3.0 (folded in below)
             itemType: s.itemType === "goal" ? "goal" : "expense",
             targetAmount: s.targetAmount ?? null,
             isActive: s.isActive ?? true,
@@ -174,7 +175,7 @@ export async function POST(request: NextRequest) {
         // v3.0: fold each subcategory's items into it (union keywords, a goal
         // item's type/target wins, active if any item was active), then point
         // transactions/budgets at the subcategory instead of the old item.
-        const itemsBySub = new Map<number, Array<{ id: number; keywords?: string[]; itemType?: string; targetAmount?: number | null; isActive?: boolean }>>();
+        const itemsBySub = new Map<number, Array<{ id: number; keywords?: unknown; itemType?: string; targetAmount?: number | null; isActive?: boolean }>>();
         for (const it of body.budgetItems ?? []) {
           if (!it.subcategoryId) continue;
           if (!itemsBySub.has(it.subcategoryId)) itemsBySub.set(it.subcategoryId, []);
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
         for (const [oldSubId, items] of itemsBySub) {
           const newSubId = subIdMap.get(oldSubId);
           if (!newSubId) continue;
-          const keywords = Array.from(new Set(items.flatMap((it) => it.keywords ?? [])));
+          const keywords = dedupeKeywords(items.flatMap((it) => normalizeKeywords(it.keywords)));
           const goal = items.find((it) => it.itemType === "goal");
           await db
             .update(schema.budgetSubcategories)
@@ -233,7 +234,7 @@ export async function POST(request: NextRequest) {
             uuid: randomUUID(),
             name: cat.name,
             groupId: groupRes[0].id,
-            keywords: cat.keywords ?? [],
+            keywords: normalizeKeywords(cat.keywords),
             itemType: "expense",
             targetAmount: null,
             isActive: true,

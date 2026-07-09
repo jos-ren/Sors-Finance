@@ -1,9 +1,11 @@
 import { Transaction, CategorizationSummary } from "@/types";
 import { DbCategory } from "@/lib/db";
+import type { Keyword } from "@/lib/db/types";
+import { matchesKeyword, MODE_SPECIFICITY } from "@/lib/categories/keyword";
 
 // Type alias for categories that can be used with the categorizer
 // Supports both legacy Category (id: string) and DbCategory (uuid: string)
-type CategorizerCategory = { id?: string | number; uuid?: string; name: string; keywords: string[] };
+type CategorizerCategory = { id?: string | number; uuid?: string; name: string; keywords: Keyword[] };
 
 // Get the string ID from a category (either id or uuid)
 function getCategoryId(cat: CategorizerCategory): string {
@@ -53,27 +55,38 @@ export function categorizeTransactions(
 }
 
 /**
- * Find all categories that match the given text
- * Uses case-insensitive partial string matching
+ * Find all categories that match the given text.
+ *
+ * A category's specificity for this text is the most specific mode among its
+ * own matching keywords (exact > startsWith > contains). Only categories at
+ * the single most specific tier reached by *any* category are returned — a
+ * category matched only via a broad "contains" keyword is dropped if another
+ * category matched via a more specific "startsWith"/"exact" keyword, so e.g.
+ * an exact "amazon prime" keyword wins outright over a contains "amazon"
+ * keyword rather than the two being reported as an unresolvable conflict.
+ * Genuine conflicts (two-plus categories tied at the top tier) still return
+ * multiple results.
  */
 export function findMatchingCategories<T extends CategorizerCategory>(
   text: string,
   categories: T[]
 ): T[] {
-  const matches: T[] = [];
-  const lowerText = text.toLowerCase();
+  const matches: { category: T; specificity: number }[] = [];
 
   for (const category of categories) {
-    const hasMatch = category.keywords.some((keyword) =>
-      lowerText.includes(keyword.toLowerCase())
-    );
-
-    if (hasMatch) {
-      matches.push(category);
+    let specificity = -1;
+    for (const keyword of category.keywords) {
+      if (matchesKeyword(text, keyword)) {
+        specificity = Math.max(specificity, MODE_SPECIFICITY[keyword.mode]);
+      }
     }
+    if (specificity >= 0) matches.push({ category, specificity });
   }
 
-  return matches;
+  if (matches.length === 0) return [];
+
+  const topSpecificity = Math.max(...matches.map((m) => m.specificity));
+  return matches.filter((m) => m.specificity === topSpecificity).map((m) => m.category);
 }
 
 /**

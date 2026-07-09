@@ -9,7 +9,7 @@
 
 import useSWR, { mutate } from "swr";
 import * as api from "@/lib/db/client";
-import type { DbBudgetSubcategory } from "@/lib/db/types";
+import type { DbBudgetSubcategory, Keyword, KeywordMatchMode } from "@/lib/db/types";
 import type { BudgetTree, YearlySummary } from "@/lib/budget/types";
 import type { CreateCategoryInput, UpdateCategoryInput } from "@/lib/db/client/budget-hierarchy";
 
@@ -137,12 +137,17 @@ export async function restoreSubcategory(id: number) {
   invalidateBudgetHierarchy();
   return r;
 }
-export async function addKeywordToSubcategory(id: number, keyword: string, currentKeywords: string[]) {
-  const r = await api.addKeywordToSubcategory(id, keyword, currentKeywords);
+export async function addKeywordToSubcategory(
+  id: number,
+  keyword: string,
+  currentKeywords: Keyword[],
+  mode?: KeywordMatchMode
+) {
+  const r = await api.addKeywordToSubcategory(id, keyword, currentKeywords, mode);
   invalidateBudgetHierarchy();
   return r;
 }
-export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: string[]) {
+export async function removeKeywordFromSubcategory(id: number, keyword: string, currentKeywords: Keyword[]) {
   const r = await api.removeKeywordFromSubcategory(id, keyword, currentKeywords);
   invalidateBudgetHierarchy();
   return r;
