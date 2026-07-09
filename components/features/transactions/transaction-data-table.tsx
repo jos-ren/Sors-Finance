@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -300,6 +300,7 @@ export function TransactionDataTable({
           const t = row.original;
           const uncategorized = t.budgetItemId == null && t.categoryId == null;
           const locked = t.categoryLocked;
+          const pendingSuggestion = t.reviewStatus === "pending" && !uncategorized;
           return (
             <div className="flex items-center gap-1.5">
               <BudgetItemPicker
@@ -307,8 +308,21 @@ export function TransactionDataTable({
                 value={toPickerValue(t.categoryId, t.budgetItemId)}
                 onChange={(v) => handleAssign(t.id!, v)}
                 placeholder="Uncategorized"
-                className={uncategorized ? "border-amber-500/50 text-amber-900 dark:text-amber-200" : ""}
+                className={cn(
+                  uncategorized && "border-amber-500/50 text-amber-900 dark:text-amber-200",
+                  pendingSuggestion && "border-dashed border-primary/50 text-primary"
+                )}
               />
+              {pendingSuggestion && (
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Sparkles className="h-3 w-3 text-primary shrink-0 cursor-default" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Suggested match — needs approval in Review Inbox</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               {locked && (
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
