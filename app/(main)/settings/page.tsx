@@ -51,7 +51,7 @@ import {
 } from "@/lib/db/client";
 import { useSetPageHeader } from "@/contexts/page-header-context";
 import { useAuth } from "@/contexts/auth-context";
-import { deleteAllTransactions } from "@/hooks";
+import { deleteAllTransactions, deleteAllKeywords } from "@/hooks";
 import { cn } from "@/lib/utils";
 import {
   SectionHeader,
@@ -161,6 +161,9 @@ export default function SettingsPage() {
   const [showWipeTransactionsDialog, setShowWipeTransactionsDialog] = useState(false);
   const [wipeTransactionsConfirmText, setWipeTransactionsConfirmText] = useState("");
   const [isWipingTransactions, setIsWipingTransactions] = useState(false);
+  const [showWipeKeywordsDialog, setShowWipeKeywordsDialog] = useState(false);
+  const [wipeKeywordsConfirmText, setWipeKeywordsConfirmText] = useState("");
+  const [isWipingKeywords, setIsWipingKeywords] = useState(false);
 
   // Preferences
   const [autoCopyBudgets, setAutoCopyBudgets] = useState(false);
@@ -305,6 +308,24 @@ export default function SettingsPage() {
       toast.error("Failed to delete transactions");
     } finally {
       setIsWipingTransactions(false);
+    }
+  };
+
+  const handleWipeKeywords = async () => {
+    if (wipeKeywordsConfirmText !== "DELETE ALL KEYWORDS") {
+      toast.error("Please type 'DELETE ALL KEYWORDS' to confirm");
+      return;
+    }
+    setIsWipingKeywords(true);
+    try {
+      const { cleared } = await deleteAllKeywords();
+      toast.success(`Cleared keywords from ${cleared} categor${cleared === 1 ? "y" : "ies"}`);
+      setShowWipeKeywordsDialog(false);
+      setWipeKeywordsConfirmText("");
+    } catch {
+      toast.error("Failed to delete keywords");
+    } finally {
+      setIsWipingKeywords(false);
     }
   };
 
@@ -699,6 +720,13 @@ export default function SettingsPage() {
           />
           <NavigateRow
             icon={<Trash2 className="h-4 w-4" />}
+            title="Wipe All Keywords"
+            description="Permanently delete every auto-categorization keyword from all categories"
+            onClick={() => setShowWipeKeywordsDialog(true)}
+            destructive
+          />
+          <NavigateRow
+            icon={<Trash2 className="h-4 w-4" />}
             title="Delete Account"
             description="Permanently delete your account and all associated data"
             onClick={() => setShowResetDialog(true)}
@@ -895,6 +923,50 @@ export default function SettingsPage() {
               disabled={wipeTransactionsConfirmText !== "DELETE ALL TRANSACTIONS" || isWipingTransactions}
             >
               {isWipingTransactions ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Wipe Transactions"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Wipe All Keywords Dialog */}
+      <AlertDialog
+        open={showWipeKeywordsDialog}
+        onOpenChange={(open) => {
+          setShowWipeKeywordsDialog(open);
+          if (!open) setWipeKeywordsConfirmText("");
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wipe all keywords?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete every auto-categorization keyword from all categories.
+              Categories and budgets are kept. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-2">
+                Type <code className="bg-muted px-1 py-0.5 rounded">DELETE ALL KEYWORDS</code> to
+                confirm:
+              </p>
+              <Input
+                value={wipeKeywordsConfirmText}
+                onChange={(e) => setWipeKeywordsConfirmText(e.target.value)}
+                placeholder="Type here..."
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setWipeKeywordsConfirmText("")}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleWipeKeywords}
+              disabled={wipeKeywordsConfirmText !== "DELETE ALL KEYWORDS" || isWipingKeywords}
+            >
+              {isWipingKeywords ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Wipe Keywords"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

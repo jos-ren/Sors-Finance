@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Plus, Search, Trash2, Loader2, TriangleAlert, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -385,6 +385,9 @@ function KeywordCard({
 }: KeywordCardProps) {
   const [keywords, setKeywords] = useState<Keyword[]>(initialKeywords);
   const [input, setInput] = useState("");
+  useEffect(() => {
+    setKeywords(initialKeywords);
+  }, [initialKeywords]);
   const [mode, setMode] = useState<KeywordMatchMode>("contains");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
