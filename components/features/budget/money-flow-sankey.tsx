@@ -20,7 +20,6 @@ const CATEGORY_COLORS = [
   "var(--alt-green)",
 ];
 const INCOME_COLOR = "var(--primary)";
-const GROUP_COLOR = "var(--muted-foreground)";
 const UNSPENT_COLOR = "var(--muted-foreground)";
 
 interface FlowNode {
@@ -49,33 +48,56 @@ function buildMoneyFlow(
 
   const incomeIdx = nodes.push({ name: "Income", color: INCOME_COLOR, value: incomeActual }) - 1;
 
-  let categoryColorIndex = 0;
-  let totalGroupActual = 0;
-  for (const g of tree.groups) {
-    if (g.actual <= 0) continue;
-    totalGroupActual += g.actual;
-    const groupIdx = nodes.push({ name: g.name, color: GROUP_COLOR, value: g.actual }) - 1;
-    links.push({ source: incomeIdx, target: groupIdx, value: g.actual });
+  const totalGroupActual = tree.groups.reduce((sum, g) => sum + (g.actual > 0 ? g.actual : 0), 0);
+  const unspent = incomeActual - totalGroupActual;
+
+  // Depth-1 nodes (groups + Unspent) are ranked together by amount, then
+  // each group's categories are ranked among themselves — so, with
+  // `sort={false}` on <Sankey> below, recharts lays everything out in this
+  // exact order instead of re-ranking nodes by amount across the whole
+  // column, which would otherwise pull a small category up above a larger
+  // group's rows (or Unspent below a smaller group).
+  //
+  // Each group (and all of its categories) shares one color from the
+  // palette, assigned by group identity rather than by rank, so a group's
+  // color doesn't shift around as amounts change period to period.
+  const topLevel: Array<{ name: string; color: string; value: number; categories?: BudgetTree["groups"][number]["categories"] }> =
+    tree.groups
+      .filter((g) => g.actual > 0)
+      .map((g, i) => ({ name: g.name, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length], value: g.actual, categories: g.categories }));
+  if (unspent > 0.005) {
+    topLevel.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent });
+  }
+  topLevel.sort((a, b) => b.value - a.value);
+
+  for (const item of topLevel) {
+    // Groupless items (Unspent) have no real second hop, but recharts
+    // forces any node with no outgoing links into the rightmost column —
+    // which would otherwise strand Unspent one column ahead of where its
+    // Income link visually starts, and throw off the per-column row count
+    // used for sizing. Route it through an unlabeled same-value
+    // pass-through node so it lands in the categories column like every
+    // other leaf, with its name/amount label on the actual rightmost node.
+    const isGroupless = !item.categories;
+    const itemIdx = nodes.push({ name: isGroupless ? "" : item.name, color: item.color, value: item.value }) - 1;
+    links.push({ source: incomeIdx, target: itemIdx, value: item.value });
     maxDepth = Math.max(maxDepth, 1);
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
-    for (const c of g.categories) {
-      if (c.actual <= 0) continue;
-      const color = CATEGORY_COLORS[categoryColorIndex % CATEGORY_COLORS.length];
-      categoryColorIndex++;
-      const catIdx = nodes.push({ name: c.name, color, value: c.actual }) - 1;
-      links.push({ source: groupIdx, target: catIdx, value: c.actual });
+    if (isGroupless) {
+      const passThroughIdx = nodes.push({ name: item.name, color: item.color, value: item.value }) - 1;
+      links.push({ source: itemIdx, target: passThroughIdx, value: item.value });
+      maxDepth = Math.max(maxDepth, 2);
+      depthCounts[2] = (depthCounts[2] ?? 0) + 1;
+      continue;
+    }
+    const sortedCategories = [...item.categories].filter((c) => c.actual > 0).sort((a, b) => b.actual - a.actual);
+    for (const c of sortedCategories) {
+      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.actual }) - 1;
+      links.push({ source: itemIdx, target: catIdx, value: c.actual });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
     }
-  }
-
-  const unspent = incomeActual - totalGroupActual;
-  if (unspent > 0.005) {
-    const unspentIdx = nodes.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent }) - 1;
-    links.push({ source: incomeIdx, target: unspentIdx, value: unspent });
-    maxDepth = Math.max(maxDepth, 1);
-    depthCounts[1] = (depthCounts[1] ?? 0) + 1;
   }
 
   if (links.length === 0) return null;
@@ -199,6 +221,7 @@ export function MoneyFlowSankey({
           nodeWidth={12}
           nodePadding={20}
           linkCurvature={0.5}
+          sort={false}
           margin={{ top: 8, right: 120, bottom: 16, left: 80 }}
           node={(props) => <SankeyNode {...(props as any)} maxDepth={maxDepth} formatAmountShort={formatAmountShort} />}
           link={(props) => <SankeyLinkPath {...(props as any)} />}
