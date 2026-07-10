@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
 import { asc, eq, and } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
+import { normalizeKeywords } from "@/lib/categories/keyword";
 
 // GET /api/categories — the three system categories (Income / Excluded /
 // Uncategorized). User categories no longer exist; budgeting uses the hierarchy.
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
       id: row.id,
       uuid: row.uuid,
       name: row.name,
-      keywords: row.keywords,
+      keywords: normalizeKeywords(row.keywords),
       order: row.order,
       isSystem: row.isSystem ?? false,
       createdAt: row.createdAt,

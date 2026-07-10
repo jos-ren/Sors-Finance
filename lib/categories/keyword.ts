@@ -28,6 +28,7 @@ export const MODE_SPECIFICITY: Record<KeywordMatchMode, number> = {
 
 /** True if `text` satisfies `keyword` under its match mode (case-insensitive). */
 export function matchesKeyword(text: string, keyword: Keyword): boolean {
+  if (typeof keyword.text !== "string" || !keyword.text) return false;
   const t = text.toLowerCase();
   const k = keyword.text.toLowerCase();
   if (!k) return false;
@@ -69,6 +70,7 @@ export function dedupeKeywords(keywords: Keyword[]): Keyword[] {
   const seen = new Set<string>();
   const out: Keyword[] = [];
   for (const k of keywords) {
+    if (typeof k.text !== "string") continue;
     const key = `${k.mode}:${k.text.toLowerCase()}`;
     if (!seen.has(key)) {
       seen.add(key);
