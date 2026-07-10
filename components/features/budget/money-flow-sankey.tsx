@@ -78,20 +78,20 @@ function buildMoneyFlow(
     // used for sizing. Route it through an unlabeled same-value
     // pass-through node so it lands in the categories column like every
     // other leaf, with its name/amount label on the actual rightmost node.
-    const isGroupless = !item.categories;
-    const itemIdx = nodes.push({ name: isGroupless ? "" : item.name, color: item.color, value: item.value }) - 1;
+    const { categories } = item;
+    const itemIdx = nodes.push({ name: categories ? item.name : "", color: item.color, value: item.value }) - 1;
     links.push({ source: incomeIdx, target: itemIdx, value: item.value });
     maxDepth = Math.max(maxDepth, 1);
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
-    if (isGroupless) {
+    if (!categories) {
       const passThroughIdx = nodes.push({ name: item.name, color: item.color, value: item.value }) - 1;
       links.push({ source: itemIdx, target: passThroughIdx, value: item.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
       continue;
     }
-    const sortedCategories = [...item.categories].filter((c) => c.actual > 0).sort((a, b) => b.actual - a.actual);
+    const sortedCategories = [...categories].filter((c) => c.actual > 0).sort((a, b) => b.actual - a.actual);
     for (const c of sortedCategories) {
       const catIdx = nodes.push({ name: c.name, color: item.color, value: c.actual }) - 1;
       links.push({ source: itemIdx, target: catIdx, value: c.actual });
