@@ -247,6 +247,8 @@ export interface SeedBudgetCategory {
   defaultAmount: number;
   itemType?: BudgetItemType; // default 'expense'
   targetAmount?: number;
+  /** Fixed monthly bill: tracked as paid, excluded from the spending pace. */
+  isRecurring?: boolean;
 }
 
 export interface SeedBudgetCategoryGroup {
@@ -260,6 +262,9 @@ export interface SeedBudgetCategoryGroup {
  * item's type/target wins, and default amounts sum. Keeps new-user seeding
  * and the live-data migration producing equivalent-shaped results.
  */
+/** Default categories that are fixed monthly bills (by merged category name). */
+const RECURRING_DEFAULTS = new Set(["Rent", "Utilities", "Phone", "Subscriptions"]);
+
 function mergeSubcategoryIntoCategory(sub: SeedBudgetSubcategory): SeedBudgetCategory {
   const keywords = Array.from(new Set(sub.items.flatMap((item) => item.keywords)));
   const goal = sub.items.find((item) => item.itemType === "goal");
@@ -269,6 +274,7 @@ function mergeSubcategoryIntoCategory(sub: SeedBudgetSubcategory): SeedBudgetCat
     defaultAmount: sub.items.reduce((sum, item) => sum + item.defaultAmount, 0),
     itemType: goal?.itemType,
     targetAmount: goal?.targetAmount,
+    isRecurring: !goal && RECURRING_DEFAULTS.has(sub.name),
   };
 }
 

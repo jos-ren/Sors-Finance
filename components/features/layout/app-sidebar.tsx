@@ -117,16 +117,16 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Dashboard */}
+              {/* Home */}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === "/"}
-                  tooltip="Dashboard"
+                  tooltip="Home"
                 >
                   <NavLink href="/">
                     <LayoutDashboard />
-                    <span>Dashboard</span>
+                    <span>Home</span>
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -147,16 +147,16 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Portfolio with collapsible sub-items */}
+              {/* Accounts (portfolio) with collapsible sub-items */}
               <Collapsible defaultOpen className="group/collapsible">
                 <SidebarMenuItem>
                   <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                       isActive={pathname.startsWith("/portfolio")}
-                      tooltip="Portfolio"
+                      tooltip="Accounts"
                     >
                       <TrendingUp />
-                      <span>Portfolio</span>
+                      <span>Accounts</span>
                       <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                   </CollapsibleTrigger>

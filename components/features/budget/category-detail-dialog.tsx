@@ -28,6 +28,7 @@ export interface DetailCategory {
   name: string;
   itemType: BudgetItemType;
   targetAmount: number | null;
+  isRecurring?: boolean;
   isActive: boolean;
   keywords: Keyword[];
   groupId?: number;
@@ -50,6 +51,7 @@ export function CategoryDetailDialog({
   const hierarchy = useBudgetHierarchy(true);
   const [name, setName] = useState("");
   const [isGoal, setIsGoal] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
   const [target, setTarget] = useState("");
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
@@ -71,6 +73,7 @@ export function CategoryDetailDialog({
     setKeywords(category.keywords ?? []);
     const current = hierarchy?.subcategories.find((s) => s.id === category.id);
     setGroupId(current?.groupId ?? category.groupId);
+    setIsRecurring(current?.isRecurring ?? category.isRecurring ?? false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category?.id, hierarchy]);
 
@@ -136,6 +139,7 @@ export function CategoryDetailDialog({
         name: name.trim() || category.name,
         itemType: isGoal ? "goal" : "expense",
         targetAmount: isGoal && target ? parseFloat(target) : null,
+        isRecurring: !isGoal && isRecurring,
         keywords: finalKeywords,
         groupId,
       });
@@ -379,6 +383,20 @@ export function CategoryDetailDialog({
                 </p>
               )}
             </div>
+
+            {!isGoal && (
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Recurring bill</p>
+                    <p className="text-xs text-muted-foreground">
+                      A fixed monthly bill like rent or your phone. Tracked as paid on Home, and left out of your spending pace.
+                    </p>
+                  </div>
+                  <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">

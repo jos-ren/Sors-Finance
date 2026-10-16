@@ -404,7 +404,7 @@ export default function PortfolioHistoryPage() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/portfolio">Portfolio</Link>
+                <Link href="/portfolio">Accounts</Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

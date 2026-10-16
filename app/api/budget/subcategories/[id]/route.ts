@@ -40,6 +40,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       values.targetDate = updates.targetDate != null ? new Date(updates.targetDate) : null;
     if (updates.isActive !== undefined) values.isActive = updates.isActive;
     if (updates.itemType !== undefined) values.itemType = updates.itemType === "goal" ? "goal" : "expense";
+    if (updates.isRecurring !== undefined) values.isRecurring = !!updates.isRecurring;
+    // A goal is saving, never a bill.
+    if (values.itemType === "goal") values.isRecurring = false;
     if (updates.groupId !== undefined) {
       // Verify the target group belongs to the user before moving.
       const group = await db

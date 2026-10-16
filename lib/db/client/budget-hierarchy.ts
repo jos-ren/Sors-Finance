@@ -88,6 +88,7 @@ export interface CreateCategoryInput {
   targetAmount?: number | null;
   /** Goal deadline as epoch ms. */
   targetDate?: number | null;
+  isRecurring?: boolean;
 }
 
 export const createSubcategory = (name: string, groupId: number, extra?: Omit<CreateCategoryInput, "name" | "groupId">) =>
@@ -102,6 +103,7 @@ export interface UpdateCategoryInput {
   targetAmount?: number | null;
   /** Goal deadline as epoch ms. */
   targetDate?: number | null;
+  isRecurring?: boolean;
   isActive?: boolean;
 }
 

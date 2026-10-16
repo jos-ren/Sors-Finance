@@ -29,7 +29,8 @@ export function invalidateBudgetHierarchy() {
       (key.startsWith("budget-hierarchy") ||
         key.startsWith("budget-tree") ||
         key.startsWith("budget-yearly") ||
-        key.startsWith("goal-progress"))
+        key.startsWith("goal-progress") ||
+        key.startsWith("home"))
   );
 }
 
@@ -38,7 +39,10 @@ export function invalidateBudgetTree() {
   mutate(
     (key: string) =>
       typeof key === "string" &&
-      (key.startsWith("budgets") || key.startsWith("budget-tree") || key.startsWith("budget-yearly"))
+      (key.startsWith("budgets") ||
+        key.startsWith("budget-tree") ||
+        key.startsWith("budget-yearly") ||
+        key.startsWith("home"))
   );
 }
 

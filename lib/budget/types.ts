@@ -12,6 +12,8 @@ export interface BudgetTreeCategory {
   order: number;
   itemType: BudgetItemType;
   targetAmount: number | null;
+  /** Fixed monthly bill; see lib/budget/classify.ts. */
+  isRecurring: boolean;
   isActive: boolean;
   keywords: Keyword[];
   /** id of the `budgets` row for this category+period, if one exists. */

@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
             keywords: normalizeKeywords(s.keywords), // present on v4.0 exports; empty for v3.0 (folded in below)
             itemType: s.itemType === "goal" ? "goal" : "expense",
             targetAmount: s.targetAmount ?? null,
+            isRecurring: s.itemType !== "goal" && !!s.isRecurring,
             isActive: s.isActive ?? true,
             order: s.order ?? 0,
             userId,

@@ -155,6 +155,13 @@
       "when": 1783485388650,
       "tag": "0021_modern_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1792115513018,
+      "tag": "0022_add_is_recurring",
+      "breakpoints": true
     }
   ]
 }

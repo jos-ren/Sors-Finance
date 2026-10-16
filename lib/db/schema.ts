@@ -111,6 +111,7 @@ export const budgetSubcategories = sqliteTable(
     itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
     targetAmount: real("target_amount"), // nullable; goal progress target
     targetDate: integer("target_date", { mode: "timestamp" }), // nullable; goal deadline for pace
+    isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false), // fixed monthly bill (rent, phone…): excluded from spending pace
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     order: integer("order").notNull().default(0),
     userId: integer("user_id")

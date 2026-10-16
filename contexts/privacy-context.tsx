@@ -1,13 +1,15 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode, useSyncExternalStore } from "react";
-import { formatCurrency, formatCurrencyShort } from "@/lib/utils/formatters";
+import { formatCurrency, formatCurrencyShort, formatCurrencyAxis } from "@/lib/utils/formatters";
 import { DEFAULT_CURRENCY } from "@/lib/constants";
 
 interface PrivacyContextType {
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
   formatAmount: (amount: number, currency?: string, showCode?: boolean) => string;
+  /** Compact chart-axis label ("$140K"); masked in privacy mode. */
+  formatAxisAmount: (amount: number, currency?: string) => string;
 }
 
 const PrivacyContext = createContext<PrivacyContextType | undefined>(undefined);
@@ -55,9 +57,16 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
     return showCode ? formatCurrency(amount, currency) : formatCurrencyShort(amount, currency);
   }, [isPrivacyMode]);
 
+  const formatAxisAmount = useCallback((amount: number, currency: string = DEFAULT_CURRENCY) => {
+    if (isPrivacyMode) {
+      return "***";
+    }
+    return formatCurrencyAxis(amount, currency);
+  }, [isPrivacyMode]);
+
   const contextValue = useMemo(
-    () => ({ isPrivacyMode, togglePrivacyMode, formatAmount }),
-    [isPrivacyMode, togglePrivacyMode, formatAmount]
+    () => ({ isPrivacyMode, togglePrivacyMode, formatAmount, formatAxisAmount }),
+    [isPrivacyMode, togglePrivacyMode, formatAmount, formatAxisAmount]
   );
 
   return (

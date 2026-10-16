@@ -61,6 +61,7 @@ export async function seedDefaultBudgetForUser(
           keywords: normalizeKeywords(category.keywords),
           itemType: category.itemType ?? "expense",
           targetAmount: category.targetAmount ?? null,
+          isRecurring: category.isRecurring ?? false,
           isActive: true,
           order: categoryOrder++,
           userId,
