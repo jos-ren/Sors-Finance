@@ -61,12 +61,14 @@ export function invalidateTransactions() {
   mutate((key: string) => typeof key === "string" && key.startsWith("budget-yearly"));
   mutate((key: string) => typeof key === "string" && key.startsWith("income"));
   mutate("goal-progress");
+  mutate((key: string) => typeof key === "string" && key.startsWith("home"));
 }
 
 export function invalidateBudgets() {
   mutate((key: string) => typeof key === "string" && key.startsWith("budgets"));
   mutate((key: string) => typeof key === "string" && key.startsWith("budget-tree"));
   mutate((key: string) => typeof key === "string" && key.startsWith("budget-yearly"));
+  mutate((key: string) => typeof key === "string" && key.startsWith("home"));
 }
 
 export function invalidateImports() {
@@ -298,6 +300,12 @@ export function useAllTimeSpendingByCategory() {
     .sort((a, b) => b.amount - a.amount);
 }
 
+/** Home page month summary (bills / saving / spending). month is 0-based. */
+export function useHomeSummary(year: number, month: number) {
+  const { data } = useSWR(`home/${year}/${month}`, () => api.getHomeSummary(year, month), swrConfig);
+  return data;
+}
+
 export function useAllTimeMonthlyTrend() {
   const { data } = useSWR("trend/allTime", () => api.getAllTimeMonthlyTrend(), swrConfig);
   return data;
@@ -403,6 +411,29 @@ export function buildCategoryChartData(
   });
 
   return { chartRows, categorySeries };
+}
+
+/**
+ * Roll per-category trend rows up to their category group, so stacked charts
+ * show ~10 groups instead of 40+ categories. Returns rows keyed by group id
+ * plus the group list as { id, name } for buildCategoryChartData.
+ */
+export function rollUpCategoryTrendToGroups(
+  rows: CategoryTrendRow[] | undefined,
+  hierarchy: api.BudgetHierarchy | undefined
+): { rows: CategoryTrendRow[]; groups: Array<{ id: number; name: string }> } | undefined {
+  if (!rows || !hierarchy) return undefined;
+  const groupOf = new Map(hierarchy.subcategories.map((c) => [c.id, c.groupId]));
+  const grouped = rows.map((row) => {
+    const totals: Record<number, number> = {};
+    for (const [itemIdStr, amount] of Object.entries(row.categoryTotals)) {
+      const groupId = groupOf.get(Number(itemIdStr));
+      if (groupId === undefined) continue;
+      totals[groupId] = (totals[groupId] || 0) + amount;
+    }
+    return { label: row.label, categoryTotals: totals };
+  });
+  return { rows: grouped, groups: hierarchy.groups.map((g) => ({ id: g.id!, name: g.name })) };
 }
 
 export function useDailyTrend(year: number, month: number) {
@@ -536,6 +567,29 @@ export function usePortfolioSnapshots(limit?: number): DbPortfolioSnapshot[] | u
     swrConfig
   );
   return data;
+}
+
+export type NetWorthRange = "1M" | "3M" | "YTD" | "1Y" | "ALL";
+
+/** Start date for a net worth range chip (undefined = all time). */
+export function netWorthRangeStart(range: NetWorthRange, now: Date = new Date()): Date | undefined {
+  switch (range) {
+    case "1M": return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    case "3M": return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+    case "YTD": return new Date(now.getFullYear(), 0, 1);
+    case "1Y": return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    case "ALL": return undefined;
+  }
+}
+
+/** Snapshots for a range chip, oldest first. */
+export function useNetWorthRange(range: NetWorthRange): DbPortfolioSnapshot[] | undefined {
+  const { data } = useSWR(
+    `portfolio/snapshots/range/${range}`,
+    () => api.getPortfolioSnapshots({ startDate: netWorthRangeStart(range) }),
+    swrConfig
+  );
+  return data ? [...data].sort((a, b) => a.date.getTime() - b.date.getTime()) : undefined;
 }
 
 export function usePortfolioSnapshotsPage(page: number, pageSize: number) {

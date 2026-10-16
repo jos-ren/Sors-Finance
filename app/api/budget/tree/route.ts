@@ -140,6 +140,7 @@ export async function GET(request: NextRequest) {
               order: c.order,
               itemType,
               targetAmount: c.targetAmount ?? null,
+              isRecurring: c.isRecurring ?? false,
               isActive: c.isActive,
               keywords: c.keywords ?? [],
               budgetId: budget?.id ?? null,

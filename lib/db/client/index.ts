@@ -45,6 +45,9 @@ export {
   autoCopyBudgetsIfEmpty,
 } from "./budgets";
 
+// Home summary (bills / saving / spending for a month)
+export { getHomeSummary } from "./home";
+
 // Planned income (manual expected-income override, monthly)
 export { getPlannedIncome, setPlannedIncome } from "./planned-income";
 

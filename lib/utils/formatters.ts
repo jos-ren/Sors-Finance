@@ -116,6 +116,26 @@ export function formatCurrencyCompact(
   return `${formatted} ${currency}`;
 }
 
+/**
+ * Format currency for chart axes: compact, symbol only, no currency code
+ *
+ * @example
+ * formatCurrencyAxis(140000, "CAD") // "$140K"
+ * formatCurrencyAxis(2500, "CAD") // "$2.5K"
+ */
+export function formatCurrencyAxis(
+  amount: number,
+  currency: string = DEFAULT_CURRENCY
+): string {
+  return new Intl.NumberFormat(DEFAULT_LOCALE, {
+    style: "currency",
+    currency,
+    currencyDisplay: "narrowSymbol",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(amount);
+}
+
 // ============================================
 // Number Formatting
 // ============================================

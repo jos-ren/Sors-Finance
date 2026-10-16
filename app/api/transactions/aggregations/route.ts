@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
-import { eq, and, gte, lte, ne, sql, isNotNull } from "drizzle-orm";
+import { eq, and, or, gte, lte, ne, sql, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
 
@@ -28,7 +28,12 @@ export async function GET(request: NextRequest) {
     const incomeId = sysCats.find((c) => c.name === SYSTEM_CATEGORIES.INCOME)?.id;
 
     // Reusable Excluded pre-filter for the income/expense totals & trends.
-    const excludeFilter = () => (excludedId ? [ne(schema.transactions.categoryId, excludedId)] : []);
+    // NULL-safe: budget-assigned rows have categoryId = NULL, and in SQL
+    // `NULL != x` is unknown (not true), so a bare ne() would drop them all.
+    const excludeFilter = () =>
+      excludedId
+        ? [or(isNull(schema.transactions.categoryId), ne(schema.transactions.categoryId, excludedId))]
+        : [];
 
     const periodRange = (): [Date, Date] => {
       const yearNum = parseInt(year!, 10);

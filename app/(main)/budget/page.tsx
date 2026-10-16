@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Save, X, PencilLine, CalendarRange, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -31,10 +32,30 @@ import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-vie
 import { CategoryDetailDialog, type DetailCategory } from "@/components/features/budget/category-detail-dialog";
 import { BudgetPageSkeleton } from "@/components/features/budget/budget-page-skeleton";
 
+// useSearchParams needs a Suspense boundary on a statically rendered route.
 export default function BudgetPage() {
+  return (
+    <Suspense fallback={<BudgetPageSkeleton />}>
+      <BudgetPageContent />
+    </Suspense>
+  );
+}
+
+/** Optional ?year=2026&month=9 (0-based) deep link, e.g. from Home's history bars. */
+function initialPeriod(searchParams: URLSearchParams, now: Date) {
+  const year = parseInt(searchParams.get("year") ?? "", 10);
+  const month = parseInt(searchParams.get("month") ?? "", 10);
+  if (Number.isNaN(year) || Number.isNaN(month) || month < 0 || month > 11) {
+    return { year: now.getFullYear(), month: now.getMonth() };
+  }
+  return { year, month };
+}
+
+function BudgetPageContent() {
   const now = new Date();
+  const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
-  const [selected, setSelected] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const [selected, setSelected] = useState(() => initialPeriod(searchParams, now));
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
 
   const { formatAmount } = usePrivacy();
@@ -57,44 +78,54 @@ export default function BudgetPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div ref={sentinelRef} />
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Budget</h1>
+          <p className="text-muted-foreground">
+            {viewMode === "monthly"
+              ? `${new Date(selected.year, selected.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" })} plan and spending`
+              : `${selectedYear} totals by category`}
+          </p>
+          <div ref={sentinelRef} className="h-0" />
+        </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <PeriodNavigator
-          viewMode={viewMode === "monthly" ? "month" : "year"}
-          selectedMonth={selected}
-          selectedYear={selectedYear}
-          availableYears={availableYears}
-          availableMonthsByYear={availableMonthsByYear}
-          onMonthSelect={(year, month) => setSelected({ year, month })}
-          onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
-        />
-        {viewMode === "monthly" && (
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link href="/budget/builder">
-              <PencilLine className="h-4 w-4" />
-              Edit Budget
-            </Link>
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={() => setViewMode((m) => (m === "monthly" ? "yearly" : "monthly"))}
-        >
-          {viewMode === "monthly" ? (
-            <>
-              <CalendarRange className="h-4 w-4" />
-              View Yearly
-            </>
-          ) : (
-            <>
-              <CalendarDays className="h-4 w-4" />
-              View Monthly
-            </>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <PeriodNavigator
+            viewMode={viewMode === "monthly" ? "month" : "year"}
+            selectedMonth={selected}
+            selectedYear={selectedYear}
+            availableYears={availableYears}
+            availableMonthsByYear={availableMonthsByYear}
+            onMonthSelect={(year, month) => setSelected({ year, month })}
+            onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
+          />
+          {viewMode === "monthly" && (
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link href="/budget/builder">
+                <PencilLine className="h-4 w-4" />
+                Edit Budget
+              </Link>
+            </Button>
           )}
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setViewMode((m) => (m === "monthly" ? "yearly" : "monthly"))}
+          >
+            {viewMode === "monthly" ? (
+              <>
+                <CalendarRange className="h-4 w-4" />
+                View Yearly
+              </>
+            ) : (
+              <>
+                <CalendarDays className="h-4 w-4" />
+                View Monthly
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {viewMode === "monthly" ? (

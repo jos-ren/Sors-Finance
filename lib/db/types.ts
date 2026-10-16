@@ -60,6 +60,8 @@ export interface DbBudgetSubcategory {
   itemType: BudgetItemType;
   targetAmount?: number | null;
   targetDate?: Date | null;
+  /** Fixed monthly bill (rent, phone, insurance): tracked as "paid", not paced. */
+  isRecurring: boolean;
   isActive: boolean;
   order: number;
   createdAt: Date;
