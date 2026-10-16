@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
@@ -32,6 +32,16 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     let skippedCount = 0;
+
+    // Project ids (from project keywords on import) must belong to this user
+    const ownedProjectIds = new Set(
+      (
+        await db
+          .select({ id: schema.projects.id })
+          .from(schema.projects)
+          .where(and(eq(schema.projects.userId, userId), eq(schema.projects.isArchived, false)))
+      ).map((p) => p.id)
+    );
     let insertedCount = 0;
 
     // Build signatures for duplicate checking
@@ -88,6 +98,7 @@ export async function POST(request: NextRequest) {
         sourceAccountName: t.sourceAccountName || null,
         categoryId,
         budgetItemId,
+        projectId: ownedProjectIds.has(t.projectId) ? t.projectId : null,
         reviewStatus: t.reviewStatus === "pending" ? "pending" : "reviewed",
         conflictCategories: Array.isArray(t.conflictCategories) ? t.conflictCategories : null,
         importId: t.importId || null,
@@ -98,7 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Bulk insert in batches to avoid SQLite variable limit
-    // 15 columns per row, SQLite max 999 variables = 66 rows per batch (use 50 for safety)
+    // 16 columns per row, SQLite max 999 variables = 66 rows per batch (use 50 for safety)
     const BATCH_SIZE = 50;
     if (toInsert.length > 0) {
       for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {

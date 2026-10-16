@@ -6,6 +6,7 @@ import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { seedDefaultCategoriesForUser } from "@/lib/db/seed";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
 import { normalizeKeywords, dedupeKeywords } from "@/lib/categories/keyword";
+import { toItemType } from "@/lib/budget/classify";
 
 // GET /api/data - Export all data for the authenticated user (v4.0 hierarchy:
 // Category Group → Category, i.e. budgetSubcategories is the leaf).
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       portfolioSnapshots,
       settings,
       customImportTemplates,
+      projects,
     ] = await Promise.all([
       db.select().from(schema.transactions).where(eq(schema.transactions.userId, userId)),
       db.select().from(schema.categories).where(eq(schema.categories.userId, userId)),
@@ -37,6 +39,7 @@ export async function GET(request: NextRequest) {
       db.select().from(schema.portfolioSnapshots).where(eq(schema.portfolioSnapshots.userId, userId)),
       db.select().from(schema.settings).where(eq(schema.settings.userId, userId)),
       db.select().from(schema.customImportTemplates).where(eq(schema.customImportTemplates.userId, userId)),
+      db.select().from(schema.projects).where(eq(schema.projects.userId, userId)),
     ]);
 
     return NextResponse.json({
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
         portfolioSnapshots,
         settings,
         customImportTemplates,
+        projects,
         exportedAt: new Date().toISOString(),
         version: "4.0", // 2-level budget hierarchy (Category Group → Category)
       },
@@ -70,6 +74,7 @@ export async function GET(request: NextRequest) {
 async function clearUserBudgetData(userId: number) {
   await db.delete(schema.budgets).where(eq(schema.budgets.userId, userId));
   await db.delete(schema.transactions).where(eq(schema.transactions.userId, userId));
+  await db.delete(schema.projects).where(eq(schema.projects.userId, userId));
   await db.delete(schema.budgetSubcategories).where(eq(schema.budgetSubcategories.userId, userId));
   await db.delete(schema.budgetGroups).where(eq(schema.budgetGroups.userId, userId));
 }
@@ -159,9 +164,10 @@ export async function POST(request: NextRequest) {
             name: s.name,
             groupId,
             keywords: normalizeKeywords(s.keywords), // present on v4.0 exports; empty for v3.0 (folded in below)
-            itemType: s.itemType === "goal" ? "goal" : "expense",
+            itemType: toItemType(s.itemType),
             targetAmount: s.targetAmount ?? null,
-            isRecurring: s.itemType !== "goal" && !!s.isRecurring,
+            targetDate: s.targetDate ? new Date(s.targetDate) : null,
+            isRecurring: toItemType(s.itemType) !== "saving" && !!s.isRecurring,
             isActive: s.isActive ?? true,
             order: s.order ?? 0,
             userId,
@@ -173,7 +179,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (hasLegacyItems) {
-        // v3.0: fold each subcategory's items into it (union keywords, a goal
+        // v3.0: fold each subcategory's items into it (union keywords, a goal (now saving)
         // item's type/target wins, active if any item was active), then point
         // transactions/budgets at the subcategory instead of the old item.
         const itemsBySub = new Map<number, Array<{ id: number; keywords?: unknown; itemType?: string; targetAmount?: number | null; isActive?: boolean }>>();
@@ -193,7 +199,7 @@ export async function POST(request: NextRequest) {
             .update(schema.budgetSubcategories)
             .set({
               keywords,
-              itemType: goal ? "goal" : "expense",
+              itemType: goal ? "saving" : "expense",
               targetAmount: goal?.targetAmount ?? null,
               isActive: items.some((it) => it.isActive !== false),
               updatedAt: now,
@@ -266,6 +272,33 @@ export async function POST(request: NextRequest) {
       if (imp.id && res[0]) importIdMap.set(imp.id, res[0].id);
     }
 
+    // Import projects (before transactions, which reference them). The fund
+    // link maps through the category map; older backups have no projects.
+    const projectIdMap = new Map<number, number>();
+    for (const p of body.projects ?? []) {
+      if (!p.name || !p.startDate) continue;
+      const res = await db
+        .insert(schema.projects)
+        .values({
+          uuid: randomUUID(),
+          name: p.name,
+          color: typeof p.color === "string" ? p.color : undefined,
+          startDate: new Date(p.startDate),
+          endDate: p.endDate ? new Date(p.endDate) : null,
+          budget: p.budget ?? null,
+          fundedSeparately: p.fundedSeparately ?? true,
+          keywords: normalizeKeywords(p.keywords),
+          fundCategoryId: p.fundCategoryId ? (itemIdMap.get(p.fundCategoryId) ?? null) : null,
+          notes: p.notes ?? null,
+          isArchived: p.isArchived ?? false,
+          userId,
+          createdAt: p.createdAt ? new Date(p.createdAt) : now,
+          updatedAt: p.updatedAt ? new Date(p.updatedAt) : now,
+        })
+        .returning({ id: schema.projects.id });
+      if (p.id && res[0]) projectIdMap.set(p.id, res[0].id);
+    }
+
     // Import transactions — resolve one FK from either the category map or the
     // (system) category map, honouring the one-FK rule.
     for (const t of body.transactions ?? []) {
@@ -291,6 +324,8 @@ export async function POST(request: NextRequest) {
         sourceAccountName: t.sourceAccountName || null,
         categoryId,
         budgetItemId,
+        projectId: t.projectId ? (projectIdMap.get(t.projectId) ?? null) : null,
+        note: t.note ?? null,
         categoryLocked: t.categoryLocked ?? false,
         importId: t.importId ? (importIdMap.get(t.importId) ?? null) : null,
         userId,
@@ -405,6 +440,7 @@ export async function POST(request: NextRequest) {
           portfolioSnapshots: body.portfolioSnapshots?.length || 0,
           settings: body.settings?.length || 0,
           customImportTemplates: body.customImportTemplates?.length || 0,
+          projects: body.projects?.length || 0,
         },
       },
       success: true,

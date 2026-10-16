@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { Switch } from "@/components/ui/switch";
+import { DatePicker } from "@/components/ui/date-picker";
+import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { BudgetItemType, Keyword, KeywordMatchMode } from "@/lib/db/types";
 import { useBudgetHierarchy, updateSubcategory, deleteSubcategory, archiveSubcategory, restoreSubcategory } from "@/hooks/use-budget";
+import { useProjects } from "@/hooks/use-projects";
 
 const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
   contains: "Contains",
@@ -35,7 +38,7 @@ export interface DetailCategory {
 }
 
 /**
- * Per-category detail editor: rename, expense/goal + target, keywords,
+ * Per-category detail editor: rename, expense/saving + target, keywords,
  * move-to (Category Group), archive/restore, delete. Structure mutations
  * save immediately with a toast.
  */
@@ -49,8 +52,10 @@ export function CategoryDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const hierarchy = useBudgetHierarchy(true);
+  const projects = useProjects();
   const [name, setName] = useState("");
-  const [isGoal, setIsGoal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [targetDate, setTargetDate] = useState<Date | undefined>();
   const [isRecurring, setIsRecurring] = useState(false);
   const [target, setTarget] = useState("");
   const [keywords, setKeywords] = useState<Keyword[]>([]);
@@ -68,10 +73,11 @@ export function CategoryDetailDialog({
     if (!category) return;
     setEditingName(false);
     setName(category.name);
-    setIsGoal(category.itemType === "goal");
+    setIsSaving(category.itemType === "saving");
     setTarget(category.targetAmount != null ? String(category.targetAmount) : "");
     setKeywords(category.keywords ?? []);
     const current = hierarchy?.subcategories.find((s) => s.id === category.id);
+    setTargetDate(current?.targetDate ? new Date(current.targetDate) : undefined);
     setGroupId(current?.groupId ?? category.groupId);
     setIsRecurring(current?.isRecurring ?? category.isRecurring ?? false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,6 +93,9 @@ export function CategoryDetailDialog({
     }
     return m;
   }, [hierarchy, category]);
+
+  // Projects this saving category funds (Japan Trip Fund → Japan trip)
+  const fundedProjects = (projects ?? []).filter((p) => category && p.fundCategoryId === category.id);
 
   if (!category) return null;
 
@@ -137,9 +146,10 @@ export function CategoryDetailDialog({
           : keywords;
       await updateSubcategory(category.id, {
         name: name.trim() || category.name,
-        itemType: isGoal ? "goal" : "expense",
-        targetAmount: isGoal && target ? parseFloat(target) : null,
-        isRecurring: !isGoal && isRecurring,
+        itemType: isSaving ? "saving" : "expense",
+        targetAmount: isSaving && target ? parseFloat(target) : null,
+        targetDate: isSaving && targetDate ? targetDate.getTime() : null,
+        isRecurring: !isSaving && isRecurring,
         keywords: finalKeywords,
         groupId,
       });
@@ -238,7 +248,7 @@ export function CategoryDetailDialog({
               </div>
             </div>
             <DialogDescription className="sr-only">
-              Edit this category&apos;s name, group, keywords, and savings goal.
+              Edit this category&apos;s name, group, keywords, and saving target.
             </DialogDescription>
           </DialogHeader>
 
@@ -384,7 +394,7 @@ export function CategoryDetailDialog({
               )}
             </div>
 
-            {!isGoal && (
+            {!isSaving && (
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -401,31 +411,52 @@ export function CategoryDetailDialog({
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">Savings goal</p>
+                  <p className="text-sm font-medium">Saving</p>
                   <p className="text-xs text-muted-foreground">
-                    Turn this category into a goal on your Goals page, and set an amount to save toward.
+                    Money you set aside, like a TFSA, an emergency fund or a trip fund. Counted as saved on Home, not
+                    spent.
                   </p>
                 </div>
-                <Switch checked={isGoal} onCheckedChange={setIsGoal} />
+                <Switch checked={isSaving} onCheckedChange={setIsSaving} />
               </div>
 
-              {isGoal && (
-                <div className="mt-4 space-y-1.5">
-                  <Label htmlFor="category-target">Goal amount</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Everything assigned to this category counts toward this total on your Goals page.
-                  </p>
-                  <div className="relative w-44">
-                    <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                    <CurrencyInput
-                      id="category-target"
-                      value={target}
-                      onChange={setTarget}
-                      placeholder="0.00"
-                      className="pl-5 text-right tabular-nums"
-                    />
+              {isSaving && (
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="category-target">Target (optional)</Label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                      <CurrencyInput
+                        id="category-target"
+                        value={target}
+                        onChange={setTarget}
+                        placeholder="0.00"
+                        className="pl-5 text-right tabular-nums"
+                      />
+                    </div>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label>Target date (optional)</Label>
+                    <DatePicker value={targetDate} onChange={setTargetDate} placeholder="No date" />
+                  </div>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Progress is everything moved into this category so far.
+                  </p>
                 </div>
+              )}
+
+              {isSaving && fundedProjects.length > 0 && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Funding:{" "}
+                  {fundedProjects.map((p, i) => (
+                    <span key={p.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/projects/${p.id}`} className="text-foreground hover:underline">
+                        {p.name}
+                      </Link>
+                    </span>
+                  ))}
+                </p>
               )}
             </div>
           </div>

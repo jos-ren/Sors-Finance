@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { YearlySummary } from "@/lib/budget/types";
 
 /**
  * Read-only Yearly Totals: Σ planned / Σ actual / diff per category across 12
  * months, grouped. Archived categories that had activity show an "archived" badge.
+ * Separately funded projects are listed after the groups, outside the
+ * planned-vs-actual totals.
  */
 export function YearlyTotalsView({
   summary,
@@ -69,6 +72,33 @@ export function YearlyTotalsView({
             </div>
           );
         })}
+
+        {summary.projects.length > 0 && (
+          <div className="overflow-hidden rounded-lg border bg-card">
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="font-semibold">Projects</span>
+              <span className="text-sm tabular-nums text-muted-foreground">
+                {formatAmount(summary.projects.reduce((a, p) => a + p.total, 0))}
+              </span>
+            </div>
+            <div className="border-t px-3 py-1.5">
+              <p className="py-1 text-xs text-muted-foreground">Funded separately, not counted in the totals above.</p>
+              {summary.projects.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/projects/${p.id}`}
+                  className="flex items-center justify-between rounded py-1 text-sm hover:underline"
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.color }} />
+                    {p.name}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">{formatAmount(p.total)}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

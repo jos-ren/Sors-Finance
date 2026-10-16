@@ -3,10 +3,10 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Goal progress bar + "$3,200 of $5,000 · 64%" microcopy for goal items.
- * `saved` is the lifetime contributed (allocations); `target` the optional target.
+ * Saving progress bar + "$3,200 of $5,000 · 64%" microcopy for saving categories.
+ * `saved` is the lifetime money set aside; `target` the optional target.
  */
-export function GoalProgress({
+export function SavingProgress({
   saved,
   target,
   formatAmount,

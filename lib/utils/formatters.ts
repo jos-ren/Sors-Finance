@@ -218,6 +218,11 @@ export function formatPercentWithSign(value: number, decimals: number = 1): stri
 // Date Formatting
 // ============================================
 
+/** "Aug 2026" → "Aug '26". Short year for chart axes, where space is tight. */
+export function shortYearLabel(label: string): string {
+  return label.replace(/\b(\d{2})(\d{2})\b/, "'$2");
+}
+
 /**
  * Format a date for display
  *
@@ -227,7 +232,7 @@ export function formatPercentWithSign(value: number, decimals: number = 1): stri
  *
  * @example
  * formatDate(new Date(2025, 11, 25)) // "Dec 25, 2025"
- * formatDate(new Date(2025, 11, 25), "short") // "12/25/25"
+ * formatDate(new Date(2025, 11, 25), "short") // "12/25/2025"
  */
 export function formatDate(
   date: Date,
@@ -242,7 +247,7 @@ export function formatDate(
       return new Intl.DateTimeFormat(DEFAULT_LOCALE, {
         month: "2-digit",
         day: "2-digit",
-        year: "2-digit",
+        year: "numeric",
         ...tz,
       }).format(date);
     case "full":

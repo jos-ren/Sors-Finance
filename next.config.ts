@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // External packages for server-side only (native modules)
   serverExternalPackages: ["better-sqlite3"],
+  // Goals were replaced by Projects (docs/spikes/goals-to-projects.md)
+  redirects: async () => [
+    { source: "/goals", destination: "/projects", permanent: false },
+    { source: "/goals/:id", destination: "/projects", permanent: false },
+  ],
   // Security headers
   headers: async () => [
     {

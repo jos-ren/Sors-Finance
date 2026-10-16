@@ -23,6 +23,12 @@ import {
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { classifyCategory } from "@/lib/budget/classify";
+import { shortYearLabel } from "@/lib/utils/formatters";
+import { useProjects } from "@/hooks/use-projects";
+import { projectHatchFill, projectHatchPattern } from "@/components/features/projects/project-hatch";
+
+/** Chart key for a project's series, kept apart from group names. */
+const projectKey = (id: number) => `__project_${id}`;
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -56,46 +62,75 @@ export function TrendsSection() {
   const flow = useAllTimeMonthlyTrend();
   const hierarchy = useBudgetHierarchy(true);
   const byCategory = useAllTimeMonthlyByCategory();
+  const projects = useProjects();
 
   // The current month is partial: label it "so far" and fade its bars.
   const now = new Date();
-  const currentLabel = `${MONTH_SHORT[now.getMonth()]} ${String(now.getFullYear()).slice(2)}`;
+  const currentLabel = `${MONTH_SHORT[now.getMonth()]} ${now.getFullYear()}`;
   const soFar = (label: string) => (label === currentLabel ? `${label} (so far)` : label);
 
   const flowData = useMemo(
     () =>
       (flow ?? []).slice(-span).map((r) => {
-        const label = `${r.monthName} ${String(r.year).slice(2)}`;
+        const label = `${r.monthName} ${r.year}`;
         return { label: soFar(label), income: r.income, expenses: r.expenses, partial: label === currentLabel };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [flow, span, currentLabel]
   );
 
-  // Spending only: goal categories are saving (transfers), not money spent.
+  // Spending only: saving categories are transfers, not money spent.
   const groupData = useMemo(() => {
     if (!byCategory || !hierarchy) return undefined;
     const savingIds = new Set(
       hierarchy.subcategories.filter((c) => classifyCategory(c) === "saving").map((c) => c.id)
     );
     const spendingRows = byCategory.slice(-span).map((row) => ({
-      // Category rows are labelled "Oct 2026"; shorten to match the flow chart.
-      label: soFar(row.label.replace(/ (\d{2})(\d{2})$/, " $2")),
+      // Category rows are labelled "Oct 2026", matching the flow chart.
+      label: soFar(row.label),
       categoryTotals: Object.fromEntries(
         Object.entries(row.categoryTotals).filter(([id]) => !savingIds.has(Number(id)))
       ),
     }));
-    const grouped = rollUpCategoryTrendToGroups(spendingRows, hierarchy);
-    return buildCategoryChartData(grouped?.rows, grouped?.groups);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [byCategory, hierarchy, span, currentLabel]);
+    const grouped = rollUpCategoryTrendToGroups(
+      byCategory.slice(-span).map((row, i) => ({ ...spendingRows[i], projectTotals: row.projectTotals })),
+      hierarchy
+    );
+    const base = buildCategoryChartData(grouped?.rows, grouped?.groups);
+    if (!grouped || !base) return undefined;
 
-  const groupConfig = useMemo(
-    () =>
-      (groupData?.categorySeries ?? []).reduce((acc, s, i) => {
-        acc[s.categoryName] = { label: s.categoryName, color: GROUP_COLORS[i % GROUP_COLORS.length] };
-        return acc;
-      }, {} as ChartConfig),
+    // Separately funded projects stack on top, one striped series each
+    const totals = new Map<number, number>();
+    for (const r of grouped.rows) {
+      for (const [id, amount] of Object.entries(r.projectTotals ?? {})) {
+        totals.set(Number(id), (totals.get(Number(id)) ?? 0) + amount);
+      }
+    }
+    const projectById = new Map((projects ?? []).map((p) => [p.id, p]));
+    const projectSeries = [...totals.entries()]
+      .filter(([id, total]) => total > 0 && projectById.has(id))
+      .map(([id]) => ({ id, name: projectById.get(id)!.name, color: projectById.get(id)!.color }));
+    const chartRows = base.chartRows.map((row, i) => ({
+      ...row,
+      ...Object.fromEntries(
+        projectSeries.map((p) => [projectKey(p.id), Math.max(0, grouped.rows[i].projectTotals?.[p.id] ?? 0)])
+      ),
+    }));
+    return { chartRows, categorySeries: base.categorySeries, projectSeries };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byCategory, hierarchy, projects, span, currentLabel]);
+
+  const groupConfig = useMemo<ChartConfig>(
+    () => ({
+        ...(groupData?.categorySeries ?? []).reduce((acc, s, i) => {
+          acc[s.categoryName] = { label: s.categoryName, color: GROUP_COLORS[i % GROUP_COLORS.length] };
+          return acc;
+        }, {} as ChartConfig),
+        ...(groupData?.projectSeries ?? []).reduce((acc, p) => {
+          acc[projectKey(p.id)] = { label: p.name, color: p.color };
+          return acc;
+        }, {} as ChartConfig),
+    }),
     [groupData]
   );
 
@@ -136,7 +171,7 @@ export function TrendsSection() {
             <ChartContainer config={flowConfig} className="h-[240px] w-full aspect-auto">
               <BarChart data={flowData} margin={{ left: 4, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} tickFormatter={shortYearLabel} />
                 <YAxis tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisAmount(v, currency)} />
                 <ChartTooltip cursor={false} content={moneyTooltip} />
                 <ChartLegend content={<ChartLegendContent />} />
@@ -158,7 +193,7 @@ export function TrendsSection() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Spending by group</CardTitle>
-            <CardDescription>Spending and bills, excluding transfers to goals</CardDescription>
+            <CardDescription>Spending and bills, excluding transfers to savings. Striped segments are projects funded separately.</CardDescription>
           </CardHeader>
           <CardContent>
             {!groupData || groupData.categorySeries.length === 0 ? (
@@ -167,28 +202,42 @@ export function TrendsSection() {
               <ChartContainer config={groupConfig} className="h-[240px] w-full aspect-auto">
                 <BarChart data={groupData.chartRows} margin={{ left: 4, right: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} />
+                  <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} minTickGap={16} tickFormatter={shortYearLabel} />
                   <YAxis tickLine={false} axisLine={false} width={52} tickFormatter={(v) => formatAxisAmount(v, currency)} />
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent formatter={(value, name) => (
                       <span className="flex w-full justify-between gap-4">
-                        <span className="text-muted-foreground">{name}</span>
+                        <span className="text-muted-foreground">{groupConfig[String(name)]?.label ?? name}</span>
                         <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
                       </span>
                     )} />}
                   />
                   <ChartLegend content={<ChartLegendContent className="flex-wrap gap-y-1" />} />
+                  <defs>{groupData.projectSeries.map((p) => projectHatchPattern("trends", p))}</defs>
                   {groupData.categorySeries.map((s, i) => (
                     <Bar
                       key={s.categoryName}
                       dataKey={s.categoryName}
                       stackId="groups"
                       fill={GROUP_COLORS[i % GROUP_COLORS.length]}
-                      radius={i === groupData.categorySeries.length - 1 ? [3, 3, 0, 0] : 0}
+                      radius={i === groupData.categorySeries.length - 1 && groupData.projectSeries.length === 0 ? [3, 3, 0, 0] : 0}
                     >
                       {groupData.chartRows.map((row) => (
                         <Cell key={String(row.month)} fillOpacity={String(row.month).endsWith("(so far)") ? 0.25 : 0.6} />
+                      ))}
+                    </Bar>
+                  ))}
+                  {groupData.projectSeries.map((p, i) => (
+                    <Bar
+                      key={p.id}
+                      dataKey={projectKey(p.id)}
+                      stackId="groups"
+                      fill={projectHatchFill("trends", p.id)}
+                      radius={i === groupData.projectSeries.length - 1 ? [3, 3, 0, 0] : 0}
+                    >
+                      {groupData.chartRows.map((row) => (
+                        <Cell key={String(row.month)} fillOpacity={String(row.month).endsWith("(so far)") ? 0.4 : 1} />
                       ))}
                     </Bar>
                   ))}

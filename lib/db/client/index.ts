@@ -73,9 +73,6 @@ export type { BudgetHierarchy, CreateCategoryInput, UpdateCategoryInput } from "
 // Budget tree + yearly summary
 export { getBudgetTree, getYearlySummary } from "./budget-tree";
 
-// Goals (sinking funds)
-export { getGoals, getGoal } from "./goals";
-
 // Transactions
 export {
   getTransactions,
@@ -90,7 +87,6 @@ export {
   getSpendingByCategory,
   getYTDSpendingByCategory,
   getIncomeTotal,
-  getGoalProgress,
   getTotalSpending,
   getAllTimeTotals,
   getAllTimeSpendingByCategory,
@@ -137,3 +133,13 @@ export {
   getPortfolioAccountTotal,
   getNetWorthChange,
 } from "./portfolio";
+
+// Projects (time-bound labels on transactions)
+export {
+  getProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  setTransactionsProject,
+} from "./projects";

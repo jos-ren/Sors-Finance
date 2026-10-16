@@ -6,6 +6,7 @@ import { findMatchingCategories } from "@/lib/categories/categorizer";
 import { buildMatchables } from "@/lib/budget/matchables";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
+import { projectBelongsToUser } from "@/lib/projects/projects-db";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -109,6 +110,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.categoryLocked !== undefined) updateValues.categoryLocked = updates.categoryLocked;
     if (updates.reviewStatus !== undefined) updateValues.reviewStatus = updates.reviewStatus;
     if (updates.conflictCategories !== undefined) updateValues.conflictCategories = updates.conflictCategories;
+    if (updates.projectId !== undefined) {
+      if (updates.projectId !== null && !(Number.isInteger(updates.projectId) && (await projectBelongsToUser(userId, updates.projectId)))) {
+        return NextResponse.json({ error: "Project not found", success: false }, { status: 404 });
+      }
+      updateValues.projectId = updates.projectId;
+    }
 
     // Apply the one-FK rule whenever an assignment is provided.
     if (updates.categoryId !== undefined || updates.budgetItemId !== undefined) {

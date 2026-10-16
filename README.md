@@ -8,8 +8,8 @@ A privacy-focused, self-hosted personal finance app for budgeting, transaction c
 
 - **Home dashboard**: answers two questions at a glance. Are you on track this month (left to spend, spending pace, last 12 months on or over budget), and is your net worth growing (trend with 1M / 3M / YTD / 1Y / All ranges).
 - **Zero-based budgeting**: category groups and categories with monthly planned amounts, a budget builder, and yearly totals.
-- **Bills, saving and spending**: mark categories as recurring bills or savings goals. Bills are tracked as paid, goal transfers count as saving, and only everyday spending is paced.
-- **Goals**: sinking funds with target amounts and progress.
+- **Bills, saving and spending**: mark categories as recurring bills or saving. Bills are tracked as paid, transfers to savings count as saving, and only everyday spending is paced.
+- **Projects**: group the transactions from a trip, a move or a big purchase across categories and months, and see what it really cost. Big one-offs can be funded separately so they don't wreck the month.
 - **Transaction import**: CSV and Excel (`.csv`, `.xlsx`, `.xls`) with auto-detected column mapping and saved templates, plus optional Plaid import.
 - **Smart categorization**: your keywords (contains / starts with / exact match) first, then a built-in dictionary for first-time suggestions. Conflicts and unknowns land in a review inbox.
 - **Accounts and net worth**: savings, investments, assets and debt, with live prices for stocks (Finnhub, Yahoo fallback), crypto (CoinGecko) and metals.
@@ -64,7 +64,7 @@ Open http://localhost:3000. Data is stored in `./data/sors.db`, and migrations r
 
 ### Try it with sample data
 
-`sors-test-data.json` in the repo root is a realistic two-year dataset: about 2,000 transactions, budgets, recurring bills, goals, accounts and daily net worth snapshots. Load it from **Settings → Import Data**.
+`sors-test-data.json` in the repo root is a realistic two-year dataset: about 2,000 transactions, budgets, recurring bills, saving categories, projects (a Japan trip, a summer trip and an upcoming move), accounts and daily net worth snapshots. Load it from **Settings → Import Data**.
 
 > **Warning**: importing a backup replaces all of the current user's data.
 
@@ -103,10 +103,12 @@ Plaid's free tier has limited transaction history; production use needs a paid p
 - **Category groups** (Housing, Food…) contain **categories** (Rent, Groceries…). Transactions and monthly planned amounts attach to categories.
 - **System categories**: Income, Excluded (transfers and card payments, ignored in totals) and Uncategorized.
 - **Recurring bills**: toggle "Recurring bill" on a category. Home shows bills as paid of total, flags bills due in the next 7 days (from last month's payment day), and leaves them out of the spending pace.
-- **Savings goals**: toggle "Savings goal" and set a target. Goal transactions count as saving, not spending.
-- **Saved** on Home is income minus bills minus spending. For the current month, Home also projects where you will land by month end.
+- **Saving categories**: toggle "Saving" on a category (TFSA, Emergency Fund, a trip fund) and optionally set a target. Transfers into it count as saving, not spending, and the budget row shows progress toward the target.
+- **Projects**: a project (Japan trip, Moving out, New car) is a label on transactions, separate from the category. A flight stays in Flights and also belongs to the Japan trip. Add transactions in bulk from the Transactions page, from the date-window suggestions on the project page, or automatically on import with project keywords (matched only between the project's dates).
+- **Funded separately**: on by default for a project. Its spending is left out of left to spend, the pace line and the budget's category totals, and shown as its own line instead. It still counts against Saved, so Saved matches what happened to your net worth. Turn it off for small trips your monthly budget already covers.
+- **Saved** on Home is income minus bills, spending and separately funded project spending. For the current month, Home also projects where you will land by month end.
 
-More detail in [`docs/budget-system-strategy.md`](docs/budget-system-strategy.md) and [`docs/plans/home-dashboard-plan.md`](docs/plans/home-dashboard-plan.md).
+More detail in [`docs/budget-system-strategy.md`](docs/budget-system-strategy.md), [`docs/plans/home-dashboard-plan.md`](docs/plans/home-dashboard-plan.md) and [`docs/spikes/goals-to-projects.md`](docs/spikes/goals-to-projects.md).
 
 ## Adding Bank Formats
 

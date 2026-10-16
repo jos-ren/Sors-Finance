@@ -4,6 +4,7 @@ import { eq, and, isNull, or } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { subcategoryDeleteImpact } from "@/lib/budget/hierarchy-db";
 import { matchesKeyword, normalizeKeywords } from "@/lib/categories/keyword";
+import { toItemType } from "@/lib/budget/classify";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -39,10 +40,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     if (updates.targetDate !== undefined)
       values.targetDate = updates.targetDate != null ? new Date(updates.targetDate) : null;
     if (updates.isActive !== undefined) values.isActive = updates.isActive;
-    if (updates.itemType !== undefined) values.itemType = updates.itemType === "goal" ? "goal" : "expense";
+    if (updates.itemType !== undefined) values.itemType = toItemType(updates.itemType);
     if (updates.isRecurring !== undefined) values.isRecurring = !!updates.isRecurring;
-    // A goal is saving, never a bill.
-    if (values.itemType === "goal") values.isRecurring = false;
+    // A saving category is money set aside, never a bill.
+    if (values.itemType === "saving") values.isRecurring = false;
     if (updates.groupId !== undefined) {
       // Verify the target group belongs to the user before moving.
       const group = await db

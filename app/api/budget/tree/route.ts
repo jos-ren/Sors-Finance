@@ -3,13 +3,16 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte, sql, isNotNull } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES, type BudgetItemType } from "@/lib/db/types";
-import type { BudgetTree, BudgetTreeGroup, BudgetTreeCategory } from "@/lib/budget/types";
+import type { BudgetTree, BudgetTreeGroup, BudgetTreeCategory, BudgetTreeProjectSpend } from "@/lib/budget/types";
+import { isSeparateProject } from "@/lib/budget/classify";
 
 // GET /api/budget/tree?year=&month=
 // The one nested endpoint the budget page consumes: groups→categories with
 // planned/actual rollups, per-category budgetId/planned/actual/cumulative,
 // plus a zero-based summary. Archived categories are included only when they
-// have activity (a budget row or transactions) in the period.
+// have activity (a budget row or transactions) in the period. Transactions in
+// a separately funded project are left out of `actual` and listed per
+// category in `projectSpend` instead.
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
@@ -43,26 +46,51 @@ export async function GET(request: NextRequest) {
     const budgetByCategory = new Map<number, { id: number; amount: number }>();
     for (const b of budgetRows) budgetByCategory.set(b.budgetItemId, { id: b.id, amount: b.amount });
 
-    // Actual (net spending) per category for the period
-    const monthActuals = await db
-      .select({
-        categoryId: schema.transactions.budgetItemId,
-        total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
-      })
-      .from(schema.transactions)
-      .where(
-        and(
-          eq(schema.transactions.userId, userId),
-          isNotNull(schema.transactions.budgetItemId),
-          gte(schema.transactions.date, startDate),
-          lte(schema.transactions.date, endDate)
+    // Actual (net spending) per category for the period, split by project:
+    // separately funded project spend is reported, not counted.
+    const [monthActuals, projectRows] = await Promise.all([
+      db
+        .select({
+          categoryId: schema.transactions.budgetItemId,
+          projectId: schema.transactions.projectId,
+          total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
+        })
+        .from(schema.transactions)
+        .where(
+          and(
+            eq(schema.transactions.userId, userId),
+            isNotNull(schema.transactions.budgetItemId),
+            gte(schema.transactions.date, startDate),
+            lte(schema.transactions.date, endDate)
+          )
         )
-      )
-      .groupBy(schema.transactions.budgetItemId);
+        .groupBy(schema.transactions.budgetItemId, schema.transactions.projectId),
+      db
+        .select({
+          id: schema.projects.id,
+          name: schema.projects.name,
+          color: schema.projects.color,
+          fundedSeparately: schema.projects.fundedSeparately,
+        })
+        .from(schema.projects)
+        .where(eq(schema.projects.userId, userId)),
+    ]);
+    const projectOf = new Map(projectRows.map((p) => [p.id, p]));
     const actualByCategory = new Map<number, number>();
-    for (const r of monthActuals) if (r.categoryId !== null) actualByCategory.set(r.categoryId, r.total ?? 0);
+    const projectSpendByCategory = new Map<number, BudgetTreeProjectSpend[]>();
+    for (const r of monthActuals) {
+      if (r.categoryId === null) continue;
+      const project = r.projectId != null ? projectOf.get(r.projectId) : undefined;
+      if (project && isSeparateProject(project)) {
+        const list = projectSpendByCategory.get(r.categoryId) ?? [];
+        list.push({ projectId: project.id, name: project.name, color: project.color, amount: r.total ?? 0 });
+        projectSpendByCategory.set(r.categoryId, list);
+        continue;
+      }
+      actualByCategory.set(r.categoryId, (actualByCategory.get(r.categoryId) ?? 0) + (r.total ?? 0));
+    }
 
-    // Lifetime net per category (for goal cumulative)
+    // Lifetime net per category: for saving categories, the money set aside so far
     const lifetimeActuals = await db
       .select({
         categoryId: schema.transactions.budgetItemId,
@@ -71,20 +99,8 @@ export async function GET(request: NextRequest) {
       .from(schema.transactions)
       .where(and(eq(schema.transactions.userId, userId), isNotNull(schema.transactions.budgetItemId)))
       .groupBy(schema.transactions.budgetItemId);
-    const cumulativeByCategory = new Map<number, number>();
-    for (const r of lifetimeActuals) if (r.categoryId !== null) cumulativeByCategory.set(r.categoryId, r.total ?? 0);
-
-    // Lifetime allocations per category (goal sinking funds: contributed)
-    const lifetimeAllocations = await db
-      .select({
-        categoryId: schema.budgets.budgetItemId,
-        total: sql<number>`SUM(${schema.budgets.amount})`,
-      })
-      .from(schema.budgets)
-      .where(eq(schema.budgets.userId, userId))
-      .groupBy(schema.budgets.budgetItemId);
-    const contributedByCategory = new Map<number, number>();
-    for (const r of lifetimeAllocations) contributedByCategory.set(r.categoryId, r.total ?? 0);
+    const lifetimeByCategory = new Map<number, number>();
+    for (const r of lifetimeActuals) if (r.categoryId !== null) lifetimeByCategory.set(r.categoryId, r.total ?? 0);
 
     // Income actual for the period (Income system category, net inflow)
     const incomeCat = await db
@@ -130,9 +146,6 @@ export async function GET(request: NextRequest) {
             const planned = budget?.amount ?? 0;
             const actual = actualByCategory.get(c.id) ?? 0;
             const itemType = (c.itemType as BudgetItemType) ?? "expense";
-            // Goal sinking-fund figures: allocations fill the fund, spend draws it down.
-            const contributed = itemType === "goal" ? contributedByCategory.get(c.id) ?? 0 : 0;
-            const spent = itemType === "goal" ? cumulativeByCategory.get(c.id) ?? 0 : 0;
             return {
               id: c.id,
               uuid: c.uuid,
@@ -140,27 +153,24 @@ export async function GET(request: NextRequest) {
               order: c.order,
               itemType,
               targetAmount: c.targetAmount ?? null,
+              targetDate: c.targetDate ? c.targetDate.getTime() : null,
               isRecurring: c.isRecurring ?? false,
               isActive: c.isActive,
               keywords: c.keywords ?? [],
               budgetId: budget?.id ?? null,
               planned,
               actual,
-              cumulative: itemType === "goal" ? cumulativeByCategory.get(c.id) ?? 0 : 0,
-              contributed,
-              spent,
-              available: contributed - spent,
+              contributed: itemType === "saving" ? lifetimeByCategory.get(c.id) ?? 0 : 0,
+              projectSpend: projectSpendByCategory.get(c.id) ?? [],
             } satisfies BudgetTreeCategory;
           })
           // Drop archived categories that have no activity this period.
-          .filter((c) => c.isActive || c.planned !== 0 || c.actual !== 0);
+          .filter((c) => c.isActive || c.planned !== 0 || c.actual !== 0 || c.projectSpend.length > 0);
 
-        // Goal spending draws from the goal's fund, not this month's budget,
-        // so it is excluded from spent-vs-planned rollups (no false overspend).
-        // Goal planned still counts — it's real assigned income.
+        // Saving transfers count as actual against their planned amount.
         for (const c of treeCategories) {
           totalBudgeted += c.planned;
-          if (c.itemType !== "goal") totalActual += c.actual;
+          totalActual += c.actual;
         }
 
         return {
@@ -169,7 +179,7 @@ export async function GET(request: NextRequest) {
           name: g.name,
           order: g.order,
           planned: treeCategories.reduce((a, c) => a + c.planned, 0),
-          actual: treeCategories.reduce((a, c) => a + (c.itemType === "goal" ? 0 : c.actual), 0),
+          actual: treeCategories.reduce((a, c) => a + c.actual, 0),
           categories: treeCategories,
         } satisfies BudgetTreeGroup;
       })

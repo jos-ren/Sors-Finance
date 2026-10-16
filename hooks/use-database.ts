@@ -56,12 +56,13 @@ export function invalidateTransactions() {
   mutate((key: string) => typeof key === "string" && key.startsWith("trend"));
   mutate((key: string) => typeof key === "string" && key.startsWith("ytdSpending"));
   mutate("periods");
-  // Actuals feed the budget tree/yearly views + income + goal progress.
+  // Actuals feed the budget tree/yearly views + income.
   mutate((key: string) => typeof key === "string" && key.startsWith("budget-tree"));
   mutate((key: string) => typeof key === "string" && key.startsWith("budget-yearly"));
   mutate((key: string) => typeof key === "string" && key.startsWith("income"));
-  mutate("goal-progress");
   mutate((key: string) => typeof key === "string" && key.startsWith("home"));
+  // Project totals, breakdowns and suggestions
+  mutate((key: string) => typeof key === "string" && (key === "projects" || key.startsWith("project/")));
 }
 
 export function invalidateBudgets() {
@@ -195,14 +196,10 @@ export {
   useBudgetTree,
   useYearlyBudgetSummary,
   useArchivedBudgetCategories,
-  useGoalProgress,
   useIncomeTotal,
   usePlannedIncome,
   setPlannedIncomeAmount,
 } from "./use-budget";
-
-// Goals (sinking funds)
-export { useGoals, useGoal, invalidateGoals } from "./use-goals";
 
 // ============================================
 // Import Hooks
@@ -319,6 +316,8 @@ export function useMonthlyTrend(year: number) {
 export interface CategoryTrendRow {
   label: string;
   categoryTotals: Record<number, number>;
+  /** Separately funded project spending by project id, kept out of categoryTotals. */
+  projectTotals?: Record<number, number>;
 }
 
 export function useMonthlyByCategoryForYear(year: number): CategoryTrendRow[] | undefined {
@@ -362,7 +361,7 @@ export function useAllTimeMonthlyByCategory(minMonths?: number): CategoryTrendRo
     }
   }
 
-  return rows.map((r) => ({ label: `${r.monthName} ${r.year}`, categoryTotals: r.categoryTotals }));
+  return rows.map((r) => ({ label: `${r.monthName} ${r.year}`, categoryTotals: r.categoryTotals, projectTotals: r.projectTotals }));
 }
 
 export interface MonthlyExpenseCategorySeries {
@@ -431,7 +430,7 @@ export function rollUpCategoryTrendToGroups(
       if (groupId === undefined) continue;
       totals[groupId] = (totals[groupId] || 0) + amount;
     }
-    return { label: row.label, categoryTotals: totals };
+    return { label: row.label, categoryTotals: totals, projectTotals: row.projectTotals };
   });
   return { rows: grouped, groups: hierarchy.groups.map((g) => ({ id: g.id!, name: g.name })) };
 }

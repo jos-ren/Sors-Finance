@@ -21,6 +21,7 @@ const CATEGORY_COLORS = [
 ];
 const INCOME_COLOR = "var(--primary)";
 const UNSPENT_COLOR = "var(--muted-foreground)";
+const PROJECTS_COLOR = "var(--alt-blue)";
 
 interface FlowNode {
   name: string;
@@ -49,7 +50,22 @@ function buildMoneyFlow(
   const incomeIdx = nodes.push({ name: "Income", color: INCOME_COLOR, value: incomeActual }) - 1;
 
   const totalGroupActual = tree.groups.reduce((sum, g) => sum + (g.actual > 0 ? g.actual : 0), 0);
-  const unspent = incomeActual - totalGroupActual;
+
+  // Separately funded projects are not in group actuals; show them as their
+  // own branch so the flow still accounts for that money.
+  const projectTotals = new Map<number, { name: string; value: number }>();
+  for (const g of tree.groups) {
+    for (const c of g.categories) {
+      for (const p of c.projectSpend) {
+        const cur = projectTotals.get(p.projectId) ?? { name: p.name, value: 0 };
+        cur.value += p.amount;
+        projectTotals.set(p.projectId, cur);
+      }
+    }
+  }
+  const projectChildren = [...projectTotals.values()].filter((p) => p.value > 0);
+  const totalProjects = projectChildren.reduce((sum, p) => sum + p.value, 0);
+  const unspent = incomeActual - totalGroupActual - totalProjects;
 
   // Depth-1 nodes (groups + Unspent) are ranked together by amount, then
   // each group's categories are ranked among themselves — so, with
@@ -61,10 +77,18 @@ function buildMoneyFlow(
   // Each group (and all of its categories) shares one color from the
   // palette, assigned by group identity rather than by rank, so a group's
   // color doesn't shift around as amounts change period to period.
-  const topLevel: Array<{ name: string; color: string; value: number; categories?: BudgetTree["groups"][number]["categories"] }> =
+  const topLevel: Array<{ name: string; color: string; value: number; children?: Array<{ name: string; value: number }> }> =
     tree.groups
       .filter((g) => g.actual > 0)
-      .map((g, i) => ({ name: g.name, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length], value: g.actual, categories: g.categories }));
+      .map((g, i) => ({
+        name: g.name,
+        color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+        value: g.actual,
+        children: g.categories.map((c) => ({ name: c.name, value: c.actual })),
+      }));
+  if (totalProjects > 0.005) {
+    topLevel.push({ name: "Projects", color: PROJECTS_COLOR, value: totalProjects, children: projectChildren });
+  }
   if (unspent > 0.005) {
     topLevel.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent });
   }
@@ -78,23 +102,23 @@ function buildMoneyFlow(
     // used for sizing. Route it through an unlabeled same-value
     // pass-through node so it lands in the categories column like every
     // other leaf, with its name/amount label on the actual rightmost node.
-    const { categories } = item;
-    const itemIdx = nodes.push({ name: categories ? item.name : "", color: item.color, value: item.value }) - 1;
+    const { children } = item;
+    const itemIdx = nodes.push({ name: children ? item.name : "", color: item.color, value: item.value }) - 1;
     links.push({ source: incomeIdx, target: itemIdx, value: item.value });
     maxDepth = Math.max(maxDepth, 1);
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
-    if (!categories) {
+    if (!children) {
       const passThroughIdx = nodes.push({ name: item.name, color: item.color, value: item.value }) - 1;
       links.push({ source: itemIdx, target: passThroughIdx, value: item.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
       continue;
     }
-    const sortedCategories = [...categories].filter((c) => c.actual > 0).sort((a, b) => b.actual - a.actual);
-    for (const c of sortedCategories) {
-      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.actual }) - 1;
-      links.push({ source: itemIdx, target: catIdx, value: c.actual });
+    const sortedChildren = [...children].filter((c) => c.value > 0).sort((a, b) => b.value - a.value);
+    for (const c of sortedChildren) {
+      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.value }) - 1;
+      links.push({ source: itemIdx, target: catIdx, value: c.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
     }

@@ -17,7 +17,8 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { DbTransaction } from "@/lib/db";
-import { updateTransaction } from "@/lib/db/client";
+import { updateTransaction } from "@/hooks";
+import { ProjectSelect } from "@/components/features/projects/project-select";
 import { BudgetItemPicker, fromPickerValue, toPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
 
 interface EditTransactionDialogProps {
@@ -38,6 +39,7 @@ export function EditTransactionDialog({
   const [categoryChanged, setCategoryChanged] = useState(false);
   const [source, setSource] = useState<string>("Manual");
   const [note, setNote] = useState<string>("");
+  const [projectId, setProjectId] = useState<number | null>(null);
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -62,6 +64,7 @@ export function EditTransactionDialog({
       setAssignment(toPickerValue(transaction.categoryId, transaction.budgetItemId));
       setSource(transaction.source);
       setNote(transaction.note || "");
+      setProjectId(transaction.projectId ?? null);
     }
   }, [transaction]);
 
@@ -95,6 +98,7 @@ export function EditTransactionDialog({
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source,
         note: note.trim() || null,
+        projectId,
         ...fromPickerValue(assignment),
         ...(categoryChanged && { categoryLocked: true }),
       });
@@ -184,6 +188,12 @@ export function EditTransactionDialog({
               onChange={(v) => { setCategoryChanged(true); setAssignment(v); }}
               placeholder="Uncategorized"
             />
+          </div>
+
+          {/* Project (why), separate from the category (what) */}
+          <div className="space-y-2">
+            <Label>Project</Label>
+            <ProjectSelect value={projectId} onChange={setProjectId} />
           </div>
 
           {/* Source */}

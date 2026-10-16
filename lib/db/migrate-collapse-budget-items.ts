@@ -105,7 +105,8 @@ export function migrateCollapseBudgetItems(sqlite: DB): void {
           sub.user_id
         );
       }
-      const itemType = goalItems.length > 0 ? "goal" : "expense";
+      // Goals became saving categories (drizzle 0024); write the current value.
+      const itemType = goalItems.length > 0 ? "saving" : "expense";
       const targetAmount = goalItems.length > 0 ? goalItems[0].target_amount : null;
       const isActive = items.some((it) => it.is_active) ? 1 : 0;
 

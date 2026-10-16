@@ -12,6 +12,7 @@ import { Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { type PlaidEnvironmentType } from "@/lib/plaid/types";
 import { PlaidBucketSelector } from "./plaid-bucket-selector";
+import { syncItemBalances } from "./sync-item-balances";
 
 interface PlaidAccount {
   id: number;
@@ -92,8 +93,9 @@ export function PlaidLinkButton({ onSuccess, onExit, accessToken, mode = "create
 
         const data = await response.json();
         
-        // For update mode, just notify success without bucket selector
+        // For update mode, refresh balances now that the login works again (no bucket selector)
         if (mode === "update") {
+          await syncItemBalances(data.item.id);
           toast.success("Bank connection updated successfully");
           if (onSuccess) {
             onSuccess();

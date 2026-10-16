@@ -86,7 +86,7 @@ export interface CreateCategoryInput {
   keywords?: Keyword[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
-  /** Goal deadline as epoch ms. */
+  /** Saving target date as epoch ms. */
   targetDate?: number | null;
   isRecurring?: boolean;
 }
@@ -101,7 +101,7 @@ export interface UpdateCategoryInput {
   keywords?: Keyword[];
   itemType?: BudgetItemType;
   targetAmount?: number | null;
-  /** Goal deadline as epoch ms. */
+  /** Saving target date as epoch ms. */
   targetDate?: number | null;
   isRecurring?: boolean;
   isActive?: boolean;

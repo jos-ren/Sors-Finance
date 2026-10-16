@@ -26,6 +26,8 @@ import {
   invalidateImports,
 } from "@/hooks";
 import { useBudgetHierarchy } from "@/hooks/use-budget";
+import { useProjects } from "@/hooks/use-projects";
+import { matchProject } from "@/lib/projects/match";
 import {
   addTransactionsBulk,
   addImport,
@@ -60,6 +62,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   const dbCategories = useCategories();
   const hierarchy = useBudgetHierarchy(false);
   const categories = useMemo(() => dbCategories || [], [dbCategories]);
+  const projects = useProjects();
 
   // Matchable targets: active budget categories + system categories, uuid-keyed.
   const assignables = useMemo<DbCategory[]>(() => {
@@ -101,7 +104,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   /**
    * The silent engine: dedup (discard) → user keywords (trusted single-match
    * auto-clears) → global dictionary gap-fill (first-time suggestion → pending).
-   * Then create import records and bulk-insert with review state.
+   * Project keywords then tag rows inside a project's dates. Then create
+   * import records and bulk-insert with review state.
    */
   const runPipelineAndInsert = async (
     rawTransactions: Transaction[],
@@ -193,6 +197,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
           reviewStatus: t._reviewStatus,
           conflictCategories: t.isConflict ? t.conflictingCategories ?? null : null,
           importId: importIdMap.get(t.source) ?? null,
+          projectId: matchProject(t.matchField, t.date, projects ?? []),
         };
       });
 

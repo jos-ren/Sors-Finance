@@ -4,7 +4,7 @@
  * Split out of use-database.ts (which was approaching 1000 lines) to hold the
  * zero-based budgeting read models and mutation wrappers. Cache keys:
  *   budget-hierarchy/<incl>   budget-tree/<y>/<m>   budget-yearly/<y>
- *   goal-progress             income/<y>/<m>
+ *   income/<y>/<m>
  */
 
 import useSWR, { mutate } from "swr";
@@ -29,7 +29,6 @@ export function invalidateBudgetHierarchy() {
       (key.startsWith("budget-hierarchy") ||
         key.startsWith("budget-tree") ||
         key.startsWith("budget-yearly") ||
-        key.startsWith("goal-progress") ||
         key.startsWith("home"))
   );
 }
@@ -70,11 +69,6 @@ export function useYearlyBudgetSummary(year: number): YearlySummary | undefined 
 export function useArchivedBudgetCategories(): DbBudgetSubcategory[] | undefined {
   const hierarchy = useBudgetHierarchy(true);
   return hierarchy?.subcategories.filter((c) => !c.isActive);
-}
-
-export function useGoalProgress(): Map<number, number> | undefined {
-  const { data } = useSWR("goal-progress", () => api.getGoalProgress(), swrConfig);
-  return data;
 }
 
 export function useIncomeTotal(year: number, month: number): number | undefined {

@@ -95,7 +95,7 @@ export const budgetGroups = sqliteTable(
 );
 
 // Subcategories are the budgeting leaf ("Category" in the UI): they carry
-// keywords, expense/goal type, and target amount, and are what transactions
+// keywords, expense/saving type, and saving target, and are what transactions
 // and monthly budget rows attach to. (Formerly this data lived one level
 // deeper on a now-removed `budget_items` table — see budget_hierarchy_v2.)
 export const budgetSubcategories = sqliteTable(
@@ -108,9 +108,9 @@ export const budgetSubcategories = sqliteTable(
       .notNull()
       .references(() => budgetGroups.id, { onDelete: "cascade" }),
     keywords: text("keywords", { mode: "json" }).$type<Keyword[]>().notNull().default([]),
-    itemType: text("item_type").notNull().default("expense"), // 'expense' | 'goal'
-    targetAmount: real("target_amount"), // nullable; goal progress target
-    targetDate: integer("target_date", { mode: "timestamp" }), // nullable; goal deadline for pace
+    itemType: text("item_type").notNull().default("expense"), // 'expense' | 'saving'
+    targetAmount: real("target_amount"), // nullable; saving target
+    targetDate: integer("target_date", { mode: "timestamp" }), // nullable; saving target date
     isRecurring: integer("is_recurring", { mode: "boolean" }).notNull().default(false), // fixed monthly bill (rent, phone…): excluded from spending pace
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     order: integer("order").notNull().default(0),
@@ -126,6 +126,40 @@ export const budgetSubcategories = sqliteTable(
     index("budget_subcategories_active_idx").on(table.isActive),
     index("budget_subcategories_user_idx").on(table.userId),
   ]
+);
+
+// ============================================
+// Projects Table
+// ============================================
+
+// A project is a time-bound label on transactions (Japan trip, Moving out,
+// New car). It sits alongside the category: the category says what the money
+// was for, the project says why. When fundedSeparately is true, its spending
+// is pulled out of the monthly spending math and shown as its own line.
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    uuid: text("uuid").notNull().unique(),
+    name: text("name").notNull(),
+    color: text("color").notNull().default("#84cc16"),
+    startDate: integer("start_date", { mode: "timestamp" }).notNull(),
+    endDate: integer("end_date", { mode: "timestamp" }), // nullable: open-ended
+    budget: real("budget"), // nullable: one total for the whole project
+    fundedSeparately: integer("funded_separately", { mode: "boolean" }).notNull().default(true),
+    // Only matched on import when the transaction date is inside the project window
+    keywords: text("keywords", { mode: "json" }).$type<Keyword[]>().notNull().default([]),
+    // Optional saving category that was set aside for this project
+    fundCategoryId: integer("fund_category_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("projects_user_idx").on(table.userId)]
 );
 
 // ============================================
@@ -149,6 +183,8 @@ export const transactions = sqliteTable(
     note: text("note"),
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     budgetItemId: integer("budget_item_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
+    // Optional project (why), independent of the one-FK category rule (what)
+    projectId: integer("project_id").references(() => projects.id, { onDelete: "set null" }),
     categoryLocked: integer("category_locked", { mode: "boolean" }).notNull().default(false),
     // "pending" = awaiting review in the ledger inbox; "reviewed" = cleared (default for legacy/manual rows)
     reviewStatus: text("review_status").notNull().default("reviewed"),
@@ -169,6 +205,7 @@ export const transactions = sqliteTable(
     index("transactions_date_category_idx").on(table.date, table.categoryId),
     index("transactions_date_budget_item_idx").on(table.date, table.budgetItemId),
     index("transactions_user_idx").on(table.userId),
+    index("transactions_user_project_idx").on(table.userId, table.projectId),
   ]
 );
 
@@ -489,7 +526,10 @@ export type BudgetGroupInsert = typeof budgetGroups.$inferInsert;
 export type BudgetSubcategoryRow = typeof budgetSubcategories.$inferSelect;
 export type BudgetSubcategoryInsert = typeof budgetSubcategories.$inferInsert;
 
-export type DataMigrationRow = typeof dataMigrations.$inferSelect;
+export type ProjectRow = typeof projects.$inferSelect;
+export type ProjectInsert = typeof projects.$inferInsert;
+
+export type DataMigrationRow =typeof dataMigrations.$inferSelect;
 export type DataMigrationInsert = typeof dataMigrations.$inferInsert;
 
 export type TransactionRow = typeof transactions.$inferSelect;

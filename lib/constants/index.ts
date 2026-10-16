@@ -78,7 +78,7 @@ export const DATE_FORMATS = {
   /** ISO format (e.g., "2025-12-25") */
   iso: "yyyy-MM-dd",
   /** Short format (e.g., "12/25/25") */
-  short: "MM/dd/yy",
+  short: "MM/dd/yyyy",
   /** Full format (e.g., "December 25, 2025") */
   full: "MMMM d, yyyy",
   /** Month/Year only (e.g., "Dec 2025") */

@@ -4,8 +4,9 @@ import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
+import { projectBelongsToUser } from "@/lib/projects/projects-db";
 
-// GET /api/transactions?startDate=...&endDate=...&categoryId=...&source=...&limit=...&offset=...
+// GET /api/transactions?startDate=...&endDate=...&categoryId=...&projectId=...&source=...&limit=...&offset=...
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("endDate");
     const categoryId = searchParams.get("categoryId");
     const budgetItemId = searchParams.get("budgetItemId");
+    const projectId = searchParams.get("projectId");
     const source = searchParams.get("source");
     const limit = searchParams.get("limit");
     const offset = searchParams.get("offset");
@@ -33,6 +35,9 @@ export async function GET(request: NextRequest) {
     }
     if (budgetItemId) {
       conditions.push(eq(schema.transactions.budgetItemId, parseInt(budgetItemId, 10)));
+    }
+    if (projectId) {
+      conditions.push(eq(schema.transactions.projectId, parseInt(projectId, 10)));
     }
     if (source) {
       conditions.push(eq(schema.transactions.source, source));
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
       note: row.note,
       categoryId: row.categoryId,
       budgetItemId: row.budgetItemId,
+      projectId: row.projectId,
       categoryLocked: row.categoryLocked,
       reviewStatus: row.reviewStatus,
       conflictCategories: row.conflictCategories,
@@ -103,6 +109,10 @@ export async function POST(request: NextRequest) {
       categoryId: body.categoryId,
       budgetItemId: body.budgetItemId,
     });
+    const projectId = Number.isInteger(body.projectId) ? body.projectId : null;
+    if (projectId !== null && !(await projectBelongsToUser(userId, projectId))) {
+      return NextResponse.json({ error: "Project not found", success: false }, { status: 404 });
+    }
 
     const result = await db
       .insert(schema.transactions)
@@ -118,6 +128,7 @@ export async function POST(request: NextRequest) {
         note: body.note || null,
         categoryId,
         budgetItemId,
+        projectId,
         importId: body.importId || null,
         userId,
         createdAt: now,

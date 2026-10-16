@@ -1,6 +1,6 @@
 "use client";
 
-import { ArchiveRestore, Target } from "lucide-react";
+import { ArchiveRestore, PiggyBank } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -28,7 +28,7 @@ export function ArchivedItemsSheet({ open, onOpenChange }: { open: boolean; onOp
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Archived categories</SheetTitle>
-          <SheetDescription>Completed goals and retired categories. Restore any to bring it back.</SheetDescription>
+          <SheetDescription>Retired categories. Restore any to bring it back.</SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -42,7 +42,7 @@ export function ArchivedItemsSheet({ open, onOpenChange }: { open: boolean; onOp
                   <li key={category.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 truncate text-sm">
-                        {category.itemType === "goal" && <Target className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                        {category.itemType === "saving" && <PiggyBank className="h-3.5 w-3.5 shrink-0 text-primary" />}
                         {category.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{group?.name ?? ""}</p>

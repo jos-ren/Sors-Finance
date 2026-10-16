@@ -3,16 +3,18 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
-import { classifyCategory, type MoneyClass } from "@/lib/budget/classify";
-import type { HomeSummary, HomeDueBill, HomeHistoryMonth, PaceStatus } from "@/lib/budget/home-types";
+import { classifyCategory, isSeparateProject, type MoneyClass } from "@/lib/budget/classify";
+import type { HomeSummary, HomeDueBill, HomeHistoryMonth, HomeProjectSpend, PaceStatus } from "@/lib/budget/home-types";
 
 // GET /api/home?year=2026&month=9 (0-based month)
 //
 // One pass over the selected month plus the 12 months before it. Every
 // category is classed via classifyCategory(): bills are tracked as paid,
-// saving (goal) transactions are transfers, and only spending is paced.
+// saving transactions are transfers, and only spending is paced.
 // Uncategorized money out counts as spending so "left to spend" stays
-// conservative; Excluded rows are ignored entirely.
+// conservative; Excluded rows are ignored entirely. Transactions in a
+// separately funded project leave the monthly math and are reported per
+// project instead (they still count against Saved).
 
 const HISTORY_MONTHS = 12;
 const DUE_SOON_DAYS = 7;
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
     const rangeStart = new Date(year, month - HISTORY_MONTHS, 1);
     const rangeEnd = new Date(year, month + 1, 0, 23, 59, 59);
 
-    const [sysCats, categories, budgetRows, txs, counts, planned] = await Promise.all([
+    const [sysCats, categories, budgetRows, txs, counts, planned, projectRows] = await Promise.all([
       db
         .select({ id: schema.categories.id, name: schema.categories.name })
         .from(schema.categories)
@@ -86,6 +88,7 @@ export async function GET(request: NextRequest) {
           amountOut: schema.transactions.amountOut,
           categoryId: schema.transactions.categoryId,
           budgetItemId: schema.transactions.budgetItemId,
+          projectId: schema.transactions.projectId,
         })
         .from(schema.transactions)
         .where(
@@ -113,12 +116,22 @@ export async function GET(request: NextRequest) {
           )
         )
         .limit(1),
+      db
+        .select({
+          id: schema.projects.id,
+          name: schema.projects.name,
+          color: schema.projects.color,
+          fundedSeparately: schema.projects.fundedSeparately,
+        })
+        .from(schema.projects)
+        .where(eq(schema.projects.userId, userId)),
     ]);
 
     const excludedId = sysCats.find((c) => c.name === SYSTEM_CATEGORIES.EXCLUDED)?.id;
     const incomeId = sysCats.find((c) => c.name === SYSTEM_CATEGORIES.INCOME)?.id;
     const classOf = new Map<number, MoneyClass>(categories.map((c) => [c.id, classifyCategory(c)]));
     const nameOf = new Map(categories.map((c) => [c.id, c.name]));
+    const projectOf = new Map(projectRows.map((p) => [p.id, p]));
 
     // ---- Budgets: per month per class, and per category for the selected month
     const budgetByMonthClass = new Map<string, number>();
@@ -139,12 +152,22 @@ export async function GET(request: NextRequest) {
     const prevMonthBillDay = new Map<number, { day: number; amount: number }>();
     let billsPaid = 0;
     const incomeByMonth = new Map<number, number>();
+    // month key → project id → net spend, for separately funded projects
+    const projectSpendByMonth = new Map<number, Map<number, number>>();
 
     for (const t of txs) {
       if (excludedId !== undefined && t.categoryId === excludedId) continue;
       const d = t.date;
       const key = monthKey(d.getFullYear(), d.getMonth());
       const net = t.amountOut - t.amountIn;
+
+      const project = t.projectId != null ? projectOf.get(t.projectId) : undefined;
+      if (project && isSeparateProject(project)) {
+        const byProject = projectSpendByMonth.get(key) ?? new Map<number, number>();
+        byProject.set(project.id, (byProject.get(project.id) ?? 0) + net);
+        projectSpendByMonth.set(key, byProject);
+        continue;
+      }
 
       if (t.budgetItemId == null) {
         if (incomeId !== undefined && t.categoryId === incomeId) {
@@ -175,7 +198,7 @@ export async function GET(request: NextRequest) {
           if (!prev || d.getDate() > prev.day) prevMonthBillDay.set(t.budgetItemId, { day: d.getDate(), amount: net });
         }
       }
-      // "saving": goal transactions are transfers, not spending.
+      // "saving": transfers to savings, not spending.
     }
 
     // ---- Spending pace
@@ -202,10 +225,22 @@ export async function GET(request: NextRequest) {
       dueSoon.sort((a, b) => a.expectedDay - b.expectedDay);
     }
 
+    // ---- Separately funded projects, per month
+    const projectSpendFor = (key: number): HomeProjectSpend[] =>
+      [...(projectSpendByMonth.get(key) ?? new Map<number, number>()).entries()]
+        .map(([id, amount]) => {
+          const p = projectOf.get(id)!;
+          return { id, name: p.name, color: p.color, amount: Math.round(amount * 100) / 100 };
+        })
+        .filter((p) => p.amount !== 0)
+        .sort((a, b) => b.amount - a.amount);
+    const monthProjects = projectSpendFor(selectedKey);
+    const toProjects = monthProjects.reduce((sum, p) => sum + p.amount, 0);
+
     // ---- Saving
     const income = incomeByMonth.get(selectedKey) ?? 0;
-    const toGoals = budgetFor(selectedKey, "saving");
-    const saved = income - billsPaid - spent;
+    const toSavings = budgetFor(selectedKey, "saving");
+    const saved = income - billsPaid - spent - toProjects;
 
     // Mid-month, "saved so far" is skewed (bills land early, pay arrives
     // biweekly), so project the month end: expected income minus bills and
@@ -219,7 +254,7 @@ export async function GET(request: NextRequest) {
       projected = {
         income: expectedIncome,
         incomeSource: plannedAmount != null ? "planned" : "last-month",
-        saved: expectedIncome - projectedBills - projectedSpending,
+        saved: expectedIncome - projectedBills - projectedSpending - toProjects,
       };
     }
 
@@ -231,6 +266,7 @@ export async function GET(request: NextRequest) {
         month: k % 12,
         budget: budgetFor(k, "spending"),
         spent: Math.round((spentByMonth.get(k) ?? 0) * 100) / 100,
+        projects: projectSpendFor(k),
       });
     }
 
@@ -257,7 +293,8 @@ export async function GET(request: NextRequest) {
         status: paceStatus(spendingBudget, spent, expectedByToday),
       },
       bills: { budget: budgetFor(selectedKey, "bill"), paid: billsPaid, dueSoon },
-      saving: { income, toGoals, saved, rate: income > 0 ? saved / income : 0, projected },
+      saving: { income, toSavings, toProjects, saved, rate: income > 0 ? saved / income : 0, projected },
+      projects: monthProjects,
       history,
       attention: {
         uncategorized: counts[0]?.uncategorized ?? 0,

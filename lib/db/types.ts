@@ -38,7 +38,8 @@ export const SYSTEM_CATEGORIES = {
 // Budget Hierarchy Types (Category Group → Category)
 // ============================================
 
-export type BudgetItemType = "expense" | "goal";
+/** "saving": money set aside (TFSA, Emergency Fund, a trip fund). Formerly "goal". */
+export type BudgetItemType = "expense" | "saving";
 
 export interface DbBudgetGroup {
   id?: number;
@@ -49,8 +50,8 @@ export interface DbBudgetGroup {
   updatedAt: Date;
 }
 
-/** A Category: the budgeting leaf. Carries keywords, expense/goal type, and
- *  target amount, and is what transactions/monthly budget rows attach to. */
+/** A Category: the budgeting leaf. Carries keywords, expense/saving type, and
+ *  an optional saving target, and is what transactions/monthly budget rows attach to. */
 export interface DbBudgetSubcategory {
   id?: number;
   uuid: string;
@@ -87,10 +88,40 @@ export interface DbTransaction {
   note?: string | null;
   categoryId: number | null;
   budgetItemId: number | null;
+  /** Optional project (why), independent of the category (what). */
+  projectId?: number | null;
   categoryLocked: boolean;
   reviewStatus: "pending" | "reviewed"; // "pending" = in the ledger review inbox
   conflictCategories: string[] | null; // conflicting matchable uuids when a multi-keyword conflict
   importId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// Project Types
+// ============================================
+
+/** Derived from the dates: before start, inside the window, after end. */
+export type ProjectStatus = "upcoming" | "active" | "done";
+
+/** A time-bound label on transactions (Japan trip, Moving out, New car). */
+export interface DbProject {
+  id?: number;
+  uuid: string;
+  name: string;
+  color: string;
+  startDate: Date;
+  endDate?: Date | null;
+  budget?: number | null;
+  /** Pulled out of the monthly spending math and shown as its own line. */
+  fundedSeparately: boolean;
+  /** Matched on import only inside the project's date window. */
+  keywords: Keyword[];
+  /** Saving category set aside for this project. */
+  fundCategoryId?: number | null;
+  notes?: string | null;
+  isArchived: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
