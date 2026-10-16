@@ -1,121 +1,55 @@
 # Sors Finance
 
-A privacy-focused, self-hosted personal finance app for budget tracking, transaction categorization, and net worth management. All your data stays on your server — nothing is sent to external services.
+A privacy-focused, self-hosted personal finance app for budgeting, transaction categorization and net worth tracking. Your data lives in a single SQLite file on your own machine.
 
 <img width="1716" height="1320" alt="image" src="https://github.com/user-attachments/assets/90860d51-1705-4232-b0f2-f842b6f4d3e8" />
 
-
 ## Features
 
-- **Transaction Import** — Import bank statements (CSV/Excel) with automatic bank detection
-- **Smart Categorization** — Keyword-based auto-categorization with conflict resolution
-- **Budget Tracking** — Set monthly budgets per category and track spending progress
-- **Net Worth Dashboard** — Track savings, investments, assets, and debt over time
-- **Portfolio Tracking** — Monitor stocks and crypto with optional price lookups
-- **Automatic Snapshots** — Daily portfolio snapshots at a configurable time
-- **Privacy Mode** — Hide sensitive amounts with a single click
-- **Data Export** — Export and Import all your data anytime
+- **Home dashboard**: answers two questions at a glance. Are you on track this month (left to spend, spending pace, last 12 months on or over budget), and is your net worth growing (trend with 1M / 3M / YTD / 1Y / All ranges).
+- **Zero-based budgeting**: category groups and categories with monthly planned amounts, a budget builder, and yearly totals.
+- **Bills, saving and spending**: mark categories as recurring bills or savings goals. Bills are tracked as paid, goal transfers count as saving, and only everyday spending is paced.
+- **Goals**: sinking funds with target amounts and progress.
+- **Transaction import**: CSV and Excel (`.csv`, `.xlsx`, `.xls`) with auto-detected column mapping and saved templates, plus optional Plaid import.
+- **Smart categorization**: your keywords (contains / starts with / exact match) first, then a built-in dictionary for first-time suggestions. Conflicts and unknowns land in a review inbox.
+- **Accounts and net worth**: savings, investments, assets and debt, with live prices for stocks (Finnhub, Yahoo fallback), crypto (CoinGecko) and metals.
+- **Automatic snapshots**: a daily net worth snapshot on first load, after Sync All, and on an optional schedule.
+- **Privacy mode**: hide every amount with one click.
+- **Backup and restore**: export all your data to JSON and import it again from Settings.
 
 ## Privacy First
 
-Your financial data stays on your machine. Sors uses a local SQLite database — no accounts, no cloud sync, no tracking. You own your data completely.
-
-- **Self-hosted**: Runs entirely on your own hardware
-- **No external services**: Only outbound calls are optional stock/crypto price lookups and Plaid (if you enable it)
-- **Portable data**: Single SQLite file you can backup or migrate
-
-## Plaid Integration (Optional)
-
-Sors supports optional Plaid integration for automatic transaction imports and balance syncing. **You bring your own Plaid developer account** — this keeps your data under your control and lets you use Plaid's free tier.
-
-### Features
-
-- **Automatic Transaction Import**: Fetch transactions directly from your connected banks
-- **Balance Syncing**: Keep portfolio account balances up-to-date automatically
-- **Multi-Bank Support**: Connect multiple banks with a single Plaid account
-- **Scheduler Integration**: Daily balance sync runs with portfolio snapshots
-
-### Setup
-
-1. **Create a Free Plaid Developer Account**
-   - Go to [dashboard.plaid.com](https://dashboard.plaid.com)
-   - Sign up and create a new application
-   - Get your `client_id` and `secret` (works for sandbox, development, and production)
-
-2. **Get a Free Finnhub API Key**
-   - Go to [finnhub.io/register](https://finnhub.io/register)
-   - Sign up and get your API key (60 API calls/minute free tier)
-
-3. **Configure Environment Variables**
-   
-   **For Local Development:**
-   ```bash
-   # Copy the example file
-   cp .env.example .env
-   
-   # Edit .env and add your API keys:
-   PLAID_CLIENT_ID=your_plaid_client_id_here
-   PLAID_SECRET=your_plaid_secret_here
-   FINNHUB_API_KEY=your_finnhub_api_key_here
-   ```
-   
-   **For Docker CLI:**
-   - Same as above - Docker Compose automatically loads the `.env` file
-   
-   **For Portainer/Docker UI:**
-   - In your stack configuration, add these environment variables:
-     - `PLAID_CLIENT_ID`
-     - `PLAID_SECRET`
-     - `FINNHUB_API_KEY`
-
-4. **Connect Your Banks**
-   - Start the app and go to Settings → Integrations
-   - Click "Connect a Bank"
-   - Follow Plaid Link flow to connect your accounts
-   - Choose portfolio bucket (Savings/Investments/Assets/Debt) for each account
-   - Balances sync automatically
-
-5. **Import Transactions**
-   - Go to Transactions page → Import
-   - Choose "Connect with Plaid"
-   - Select institution, accounts, and date range
-   - Transactions flow through the same categorization pipeline as manual imports
-
-### Security
-
-- API keys stored as environment variables (never in database)
-- All credentials only accessible server-side
-- Multi-user households share API keys (appropriate for self-hosted apps)
-
-### Pricing
-
-Plaid offers a free Development tier with limited transaction history. Production usage requires paid plans. Since you use your own API credentials, you control and pay for your own usage. See [plaid.com/pricing](https://plaid.com/pricing) for details.
+- **Self-hosted**: runs entirely on your own hardware.
+- **Local accounts**: users register and log in against your own database. Nothing is sent to a cloud service.
+- **Minimal outbound calls**: only price lookups, exchange rates (Frankfurter) and Plaid, if you enable it.
+- **Portable data**: one SQLite file you can back up or move.
 
 ## Quick Start
 
-### Option 1: Docker (Recommended)
+### Option 1: Docker
 
 ```bash
 docker run -d \
-  -p 3000:3000 \
+  -p 127.0.0.1:3000:3000 \
   -v sors-data:/app/data \
   --name sors \
   ghcr.io/jos-ren/sors-finance:latest
 ```
 
-Then open http://localhost:3000
+Open http://localhost:3000 and register your first user.
 
-> **Important**: The `-v sors-data:/app/data` flag persists your database. Without it, data is lost when the container restarts.
+> **Important**: the `-v sors-data:/app/data` flag persists your database. Without it, data is lost when the container is removed.
 
 ### Option 2: Docker Compose
 
 ```bash
 git clone https://github.com/jos-ren/sors-finance.git
 cd sors-finance
+touch .env   # required by docker-compose.yml; add keys below if you use them
 docker compose up -d
 ```
 
-Data is automatically persisted via the configured volume.
+The port is bound to `127.0.0.1:3000` only, and data persists in the `sors-data` volume.
 
 ### Option 3: Development
 
@@ -126,50 +60,81 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000. Data is stored in `./data/sors.db`, and migrations run automatically on startup.
 
-Data is stored in `./data/sors.db`.
+### Try it with sample data
 
-## CSV Import
+`sors-test-data.json` in the repo root is a realistic two-year dataset: about 2,000 transactions, budgets, recurring bills, goals, accounts and daily net worth snapshots. Load it from **Settings → Import Data**.
 
-Sors Finance supports flexible CSV import through custom column mapping:
+> **Warning**: importing a backup replaces all of the current user's data.
 
-- **Custom Import** - Map any CSV format to transaction fields
-- **Saved Templates** - Save your column mappings for reuse
-- **Auto-Detection** - Column headers and types are detected automatically
+## Optional Integrations
 
-Don't see your specific format? Use the custom import wizard with auto-detected column mapping!
+All keys are environment variables, read only on the server. Create a `.env` file in the project root:
 
-## Adding Bank Support
+```bash
+FINNHUB_API_KEY=<your-finnhub-key>
+PLAID_CLIENT_ID=<your-plaid-client-id>
+PLAID_SECRET=<your-plaid-secret>
+# Optional: separate secrets per Plaid environment
+PLAID_SECRET_SANDBOX=<your-sandbox-secret>
+PLAID_SECRET_PRODUCTION=<your-production-secret>
+```
 
-The parser system is designed for easy extension:
+For Portainer or another Docker UI, add the same variables to the stack's environment.
 
-1. Copy `lib/parsers/banks/_template.ts` to `lib/parsers/banks/yourbank.ts`
-2. Implement the `BankParser` interface
-3. Register in `lib/parsers/index.ts`
+### Finnhub (stock prices)
 
-See `lib/parsers/README.md` for detailed documentation.
+Required only if you track stocks. Get a free key at [finnhub.io/register](https://finnhub.io/register) (60 calls per minute on the free tier). Crypto and metals prices need no key.
+
+### Plaid (bank connections)
+
+Plaid syncs account balances and imports transactions. **You bring your own Plaid developer account**, so you control and pay for your own usage.
+
+1. Create an app at [dashboard.plaid.com](https://dashboard.plaid.com) and copy your `client_id` and secret.
+2. Add them to `.env` and restart.
+3. Go to **Settings → Plaid**, connect a bank, and choose a bucket (Savings, Investments, Assets or Debt) for each account.
+4. Import transactions from **Transactions → Import → Connect with Plaid**. They go through the same categorization and review flow as file imports.
+
+Plaid's free tier has limited transaction history; production use needs a paid plan. See [plaid.com/pricing](https://plaid.com/pricing).
+
+## How Budgeting Works
+
+- **Category groups** (Housing, Food…) contain **categories** (Rent, Groceries…). Transactions and monthly planned amounts attach to categories.
+- **System categories**: Income, Excluded (transfers and card payments, ignored in totals) and Uncategorized.
+- **Recurring bills**: toggle "Recurring bill" on a category. Home shows bills as paid of total, flags bills due in the next 7 days (from last month's payment day), and leaves them out of the spending pace.
+- **Savings goals**: toggle "Savings goal" and set a target. Goal transactions count as saving, not spending.
+- **Saved** on Home is income minus bills minus spending. For the current month, Home also projects where you will land by month end.
+
+More detail in [`docs/budget-system-strategy.md`](docs/budget-system-strategy.md) and [`docs/plans/home-dashboard-plan.md`](docs/plans/home-dashboard-plan.md).
+
+## Adding Bank Formats
+
+Most banks work through the custom CSV import with auto-detected columns and saved templates (**Settings → Templates**). To add a dedicated parser:
+
+1. Copy `lib/parsers/banks/_template.ts` to `lib/parsers/banks/yourbank.ts`.
+2. Implement the `BankParser` interface.
+3. Register it in `lib/parsers/index.ts`.
+
+See [`lib/parsers/README.md`](lib/parsers/README.md).
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Database**: SQLite via better-sqlite3 + Drizzle ORM
-- **UI**: shadcn/ui + Radix UI + Tailwind CSS
-- **Charts**: Recharts
-- **File Parsing**: PapaParse (CSV) + SheetJS (Excel)
-- **Scheduling**: node-cron (for automatic snapshots)
+- **Framework**: Next.js 16.1 (App Router), React 19.2, TypeScript 5
+- **Database**: SQLite via better-sqlite3 12 and Drizzle ORM 0.45
+- **Data fetching**: SWR 2
+- **UI**: shadcn/ui (Maia style, zinc + lime) on Radix UI, Tailwind CSS 4
+- **Charts**: Recharts 2.15
+- **Tables and trees**: TanStack Table 8, Headless Tree, dnd-kit
+- **File parsing**: PapaParse (CSV), SheetJS (Excel)
+- **Auth**: bcrypt password hashing with cookie sessions
+- **Scheduling**: node-cron 4 (production only)
+- **Banking**: Plaid Node SDK
 
 ## Contributing
 
-Contributions are welcome! Whether it's:
-
-- Adding support for new banks
-- Bug fixes
-- Feature improvements
-- Documentation
-
-Please open an issue first to discuss major changes.
+Contributions are welcome: bank formats, bug fixes, features and docs. Please open an issue first to discuss major changes.
 
 ## License
 
-[MIT](LICENSE) — Free to use, modify, and distribute.
+[MIT](LICENSE). Free to use, modify and distribute.
