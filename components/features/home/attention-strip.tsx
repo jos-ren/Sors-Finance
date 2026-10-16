@@ -32,10 +32,11 @@ export function AttentionStrip({ summary }: { summary: HomeSummary }) {
   const hasItems =
     attention.uncategorized > 0 || attention.pendingReview > 0 || attention.overspent.length > 0 || bills.dueSoon.length > 0;
 
+  if (!hasItems) return null;
+
   return (
     <Card className="flex flex-row flex-wrap items-center gap-2 px-4 py-3">
       <span className="mr-2 text-sm font-medium">Needs attention</span>
-      {!hasItems && <span className="text-xs text-muted-foreground">All clear</span>}
       {attention.pendingReview > 0 && <Chip href="/transactions">{attention.pendingReview} to review</Chip>}
       {attention.uncategorized > 0 && <Chip href="/transactions">{attention.uncategorized} uncategorized</Chip>}
       {attention.overspent.map((o) => (

@@ -42,7 +42,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, Plus, PiggyBank, TrendingUp, Home } from "lucide-react";
 import { toast } from "sonner";
-import { invalidatePortfolio } from '@/hooks/use-database';
+import { syncItemBalances } from "./sync-item-balances";
 import { usePrivacy } from "@/contexts/privacy-context";
 
 type BucketType = "Savings" | "Investments" | "Assets" | "Debt";
@@ -372,15 +372,8 @@ export function PlaidBucketSelector({
         }
       }
 
-      // Sync balances immediately after creating accounts so they don't show as $0
-      if (mode === 'create') {
-        fetch("/api/plaid/balances", { method: "POST" })
-          .then(() => invalidatePortfolio())
-          .catch((err) => console.error("Auto balance sync failed:", err));
-      }
-
-      // Invalidate portfolio cache to refresh UI
-      invalidatePortfolio();
+      // Pull this bank's balances now so new items don't show as $0 until the next Sync All
+      await syncItemBalances(itemId);
 
       onConfirm();
       onOpenChange(false);
