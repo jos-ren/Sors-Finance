@@ -4,248 +4,205 @@ This file provides guidance to Agents when working with code in this repository.
 
 ## Project Overview
 
-A local-first Next.js web application for budget tracking, transaction categorization, and net worth tracking. Data persists in SQLite via Drizzle ORM. Supports scheduled portfolio snapshots when running in Docker.
+A self-hosted Next.js app for zero-based budgeting, transaction categorization and net worth tracking. Data persists in SQLite via Drizzle ORM. Multi-user with local accounts (every row is scoped by `userId`). Supports scheduled net worth snapshots in production.
 
-**Theme**: shadcn/ui Maia style with zinc base color and lime accent.
+**Theme**: shadcn/ui Maia style (`radix-maia`) with zinc base color and lime accent.
 
 ## Commands
 
 ```bash
-npm run dev      # Start development server (http://localhost:3000)
-npm run build    # Production build
-npm run lint     # Run ESLint
-npm run db:generate  # Generate Drizzle migrations
-npm run db:migrate   # Run Drizzle migrations
+npm run dev          # Start development server (http://localhost:3000)
+npm run build        # Production build
+npm run lint         # Run ESLint
+npm run db:generate  # Generate a Drizzle migration from lib/db/schema.ts
+npm run db:migrate   # Apply migrations (also applied automatically on startup)
 npm run db:studio    # Open Drizzle Studio
 ```
+
+There is no test framework. Verify with `npm run lint` and by exercising the app. `sors-test-data.json` (repo root) is a realistic two-year backup to load via Settings → Import Data; it replaces the current user's data.
+
+## Conventions and Gotchas
+
+- **Months are 0-based** (0–11) everywhere: `budgets.month`, `planned_income.month`, API params, `?month=` deep links.
+- **One-FK rule for transactions**: a transaction has at most one of `budgetItemId` (a budget category) or `categoryId` (a system category: Income / Excluded / Uncategorized). Both null means uncategorized. Enforced in code via `lib/budget/normalize-assignment.ts`.
+- **NULL-safe filters**: because budget-assigned rows have `categoryId = NULL`, never filter with a bare `ne(categoryId, x)` (SQL `NULL != x` is unknown and drops the row). Use `or(isNull(categoryId), ne(categoryId, x))`.
+- **Money classes go through one helper**: `lib/budget/classify.ts` `classifyCategory()` returns `"bill" | "saving" | "spending"` (`isRecurring` → bill, goal → saving, else spending). Do not read `itemType` / `isRecurring` directly for these decisions. The goals concept will be refactored later and this is the seam.
+- **Naming**: in the DB the budget leaf is `budget_subcategories` and transactions reference it as `budgetItemId`; in the UI it is called a "Category" under a "Category Group". The `categories` table holds only the three system categories.
+- **Migrations**: edit `lib/db/schema.ts`, run `npm run db:generate -- --name <name>`, commit the SQL and `drizzle/meta` files. One-off data transforms live in `lib/db/data-migrations.ts` (guarded by `data_migrations` marker rows).
+- **New fields on categories** must be threaded through: `lib/db/types.ts`, `lib/db/client/budget-hierarchy.ts` inputs, the subcategory POST/PUT routes, `lib/budget/types.ts` + `app/api/budget/tree/route.ts`, and backup import in `app/api/data/route.ts`.
+- **SWR cache keys** are invalidated by prefix (`invalidateTransactions`, `invalidateBudgets`, `invalidatePortfolio` in `hooks/use-database.ts`; `invalidateBudgetHierarchy`, `invalidateBudgetTree` in `hooks/use-budget.ts`). A new derived read model needs its prefix added (Home uses `home/…`).
+- **Amounts**: format with `usePrivacy().formatAmount(amount, currency, showCode)` so privacy mode masks them; chart axes use `formatAxisAmount` and round ticks from `lib/utils/chart-ticks.ts`.
+- **Per-browser view preferences** (chart ranges and similar) use `usePersistentState` from `hooks/use-persistent-state.ts` (localStorage, hydration-safe).
+- **Pages that read `useSearchParams`** on a static route must render inside `<Suspense>` (see `app/(main)/budget/page.tsx`).
 
 ## Architecture
 
 ### App Structure (Next.js App Router)
 
-- `/` - Dashboard with charts (income vs expenses, category breakdown)
-- `/transactions` - Import history + transaction data table
-- `/budget` - Budget categories with spending progress
-- `/categories` - Category management with keywords
-- `/portfolio` - Net worth tracking (savings, investments, assets, debt)
-- `/settings` - App settings and data management
+Routes under `app/(main)` require a session (`middleware.ts` checks the `sors_session` cookie); `app/(auth)` holds `/login` and `/register`.
 
-Sidebar navigation in `components/AppSidebar.tsx`, wrapped by `SidebarLayout.tsx`.
+- `/` - **Home**: budget status card (left to spend, pace chart, 12 month history), net worth card (range chips), Income / Bills / Saved tiles, Needs attention strip, rolling 3/6/12 month trends
+- `/budget` - Monthly budget tree, money-flow Sankey, yearly totals; accepts `?year=&month=`
+- `/budget/builder` - Edit groups, categories, keywords and planned amounts
+- `/budget/category/[categoryId]` - Category detail for a month
+- `/goals`, `/goals/[goalId]` - Savings goals (sinking funds)
+- `/transactions` - Review inbox, import, transaction table
+- `/portfolio` - **Accounts** (labelled "Accounts" in the UI): net worth summary, allocation of owned assets, bucket cards with month change, history links
+- `/portfolio/{savings,investments,assets,debt}` - Per-bucket accounts and items
+- `/portfolio/history`, `/portfolio/snapshots` - Item change history and snapshot management
+- `/settings` (+ `keywords`, `templates`, `snapshots`, `plaid`, `finnhub`, `logs`, `developer`) - Settings, data export/import
+
+Sidebar: `components/features/layout/app-sidebar.tsx`. Page titles feed the sticky header via `useSetPageHeader` (`contexts/page-header-context.tsx`).
+
+### Budget Model
+
+Two levels: **Category Group → Category** (see `docs/budget-system-strategy.md`).
+
+- Categories carry keywords, `itemType` (`expense` | `goal`), `targetAmount` / `targetDate` for goals, and `isRecurring` for fixed monthly bills.
+- Planned amounts are rows in `budgets` (one per category per month). `planned_income` holds an optional expected income per month.
+- Goals are sinking funds: contributed = sum of planned amounts, spent = goal-category transactions (`lib/budget/goals-db.ts`).
+- Default hierarchy for new users: `lib/db/budget-hierarchy-data.ts`, seeded by `lib/db/budget-seed.ts`.
+
+### Home Summary
+
+`GET /api/home?year=&month=` (`app/api/home/route.ts`, types in `lib/budget/home-types.ts`) computes in one pass over the selected month plus the previous 12:
+
+- Spending budget, spent, cumulative-by-day pace, pace status
+- Bills budget, paid, due soon (no transaction yet this month and last month's payment day within 7 days)
+- Saving: income (Income category), planned to goals, saved = income − bills − spending, rate, and for the current month a month-end projection (planned income or last month's income)
+- 12 month spending history; attention items (pending review, uncategorized, meaningful overspends)
+
+Uncategorized money out counts as spending; Excluded rows are ignored. Plan and decisions: `docs/plans/home-dashboard-plan.md`.
 
 ### Transaction Import Flow
 
-1. **File Upload** → Bank auto-detected via parser registry (filename patterns + content validation)
-2. **Parsing** → Bank-specific parsers convert to unified `Transaction` format
-3. **Categorization** → Keyword matching against categories (case-insensitive, partial match)
-4. **Resolution** → User resolves conflicts (multi-category matches) and unassigned transactions
-5. **Results** → Transactions saved via API to SQLite
+`components/features/transactions/import-dialog.tsx`:
+
+1. **Source**: file upload (`.csv`, `.xlsx`, `.xls`) or Plaid
+2. **Parsing**: parser registry (`lib/parsers`) with the custom column-mapping parser and auto-detection (`column-detection.ts`); mappings can be saved as templates (`custom_import_templates`)
+3. **Dedup**: exact duplicates are silently discarded
+4. **Categorization** (`lib/categories/categorizer.ts`): user keywords first (match modes in `lib/categories/keyword.ts`). A single match is trusted; multiple matches are a conflict
+5. **Gap fill**: unmatched rows get a suggestion from the global dictionary (`lib/categories/global-dictionary.ts`)
+6. **Insert** with `reviewStatus`: trusted matches are `reviewed`; conflicts, suggestions and unknowns are `pending` and appear in the review inbox (`review-inbox.tsx`)
 
 ### Bank Parser Architecture (Extensible)
 
-The parser system uses a registry pattern for easy extension. To add a new bank:
+1. Create `lib/parsers/banks/yourbank.ts` implementing `BankParser` (start from `_template.ts`)
+2. Register it in `lib/parsers/index.ts`
+3. See `lib/parsers/README.md`
 
-1. Create `lib/parsers/banks/yourbank.ts` implementing `BankParser` interface
-2. Register in `lib/parsers/index.ts`
-3. See `lib/parsers/banks/_template.ts` for a starter template
-4. See `lib/parsers/README.md` for full documentation
-
-**Parser files:**
-- `lib/parsers/types.ts` - BankParser interface and types
-- `lib/parsers/utils.ts` - Shared parsing utilities
-- `lib/parsers/index.ts` - Registry with `detectBank()`, `parseFile()`, `getAllBankMeta()`
-- `lib/parsers/banks/*.ts` - Individual bank implementations
+Parser files: `types.ts` (interfaces), `utils.ts` (shared helpers, Excel via SheetJS), `index.ts` (`detectBank()`, `parseFile()`, `getAllBankMeta()`), `banks/custom.ts` (custom mapping parser).
 
 ### Database Architecture
 
-Uses SQLite with Drizzle ORM. Data flows: Client → API Routes → SQLite.
+SQLite with Drizzle ORM. Data flows: Client → API routes → SQLite.
 
-**Schema & Connection (`lib/db/`):**
-- `schema.ts` - Drizzle schema definitions (8 tables)
-- `connection.ts` - SQLite connection with WAL mode
-- `migrate.ts` - Migration runner for app startup
-- `seed.ts` - Default category seeding
-- `types.ts` - TypeScript type definitions
-- `index.ts` - Barrel export
+**Schema & connection (`lib/db/`):**
+- `schema.ts` - 20 tables: `users`, `sessions`, `categories`, `budget_groups`, `budget_subcategories`, `transactions`, `budgets`, `planned_income`, `imports`, `settings`, `portfolio_accounts`, `portfolio_items`, `portfolio_item_history`, `portfolio_snapshots`, `custom_import_templates`, `currency_exchange_rates`, `system_logs`, `data_migrations`, `plaid_items`, `plaid_accounts`
+- `connection.ts` - SQLite connection (WAL mode)
+- `migrate.ts` - Runs Drizzle SQL migrations, then `data-migrations.ts`, on startup
+- `seed.ts` - System categories and default settings per user
+- `types.ts` - Shared TypeScript types (`SYSTEM_CATEGORIES`, `Db*` row types)
 
-**API Routes (`app/api/`):**
-- `categories/` - Category CRUD, reordering
-- `transactions/` - Transaction CRUD, bulk operations, aggregations
-- `budgets/` - Budget CRUD, copy operations
-- `imports/` - Import history
-- `settings/` - Key-value settings
-- `portfolio/` - Accounts, items, snapshots, summary
-- `scheduler/` - Snapshot schedule configuration
-- `migrate/` - Data migration endpoint
+**Auth (`lib/auth/`):** bcrypt passwords, cookie sessions. API routes call `requireAuth(request)` from `lib/auth/api-helper.ts` and scope every query by `userId`.
 
-**Client Wrappers (`lib/db/client/`):**
-- Fetch-based API wrappers matching old function signatures
-- Used by hooks for data access
+**API routes (`app/api/`):** `auth`, `budget` (groups, subcategories, hierarchy, tree), `budgets` (planned amounts, copy, income, yearly summary), `categories`, `keywords`, `goals`, `home`, `transactions` (CRUD, bulk, aggregations), `imports`, `custom-import-templates`, `portfolio` (accounts, items, history, snapshots, summary), `plaid`, `stock`, `crypto`, `metals`, `exchange-rate`, `integrations`, `scheduler`, `settings`, `system-logs`, `data` (export, import, clear).
 
-**Hooks (`lib/hooks/useDatabase.ts`):**
-- SWR-based hooks for reactive data fetching
-- Cache invalidation helpers
-- ~30 hooks for all data operations
+**Client wrappers (`lib/db/client/`):** fetch-based functions per area, barrel-exported from `index.ts`.
+
+**Hooks (`hooks/`):** SWR hooks in `use-database.ts` (transactions, aggregations, home, portfolio, snapshots, `useNetWorthRange`), `use-budget.ts` (hierarchy, tree, mutations), `use-goals.ts`, plus `use-persistent-state.ts`, `use-stock-price.ts`, `use-mobile.ts`. Import from `@/hooks`.
 
 ### Sync and Snapshot Logic
 
-The app has two separate but related concepts: **syncing** (updating current data) and **snapshots** (recording historical data).
+**Syncing** updates current data; **snapshots** record history.
 
 #### Currency Exchange Rate Caching
 
-To minimize API calls, exchange rates are cached in the database with a 24-hour lifetime:
+Three layers: in-memory (1 hour) → database `currency_exchange_rates` (24 hours) → Frankfurter API (free, no key). The cache is pre-warmed (all pairs the user's portfolio needs, 5 at a time) during Sync All, the first-load snapshot and the scheduled snapshot.
 
-**3-Layer Cache System:**
-1. **In-Memory Cache** - 1 hour (fastest, but resets on server restart)
-2. **Database Cache** - 24 hours (persistent across restarts)
-3. **API Fallback** - Frankfurter API (free, no key required)
+- `lib/services/currency-cache.ts` - `warmCurrencyCache()`, needed pairs
+- `app/api/exchange-rate/route.ts` - Rate endpoint with the 3-layer cache
 
-**Pre-warming Strategy:**
-- During "Sync All", first-load snapshot, and scheduled snapshot
-- System identifies all currency pairs needed for user's portfolio (e.g., USD→CAD, EUR→CAD)
-- Fetches fresh rates for all pairs in parallel (batch of 5 at a time)
-- Stores in database for 24 hours
-- Dramatically reduces redundant API calls during portfolio rendering
+#### Syncing ("Sync All" button)
 
-**Key Files:**
-- `lib/currency-cache.ts` - Cache warming utilities
-- `app/api/exchange-rate/route.ts` - Exchange rate endpoint with 3-layer cache
+1. Pre-warms the currency cache
+2. Updates Plaid account balances (if connected)
+3. Refreshes prices: stocks → Finnhub (Yahoo fallback, needs `FINNHUB_API_KEY`), crypto → CoinGecko, metals → metals API (`lib/services/quotes.ts`)
+4. Creates or updates today's snapshot via `/api/portfolio/snapshots/today`
 
-#### Syncing ("Sync All" Button)
+Continues past individual failures and reports them in an expandable banner.
 
-**What it does:**
-1. Pre-warms currency cache with all needed exchange rates
-2. Updates Plaid account balances from your bank (if Plaid is connected)
-3. Refreshes current prices for all investments (stocks, crypto, metals)
-4. Automatically creates/updates today's snapshot after syncing
+- `components/features/plaid/plaid-sync-button.tsx` - Button and snapshot trigger
+- `components/features/plaid/plaid-sync-banner.tsx` - Results banner
+- `app/api/plaid/balances/route.ts` - Sync endpoint (currency cache → accounts → prices)
 
-**How it works:**
-- User clicks "Sync All" button → calls `/api/plaid/balances`
-- Syncs all connected Plaid accounts and captures any errors
-- Refreshes prices for all portfolio items (stocks, crypto, metals) by routing to correct API:
-  - Stocks → Finnhub API (with Yahoo fallback)
-  - Crypto → CoinGecko API (no key required)
-  - Metals → Metals API (no key required)
-- Returns detailed results with accounts synced/failed and prices updated/failed
-- After successful sync, automatically calls `/api/portfolio/snapshots/today` to create/update today's snapshot
-- Shows expandable banner at top of portfolio page with detailed sync results
+#### Snapshots
 
-**Error handling:**
-- Continues even if some accounts or items fail
-- Collects all errors and shows them to user in expandable details
-- Requires Finnhub API key only if stocks are present
+Point-in-time totals (savings, investments, assets, debt, net worth) plus per-account/item `details`. One per day (created or updated). Created:
 
-#### Snapshots (Historical Records)
+1. **After Sync All** (always, ignores settings)
+2. **First app load of each day**: `app/(main)/layout.tsx` checks `localStorage` (`lastSnapshotCheck`) and calls `/api/portfolio/snapshots/first-load` (respects settings)
+3. **Scheduled** (production only, `NODE_ENV=production`): `lib/services/scheduler.ts` via node-cron, started from `instrumentation.ts` (respects settings)
 
-**What they are:**
-- Point-in-time records of your portfolio (total savings, investments, assets, debt, net worth)
-- Used to build net worth charts and track changes over time
-- One snapshot per day (creates new or updates existing)
+Settings keys: `SNAPSHOT_ENABLED`, `SNAPSHOT_TIME` (default `03:00`), `TIMEZONE`, `PLAID_SYNC_WITH_SNAPSHOT`, `PRICE_REFRESH_WITH_SNAPSHOT`.
 
-**When they're created:**
+### Environment Variables
 
-1. **After "Sync All" button** (always)
-   - After syncing accounts and refreshing prices, automatically creates/updates today's snapshot
-   - Uses fresh data from the sync that just completed
-
-2. **First app load of each day** (once per day)
-   - App checks localStorage for last snapshot date
-   - If it's a new day, triggers snapshot creation
-   - Respects scheduler settings (can optionally sync Plaid and refresh prices first)
-   - Runs silently in background 2 seconds after app loads
-
-3. **Scheduled (cron job)** (optional, production only)
-   - Runs at configured time (default: 3 AM daily)
-   - Only runs in production mode (`NODE_ENV=production`)
-   - Respects scheduler settings (can optionally sync Plaid and refresh prices first)
-   - Enabled/disabled via Settings page
-
-**Snapshot Settings (in Settings page):**
-- `SNAPSHOT_ENABLED` - Whether scheduled snapshots run (true/false)
-- `SNAPSHOT_SCHEDULE_TIME` - What time scheduled snapshots run (default: "03:00")
-- `PLAID_SYNC_WITH_SNAPSHOT` - Sync Plaid accounts before creating snapshot (true/false)
-- `PRICE_REFRESH_WITH_SNAPSHOT` - Refresh investment prices before creating snapshot (true/false)
-
-**Important:** The "Sync All" button always creates a snapshot after syncing (ignores settings), but first-load and scheduled snapshots respect the settings.
-
-#### Key Files
-
-**Sync:**
-- `components/plaid/PlaidSyncButton.tsx` - "Sync All" button and snapshot trigger
-- `components/plaid/PlaidSyncBanner.tsx` - Expandable results banner
-- `app/api/plaid/balances/route.ts` - Main sync endpoint (currency cache → accounts → prices)
-
-**Snapshots:**
-- `app/(main)/layout.tsx` - First-load detection (checks localStorage)
-- `app/api/portfolio/snapshots/first-load/route.ts` - First-load snapshot handler (includes cache warming)
-- `app/api/portfolio/snapshots/today/route.ts` - Creates/updates today's snapshot
-- `lib/scheduler.ts` - Scheduled snapshot task (cron job with cache warming)
-- `instrumentation.ts` - Initializes scheduler on app startup
-
-**Currency Caching:**
-- `lib/currency-cache.ts` - Cache warming utilities, identifies needed pairs
-- `app/api/exchange-rate/route.ts` - 3-layer cache (memory → database → API)
-- `lib/db/schema.ts` - `currencyExchangeRates` table definition
-
-### Scheduler
-
-Scheduled tasks run via node-cron (production only).
-
-- `lib/scheduler.ts` - node-cron scheduler
-- `instrumentation.ts` - Next.js startup hook
-- Only active in production (`NODE_ENV=production`)
-- Configurable via Settings page
+Server-only, read from `.env` (no example file is committed): `FINNHUB_API_KEY`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, optional `PLAID_SECRET_SANDBOX` / `PLAID_SECRET_PRODUCTION` (`lib/plaid/client.ts`).
 
 ### Docker
 
 ```bash
-docker compose up -d    # Start container
+docker compose up -d    # Start container (needs a .env file, can be empty)
 docker compose down     # Stop container
 ```
 
-Data persists in `sors-data` volume. Port bound to localhost only (127.0.0.1:3000).
+Data persists in the `sors-data` volume. Port bound to localhost only (`127.0.0.1:3000`).
 
 ### Other Key Modules
 
-- `lib/constants.ts` - Shared constants (BUCKET_TYPES, SYSTEM_CATEGORIES, etc.)
-- `lib/formatters.ts` - Formatting utilities (currency, dates, percentages)
-- `lib/categorizer.ts` - Keyword matching and categorization logic
-- `lib/types.ts` - TypeScript interfaces (Transaction, Category, etc.)
+- `lib/constants/index.ts` - Shared constants (bucket types, system categories, API URLs, storage keys)
+- `lib/utils/formatters.ts` - Currency (incl. compact axis), number, percent, date formatting
+- `lib/utils/chart-ticks.ts` - `niceTicks()` round axis steps
+- `lib/budget/` - `classify.ts`, `home-types.ts`, `types.ts` (tree shapes), `effective-tree.ts`, `goals-db.ts`, `hierarchy-db.ts`, `normalize-assignment.ts`
+- `lib/categories/` - Categorizer, keyword match modes, global dictionary
+- `lib/services/` - Quotes, currency cache, scheduler, system log
+- `lib/icons/` - Bank, stock, crypto, account and asset logos
 
 ### UI Components
 
-Located in `components/`:
-- `AppSidebar.tsx` - Main navigation sidebar
-- `SidebarLayout.tsx` - Layout wrapper with SidebarProvider
-- `TransactionImporter.tsx` - Full import wizard (upload → resolve → results)
-- `TransactionDataTable.tsx` - Transaction list with filtering/sorting
-- `FileUpload.tsx` - Drag/drop file upload with bank detection
-- `CategoryManager.tsx` - CRUD for categories with drag-to-reorder (dnd-kit)
-- `ConflictResolver.tsx` - Handle transactions matching multiple categories
-- `UncategorizedList.tsx` - Assign categories to unmatched transactions
-- `DatabaseProvider.tsx` - Database initialization wrapper
+`components/features/`:
+- `home/` - `budget-status-card`, `net-worth-card`, `summary-tiles`, `attention-strip`, `trends-section`, `card-title-link`
+- `budget/` - Budget tree, summary hero, Sankey, period navigator, category detail dialog (keywords, Recurring bill and Savings goal toggles), builder, goal progress
+- `transactions/` - Import dialog, file upload, column mapping, review inbox, data table, add/edit dialogs
+- `portfolio/` - Bucket cards and pages, account sections, item dialogs, ticker search
+- `plaid/` - Link button, bank connections, sync button and banner
+- `layout/` - App sidebar, database provider
 
-Radix UI primitives in `components/ui/` (shadcn/ui Maia style). Charts use Recharts via shadcn/ui chart component.
+Primitives in `components/ui/` (shadcn/ui Maia). Charts use Recharts through the shadcn chart component (`components/ui/chart.tsx`).
 
 ### State Management
 
-- React useState/useEffect for UI state
-- SWR for server state (caching, revalidation)
+- React state for UI; SWR for server state
 - SQLite for persistent data (via API routes)
-- Context providers for theme, privacy mode, page header, and snapshots
+- Contexts (`contexts/`): auth, settings (currency, timezone), privacy mode, page header, snapshot progress, currency rates, unsaved changes
+- `localStorage` only for per-browser preferences (`usePersistentState`, privacy mode, first-load snapshot check)
 
 ## Path Alias
 
-`@/*` maps to `./` (configured in tsconfig.json) - no `src/` prefix in this project.
+`@/*` maps to `./` (configured in `tsconfig.json`); there is no `src/` folder.
 
 ## Dependencies of Note
 
-- `better-sqlite3` - SQLite database driver
-- `drizzle-orm` - TypeScript ORM for SQLite
-- `swr` - React hooks for data fetching
-- `node-cron` - Scheduled task runner
-- `papaparse` - CSV parsing
-- `xlsx` - Excel parsing
-- `@dnd-kit/*` - Drag and drop for category reordering
-- `sonner` - Toast notifications
+- `next` 16.1, `react` 19.2, `tailwindcss` 4
+- `better-sqlite3`, `drizzle-orm` / `drizzle-kit` - Database
+- `swr` - Data fetching
 - `recharts` - Charts (via shadcn/ui)
-- `@tanstack/react-table` - Data tables
+- `@tanstack/react-table`, `@tanstack/react-virtual` - Tables
+- `@headless-tree/react`, `@dnd-kit/*` - Budget tree and drag to reorder
+- `papaparse`, `xlsx` - CSV and Excel parsing
+- `node-cron` - Scheduled snapshots
+- `plaid` - Bank connections
+- `bcrypt` - Password hashing
+- `sonner` - Toasts
+- `date-fns` - Dates
