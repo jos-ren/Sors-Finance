@@ -3,7 +3,8 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte, isNotNull } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES, type BudgetItemType } from "@/lib/db/types";
-import type { YearlySummary, YearlySummaryGroup, YearlySummaryCategory } from "@/lib/budget/types";
+import type { YearlySummary, YearlySummaryGroup, YearlySummaryCategory, YearlySummaryProject } from "@/lib/budget/types";
+import { isSeparateProject } from "@/lib/budget/classify";
 
 const zeros = () => new Array(12).fill(0) as number[];
 
@@ -19,14 +20,24 @@ export async function GET(request: NextRequest) {
     const startDate = new Date(year, 0, 1);
     const endDate = new Date(year, 11, 31, 23, 59, 59);
 
-    const [groups, categories, budgetRows] = await Promise.all([
+    const [groups, categories, budgetRows, projectRows] = await Promise.all([
       db.select().from(schema.budgetGroups).where(eq(schema.budgetGroups.userId, userId)),
       db.select().from(schema.budgetSubcategories).where(eq(schema.budgetSubcategories.userId, userId)),
       db
         .select()
         .from(schema.budgets)
         .where(and(eq(schema.budgets.userId, userId), eq(schema.budgets.year, year))),
+      db
+        .select({
+          id: schema.projects.id,
+          name: schema.projects.name,
+          color: schema.projects.color,
+          fundedSeparately: schema.projects.fundedSeparately,
+        })
+        .from(schema.projects)
+        .where(eq(schema.projects.userId, userId)),
     ]);
+    const projectOf = new Map(projectRows.map((p) => [p.id, p]));
 
     // planned[categoryId][month]
     const plannedByCategory = new Map<number, number[]>();
@@ -35,10 +46,12 @@ export async function GET(request: NextRequest) {
       if (b.month >= 0 && b.month < 12) plannedByCategory.get(b.budgetItemId)![b.month] += b.amount;
     }
 
-    // actual[categoryId][month] from transactions in the year
+    // actual[categoryId][month] from transactions in the year. Separately
+    // funded project spend is tallied per project instead.
     const txRows = await db
       .select({
         categoryId: schema.transactions.budgetItemId,
+        projectId: schema.transactions.projectId,
         date: schema.transactions.date,
         amountOut: schema.transactions.amountOut,
         amountIn: schema.transactions.amountIn,
@@ -53,8 +66,17 @@ export async function GET(request: NextRequest) {
         )
       );
     const actualByCategory = new Map<number, number[]>();
+    const projectsByMonth = zeros();
+    const projectTotals = new Map<number, number>();
     for (const t of txRows) {
       if (t.categoryId === null) continue;
+      const project = t.projectId != null ? projectOf.get(t.projectId) : undefined;
+      if (project && isSeparateProject(project)) {
+        const net = t.amountOut - t.amountIn;
+        projectsByMonth[t.date.getMonth()] += net;
+        projectTotals.set(project.id, (projectTotals.get(project.id) ?? 0) + net);
+        continue;
+      }
       if (!actualByCategory.has(t.categoryId)) actualByCategory.set(t.categoryId, zeros());
       const m = t.date.getMonth();
       actualByCategory.get(t.categoryId)![m] += t.amountOut - t.amountIn;
@@ -136,6 +158,14 @@ export async function GET(request: NextRequest) {
       incomeByMonth,
       plannedByMonth: totalPlanned,
       actualByMonth: totalActual,
+      projectsByMonth,
+      projects: [...projectTotals.entries()]
+        .map(([id, total]) => {
+          const p = projectOf.get(id)!;
+          return { id, name: p.name, color: p.color, total: Math.round(total * 100) / 100 } satisfies YearlySummaryProject;
+        })
+        .filter((p) => p.total !== 0)
+        .sort((a, b) => b.total - a.total),
     };
 
     return NextResponse.json({ data: summary, success: true });

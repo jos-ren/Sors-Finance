@@ -14,7 +14,7 @@ import {
   ChevronRight,
   Settings,
   Loader2,
-  Target,
+  FolderKanban,
 } from "lucide-react";
 import { useUnsavedChanges } from "@/contexts/unsaved-changes-context";
 import {
@@ -48,9 +48,9 @@ const navItems = [
     icon: Wallet,
   },
   {
-    title: "Goals",
-    url: "/goals",
-    icon: Target,
+    title: "Projects",
+    url: "/projects",
+    icon: FolderKanban,
   },
   {
     title: "Transactions",

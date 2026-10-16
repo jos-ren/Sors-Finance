@@ -26,11 +26,12 @@ There is no test framework. Verify with `npm run lint` and by exercising the app
 - **Months are 0-based** (0–11) everywhere: `budgets.month`, `planned_income.month`, API params, `?month=` deep links.
 - **One-FK rule for transactions**: a transaction has at most one of `budgetItemId` (a budget category) or `categoryId` (a system category: Income / Excluded / Uncategorized). Both null means uncategorized. Enforced in code via `lib/budget/normalize-assignment.ts`.
 - **NULL-safe filters**: because budget-assigned rows have `categoryId = NULL`, never filter with a bare `ne(categoryId, x)` (SQL `NULL != x` is unknown and drops the row). Use `or(isNull(categoryId), ne(categoryId, x))`.
-- **Money classes go through one helper**: `lib/budget/classify.ts` `classifyCategory()` returns `"bill" | "saving" | "spending"` (`isRecurring` → bill, goal → saving, else spending). Do not read `itemType` / `isRecurring` directly for these decisions. The goals concept will be refactored later and this is the seam.
+- **Money classes go through one helper**: `lib/budget/classify.ts`. `classifyCategory()` returns `"bill" | "saving" | "spending"` (`itemType: "saving"` → saving, `isRecurring` → bill, else spending). `classifyTransaction()` / `isSeparateProject()` add `"project"`: a transaction in a project with `fundedSeparately` leaves the monthly spending math (Home pace, left to spend, Budget category actuals, yearly totals, trends) and is reported per project instead, but still counts against Saved. Do not read `itemType` / `isRecurring` / `fundedSeparately` directly for these decisions. `toItemType()` maps the legacy `"goal"` to `"saving"`.
+- **Projects are a second dimension**: `transactions.projectId` (at most one project) sits alongside the one-FK category rule and never changes it. The category says what, the project says why. Assign through `PATCH /api/transactions/project` or the transaction routes; project keywords match only inside the project's date window (`lib/projects/match.ts`).
 - **Naming**: in the DB the budget leaf is `budget_subcategories` and transactions reference it as `budgetItemId`; in the UI it is called a "Category" under a "Category Group". The `categories` table holds only the three system categories.
 - **Migrations**: edit `lib/db/schema.ts`, run `npm run db:generate -- --name <name>`, commit the SQL and `drizzle/meta` files. One-off data transforms live in `lib/db/data-migrations.ts` (guarded by `data_migrations` marker rows).
 - **New fields on categories** must be threaded through: `lib/db/types.ts`, `lib/db/client/budget-hierarchy.ts` inputs, the subcategory POST/PUT routes, `lib/budget/types.ts` + `app/api/budget/tree/route.ts`, and backup import in `app/api/data/route.ts`.
-- **SWR cache keys** are invalidated by prefix (`invalidateTransactions`, `invalidateBudgets`, `invalidatePortfolio` in `hooks/use-database.ts`; `invalidateBudgetHierarchy`, `invalidateBudgetTree` in `hooks/use-budget.ts`). A new derived read model needs its prefix added (Home uses `home/…`).
+- **SWR cache keys** are invalidated by prefix (`invalidateTransactions`, `invalidateBudgets`, `invalidatePortfolio` in `hooks/use-database.ts`; `invalidateBudgetHierarchy`, `invalidateBudgetTree` in `hooks/use-budget.ts`). A new derived read model needs its prefix added (Home uses `home/…`; projects use `projects` and `project/<id>`, invalidated with transactions).
 - **Amounts**: format with `usePrivacy().formatAmount(amount, currency, showCode)` so privacy mode masks them; chart axes use `formatAxisAmount` and round ticks from `lib/utils/chart-ticks.ts`.
 - **Per-browser view preferences** (chart ranges and similar) use `usePersistentState` from `hooks/use-persistent-state.ts` (localStorage, hydration-safe).
 - **Pages that read `useSearchParams`** on a static route must render inside `<Suspense>` (see `app/(main)/budget/page.tsx`).
@@ -45,7 +46,7 @@ Routes under `app/(main)` require a session (`middleware.ts` checks the `sors_se
 - `/budget` - Monthly budget tree, money-flow Sankey, yearly totals; accepts `?year=&month=`
 - `/budget/builder` - Edit groups, categories, keywords and planned amounts
 - `/budget/category/[categoryId]` - Category detail for a month
-- `/goals`, `/goals/[goalId]` - Savings goals (sinking funds)
+- `/projects`, `/projects/[projectId]` - Projects: time-bound groups of transactions (trips, moves, big purchases) with totals by category and month, fund link and date-window suggestions. `/goals` redirects here (`next.config.ts`)
 - `/transactions` - Review inbox, import, transaction table
 - `/portfolio` - **Accounts** (labelled "Accounts" in the UI): net worth summary, allocation of owned assets, bucket cards with month change, history links
 - `/portfolio/{savings,investments,assets,debt}` - Per-bucket accounts and items
@@ -58,9 +59,10 @@ Sidebar: `components/features/layout/app-sidebar.tsx`. Page titles feed the stic
 
 Two levels: **Category Group → Category** (see `docs/budget-system-strategy.md`).
 
-- Categories carry keywords, `itemType` (`expense` | `goal`), `targetAmount` / `targetDate` for goals, and `isRecurring` for fixed monthly bills.
+- Categories carry keywords, `itemType` (`expense` | `saving`), an optional `targetAmount` / `targetDate` for saving categories, and `isRecurring` for fixed monthly bills.
 - Planned amounts are rows in `budgets` (one per category per month). `planned_income` holds an optional expected income per month.
-- Goals are sinking funds: contributed = sum of planned amounts, spent = goal-category transactions (`lib/budget/goals-db.ts`).
+- Saving categories (TFSA, Emergency Fund, a trip fund): progress = lifetime net transfers into the category (`contributed` on the budget tree) against the optional target.
+- Projects (`projects` table, `lib/projects/`): name, colour, start date, optional end date, optional total budget, `fundedSeparately` (default true), keywords, optional `fundCategoryId` (a saving category), notes, archive. Status (upcoming / active / done) comes from the dates. Read models in `lib/projects/projects-db.ts`, types in `lib/projects/types.ts`, dates travel as `YYYY-MM-DD`. Spike and decisions: `docs/spikes/goals-to-projects.md`; plan: `docs/plans/projects-plan.md`.
 - Default hierarchy for new users: `lib/db/budget-hierarchy-data.ts`, seeded by `lib/db/budget-seed.ts`.
 
 ### Home Summary
@@ -69,7 +71,8 @@ Two levels: **Category Group → Category** (see `docs/budget-system-strategy.md
 
 - Spending budget, spent, cumulative-by-day pace, pace status
 - Bills budget, paid, due soon (no transaction yet this month and last month's payment day within 7 days)
-- Saving: income (Income category), planned to goals, saved = income − bills − spending, rate, and for the current month a month-end projection (planned income or last month's income)
+- Saving: income (Income category), planned to savings, separately funded project spending (`toProjects`), saved = income − bills − spending − project spending, rate, and for the current month a month-end projection (planned income or last month's income)
+- `projects`: separately funded project spending in the month; each `history` month also lists its projects
 - 12 month spending history; attention items (pending review, uncategorized, meaningful overspends)
 
 Uncategorized money out counts as spending; Excluded rows are ignored. Plan and decisions: `docs/plans/home-dashboard-plan.md`.
@@ -98,7 +101,7 @@ Parser files: `types.ts` (interfaces), `utils.ts` (shared helpers, Excel via She
 SQLite with Drizzle ORM. Data flows: Client → API routes → SQLite.
 
 **Schema & connection (`lib/db/`):**
-- `schema.ts` - 20 tables: `users`, `sessions`, `categories`, `budget_groups`, `budget_subcategories`, `transactions`, `budgets`, `planned_income`, `imports`, `settings`, `portfolio_accounts`, `portfolio_items`, `portfolio_item_history`, `portfolio_snapshots`, `custom_import_templates`, `currency_exchange_rates`, `system_logs`, `data_migrations`, `plaid_items`, `plaid_accounts`
+- `schema.ts` - 21 tables: `users`, `sessions`, `categories`, `budget_groups`, `budget_subcategories`, `projects`, `transactions`, `budgets`, `planned_income`, `imports`, `settings`, `portfolio_accounts`, `portfolio_items`, `portfolio_item_history`, `portfolio_snapshots`, `custom_import_templates`, `currency_exchange_rates`, `system_logs`, `data_migrations`, `plaid_items`, `plaid_accounts`
 - `connection.ts` - SQLite connection (WAL mode)
 - `migrate.ts` - Runs Drizzle SQL migrations, then `data-migrations.ts`, on startup
 - `seed.ts` - System categories and default settings per user
@@ -106,11 +109,11 @@ SQLite with Drizzle ORM. Data flows: Client → API routes → SQLite.
 
 **Auth (`lib/auth/`):** bcrypt passwords, cookie sessions. API routes call `requireAuth(request)` from `lib/auth/api-helper.ts` and scope every query by `userId`.
 
-**API routes (`app/api/`):** `auth`, `budget` (groups, subcategories, hierarchy, tree), `budgets` (planned amounts, copy, income, yearly summary), `categories`, `keywords`, `goals`, `home`, `transactions` (CRUD, bulk, aggregations), `imports`, `custom-import-templates`, `portfolio` (accounts, items, history, snapshots, summary), `plaid`, `stock`, `crypto`, `metals`, `exchange-rate`, `integrations`, `scheduler`, `settings`, `system-logs`, `data` (export, import, clear).
+**API routes (`app/api/`):** `auth`, `budget` (groups, subcategories, hierarchy, tree), `budgets` (planned amounts, copy, income, yearly summary), `categories`, `keywords`, `projects`, `home`, `transactions` (CRUD, bulk, project assignment, aggregations), `imports`, `custom-import-templates`, `portfolio` (accounts, items, history, snapshots, summary), `plaid`, `stock`, `crypto`, `metals`, `exchange-rate`, `integrations`, `scheduler`, `settings`, `system-logs`, `data` (export, import, clear).
 
 **Client wrappers (`lib/db/client/`):** fetch-based functions per area, barrel-exported from `index.ts`.
 
-**Hooks (`hooks/`):** SWR hooks in `use-database.ts` (transactions, aggregations, home, portfolio, snapshots, `useNetWorthRange`), `use-budget.ts` (hierarchy, tree, mutations), `use-goals.ts`, plus `use-persistent-state.ts`, `use-stock-price.ts`, `use-mobile.ts`. Import from `@/hooks`.
+**Hooks (`hooks/`):** SWR hooks in `use-database.ts` (transactions, aggregations, home, portfolio, snapshots, `useNetWorthRange`), `use-budget.ts` (hierarchy, tree, mutations), `use-projects.ts` (projects, mutations, `setTransactionsProject`), plus `use-persistent-state.ts`, `use-stock-price.ts`, `use-mobile.ts`. Import from `@/hooks`.
 
 ### Sync and Snapshot Logic
 
@@ -164,7 +167,8 @@ Data persists in the `sors-data` volume. Port bound to localhost only (`127.0.0.
 - `lib/constants/index.ts` - Shared constants (bucket types, system categories, API URLs, storage keys)
 - `lib/utils/formatters.ts` - Currency (incl. compact axis), number, percent, date formatting
 - `lib/utils/chart-ticks.ts` - `niceTicks()` round axis steps
-- `lib/budget/` - `classify.ts`, `home-types.ts`, `types.ts` (tree shapes), `effective-tree.ts`, `goals-db.ts`, `hierarchy-db.ts`, `normalize-assignment.ts`
+- `lib/budget/` - `classify.ts`, `home-types.ts`, `types.ts` (tree shapes), `effective-tree.ts`, `hierarchy-db.ts`, `normalize-assignment.ts`
+- `lib/projects/` - `projects-db.ts` (summaries, detail, suggestions, input validation), `types.ts`, `dates.ts`, `match.ts` (import keywords)
 - `lib/categories/` - Categorizer, keyword match modes, global dictionary
 - `lib/services/` - Quotes, currency cache, scheduler, system log
 - `lib/icons/` - Bank, stock, crypto, account and asset logos
@@ -173,7 +177,8 @@ Data persists in the `sors-data` volume. Port bound to localhost only (`127.0.0.
 
 `components/features/`:
 - `home/` - `budget-status-card`, `net-worth-card`, `summary-tiles`, `attention-strip`, `trends-section`, `card-title-link`
-- `budget/` - Budget tree, summary hero, Sankey, period navigator, category detail dialog (keywords, Recurring bill and Savings goal toggles), builder, goal progress
+- `budget/` - Budget tree, summary hero, Sankey, period navigator, category detail dialog (keywords, Recurring bill and Saving toggles), builder, saving progress
+- `projects/` - Project dialog, card, chip, select, delete dialog
 - `transactions/` - Import dialog, file upload, column mapping, review inbox, data table, add/edit dialogs
 - `portfolio/` - Bucket cards and pages, account sections, item dialogs, ticker search
 - `plaid/` - Link button, bank connections, sync button and banner

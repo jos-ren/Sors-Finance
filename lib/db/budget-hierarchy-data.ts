@@ -38,9 +38,9 @@ export interface SeedBudgetGroup {
  * budget_hierarchy_v1 migration, still inserts against that 3-level shape on a
  * from-scratch install — see DEFAULT_BUDGET_CATEGORY_GROUPS below for the
  * live 2-level Group→Category shape used to seed new users going forward).
- * Amounts sum to $5,500 across all items. Goal items (Savings → Emergency
- * Fund and everything under Goals) carry an `itemType: 'goal'` and an
- * illustrative `targetAmount`.
+ * Amounts sum to $5,500 across all items. Saving items (everything under
+ * Savings) carry `itemType: 'saving'`; the funds have an illustrative
+ * `targetAmount`. One-off purchases and trips are Projects, not categories.
  */
 export const DEFAULT_BUDGET_HIERARCHY: SeedBudgetGroup[] = [
   {
@@ -166,43 +166,26 @@ export const DEFAULT_BUDGET_HIERARCHY: SeedBudgetGroup[] = [
       {
         name: "Emergency Fund",
         items: [
-          { name: "Emergency Fund", keywords: [], defaultAmount: 300, itemType: "goal", targetAmount: 10000 },
+          { name: "Emergency Fund", keywords: [], defaultAmount: 560, itemType: "saving", targetAmount: 10000 },
+        ],
+      },
+      {
+        name: "Travel Fund",
+        items: [
+          { name: "Travel Fund", keywords: [], defaultAmount: 300, itemType: "saving", targetAmount: 4000 },
         ],
       },
       {
         name: "Retirement",
         items: [
-          { name: "TFSA", keywords: ["TFSA"], defaultAmount: 300 },
-          { name: "RRSP", keywords: ["RRSP"], defaultAmount: 200 },
+          { name: "TFSA", keywords: ["TFSA"], defaultAmount: 300, itemType: "saving" },
+          { name: "RRSP", keywords: ["RRSP"], defaultAmount: 200, itemType: "saving" },
         ],
       },
       {
         name: "Investing",
         items: [
-          { name: "Index Funds", keywords: ["VANGUARD", "FIDELITY", "WEALTHSIMPLE", "INDEX"], defaultAmount: 300 },
-        ],
-      },
-    ],
-  },
-  {
-    name: "Goals",
-    subcategories: [
-      {
-        name: "Travel",
-        items: [
-          { name: "Japan Trip", keywords: [], defaultAmount: 250, itemType: "goal", targetAmount: 4000 },
-        ],
-      },
-      {
-        name: "Electronics",
-        items: [
-          { name: "Mirrorless Camera", keywords: [], defaultAmount: 150, itemType: "goal", targetAmount: 2500 },
-        ],
-      },
-      {
-        name: "Home",
-        items: [
-          { name: "New Desk", keywords: [], defaultAmount: 160, itemType: "goal", targetAmount: 800 },
+          { name: "Index Funds", keywords: ["VANGUARD", "FIDELITY", "WEALTHSIMPLE", "INDEX"], defaultAmount: 300, itemType: "saving" },
         ],
       },
     ],
@@ -258,7 +241,7 @@ export interface SeedBudgetCategoryGroup {
 
 /**
  * Merge a subcategory's items into a single category, using the same policy
- * as the budget_hierarchy_v2 data migration: keywords are unioned, a goal
+ * as the budget_hierarchy_v2 data migration: keywords are unioned, a saving
  * item's type/target wins, and default amounts sum. Keeps new-user seeding
  * and the live-data migration producing equivalent-shaped results.
  */
@@ -267,14 +250,14 @@ const RECURRING_DEFAULTS = new Set(["Rent", "Utilities", "Phone", "Subscriptions
 
 function mergeSubcategoryIntoCategory(sub: SeedBudgetSubcategory): SeedBudgetCategory {
   const keywords = Array.from(new Set(sub.items.flatMap((item) => item.keywords)));
-  const goal = sub.items.find((item) => item.itemType === "goal");
+  const saving = sub.items.find((item) => item.itemType === "saving");
   return {
     name: sub.name,
     keywords,
     defaultAmount: sub.items.reduce((sum, item) => sum + item.defaultAmount, 0),
-    itemType: goal?.itemType,
-    targetAmount: goal?.targetAmount,
-    isRecurring: !goal && RECURRING_DEFAULTS.has(sub.name),
+    itemType: saving?.itemType,
+    targetAmount: sub.items.find((item) => item.targetAmount != null)?.targetAmount,
+    isRecurring: !saving && RECURRING_DEFAULTS.has(sub.name),
   };
 }
 

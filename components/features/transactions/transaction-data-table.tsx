@@ -14,7 +14,8 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw, Sparkles, FolderKanban } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -39,6 +40,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -66,6 +69,8 @@ import { normalizeBankName } from "@/lib/icons/bank-logos";
 import { DbTransaction, DbCategory, SYSTEM_CATEGORIES } from "@/lib/db";
 import { updateTransaction, invalidateTransactions } from "@/hooks";
 import { useBudgetHierarchy } from "@/hooks/use-budget";
+import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
+import { ProjectChip } from "@/components/features/projects/project-chip";
 import { BudgetItemPicker, toPickerValue, fromPickerValue } from "@/components/features/budget/budget-item-picker";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency, useTimezone } from "@/contexts/settings-context";
@@ -96,6 +101,8 @@ export function TransactionDataTable({
   // Filter states
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  // "all" | "none" | "<projectId>"
+  const [projectFilter, setProjectFilter] = useState<string>("all");
   // Unified date filter: "all", "7days", "30days", "90days", "thisMonth", "lastMonth", "thisYear", "year:2024", "month:2024-0"
   const [dateFilter, setDateFilter] = useState<string>("all");
 
@@ -111,6 +118,11 @@ export function TransactionDataTable({
   // Budget category names for resolving a transaction's assignment (category or system).
   const hierarchy = useBudgetHierarchy(true);
   const itemNames = useMemo(() => new Map((hierarchy?.subcategories ?? []).map((c) => [c.id!, c.name])), [hierarchy]);
+
+  // Projects: a separate "why" label alongside the category
+  const projects = useProjects();
+  const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
+  const assignableProjects = useMemo(() => (projects ?? []).filter((p) => !p.isArchived), [projects]);
 
   const handleResetCategory = useCallback(async (id: number) => {
     setResettingId(id);
@@ -338,6 +350,15 @@ export function TransactionDataTable({
         },
       },
       {
+        accessorKey: "projectId",
+        header: "Project",
+        enableSorting: false,
+        cell: ({ row }) => {
+          const project = row.original.projectId != null ? projectById.get(row.original.projectId) : undefined;
+          return project ? <ProjectChip id={project.id} name={project.name} color={project.color} /> : null;
+        },
+      },
+      {
         accessorKey: "source",
         header: "Source",
         enableSorting: false,
@@ -389,7 +410,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency]
+    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency, projectById]
   );
 
   // Apply filters to transactions
@@ -407,6 +428,14 @@ export function TransactionDataTable({
         const catId = parseInt(categoryFilter.slice(4), 10);
         filtered = filtered.filter((t) => t.categoryId === catId);
       }
+    }
+
+    // Project filter
+    if (projectFilter === "none") {
+      filtered = filtered.filter((t) => t.projectId == null);
+    } else if (projectFilter !== "all") {
+      const projectId = parseInt(projectFilter, 10);
+      filtered = filtered.filter((t) => t.projectId === projectId);
     }
 
     // Source filter (compare normalized names)
@@ -478,7 +507,7 @@ export function TransactionDataTable({
     }
 
     return filtered;
-  }, [transactions, categoryFilter, sourceFilter, dateFilter, globalFilter, getAssignmentName]);
+  }, [transactions, categoryFilter, projectFilter, sourceFilter, dateFilter, globalFilter, getAssignmentName]);
 
   const table = useReactTable({
     data: filteredTransactions,
@@ -521,14 +550,34 @@ export function TransactionDataTable({
     setShowBulkDeleteConfirm(false);
   };
 
+  // Bulk add to (or remove from) a project; categories are untouched
+  const handleBulkProject = async (projectId: number | null) => {
+    const ids = selectedTransactionIds;
+    if (ids.length === 0) return;
+    try {
+      await setTransactionsProject(ids, projectId);
+      const name = projectId != null ? projectById.get(projectId)?.name : null;
+      toast.success(
+        name
+          ? `Added ${ids.length} transaction${ids.length === 1 ? "" : "s"} to ${name}`
+          : `Removed ${ids.length} transaction${ids.length === 1 ? "" : "s"} from their project`
+      );
+      setRowSelection({});
+    } catch {
+      toast.error("Failed to update project");
+    }
+  };
+
   const hasActiveFilters =
     categoryFilter !== "all" ||
+    projectFilter !== "all" ||
     sourceFilter !== "all" ||
     dateFilter !== "all" ||
     globalFilter !== "";
 
   const clearAllFilters = () => {
     setCategoryFilter("all");
+    setProjectFilter("all");
     setSourceFilter("all");
     setDateFilter("all");
     setGlobalFilter("");
@@ -662,6 +711,24 @@ export function TransactionDataTable({
             </SelectContent>
           </Select>
 
+          {/* Project Filter */}
+          {(projects?.length ?? 0) > 0 && (
+            <Select value={projectFilter} onValueChange={setProjectFilter}>
+              <SelectTrigger className={cn("w-[160px]", projectFilter !== "all" && "border-primary")}>
+                <SelectValue placeholder="Project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                <SelectItem value="none">No project</SelectItem>
+                {(projects ?? []).map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           {/* Source Filter */}
           <Select value={sourceFilter} onValueChange={setSourceFilter}>
             <SelectTrigger className={cn(
@@ -686,6 +753,33 @@ export function TransactionDataTable({
               <X className="h-4 w-4 mr-1" />
               Clear filters
             </Button>
+          )}
+
+          {/* Add Selected to a Project */}
+          {selectedTransactionIds.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <FolderKanban className="h-4 w-4 mr-1" />
+                  Project ({selectedTransactionIds.length})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto">
+                <DropdownMenuLabel>Add to project</DropdownMenuLabel>
+                {assignableProjects.length === 0 ? (
+                  <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
+                ) : (
+                  assignableProjects.map((p) => (
+                    <DropdownMenuItem key={p.id} onClick={() => handleBulkProject(p.id)}>
+                      <span className="h-2 w-2 rounded-full mr-2" style={{ backgroundColor: p.color }} />
+                      {p.name}
+                    </DropdownMenuItem>
+                  ))
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleBulkProject(null)}>Remove from project</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* Delete Selected */}

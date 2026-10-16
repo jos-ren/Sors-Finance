@@ -3,13 +3,13 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, or, gte, lte, ne, sql, isNull, isNotNull } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
+import { isSeparateProject } from "@/lib/budget/classify";
 
 // GET /api/transactions/aggregations?type=spending&year=2024&month=1
 //
 // Spending aggregations now group by budget_item_id (the hierarchy leaf) and
 // return the same Record<itemId, number> shape the dashboard already consumes.
-// The Excluded pre-filter (system category) is unchanged. New types: incomeTotal
-// and goalProgress.
+// The Excluded pre-filter (system category) is unchanged. New types: incomeTotal.
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth(request);
@@ -155,28 +155,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ data: results[0]?.total || 0, success: true });
       }
 
-      case "goalProgress": {
-        // Lifetime cumulative net per goal category → Record<categoryId, number>.
-        const goalCategories = await db
-          .select({ id: schema.budgetSubcategories.id })
-          .from(schema.budgetSubcategories)
-          .where(and(eq(schema.budgetSubcategories.userId, userId), eq(schema.budgetSubcategories.itemType, "goal")));
-        const goalIds = new Set(goalCategories.map((g) => g.id));
-        if (goalIds.size === 0) return NextResponse.json({ data: {}, success: true });
-
-        const results = await db
-          .select({
-            categoryId: schema.transactions.budgetItemId,
-            total: sql<number>`SUM(${schema.transactions.amountOut}) - SUM(${schema.transactions.amountIn})`,
-          })
-          .from(schema.transactions)
-          .where(and(eq(schema.transactions.userId, userId), isNotNull(schema.transactions.budgetItemId)))
-          .groupBy(schema.transactions.budgetItemId);
-        const map: Record<number, number> = {};
-        for (const r of results) if (r.categoryId !== null && goalIds.has(r.categoryId)) map[r.categoryId] = r.total || 0;
-        return NextResponse.json({ data: map, success: true });
-      }
-
       case "monthlyTrend": {
         if (!year) return NextResponse.json({ error: "Year is required", success: false }, { status: 400 });
         const yearNum = parseInt(year, 10);
@@ -221,21 +199,44 @@ export async function GET(request: NextRequest) {
       }
 
       case "allTimeMonthlyByCategory": {
-        const allTransactions = await db
-          .select()
-          .from(schema.transactions)
-          .where(and(eq(schema.transactions.userId, userId), isNotNull(schema.transactions.budgetItemId)));
+        // Separately funded project spend is reported per project in
+        // projectTotals, not in its category (see lib/budget/classify.ts).
+        const [allTransactions, projectRows] = await Promise.all([
+          db
+            .select()
+            .from(schema.transactions)
+            .where(
+              and(
+                eq(schema.transactions.userId, userId),
+                or(isNotNull(schema.transactions.budgetItemId), isNotNull(schema.transactions.projectId)),
+                ...excludeFilter()
+              )
+            ),
+          db
+            .select({ id: schema.projects.id, fundedSeparately: schema.projects.fundedSeparately })
+            .from(schema.projects)
+            .where(eq(schema.projects.userId, userId)),
+        ]);
+        const projectOf = new Map(projectRows.map((p) => [p.id, p]));
         const monthlyData: Record<string, Record<number, number>> = {};
+        const projectData: Record<string, Record<number, number>> = {};
         for (const t of allTransactions) {
-          if (t.budgetItemId === null) continue;
           const key = `${t.date.getFullYear()}-${t.date.getMonth()}`;
           if (!monthlyData[key]) monthlyData[key] = {};
+          const project = t.projectId != null ? projectOf.get(t.projectId) : undefined;
+          // A project's uncategorized rows still count toward it
+          if (project && isSeparateProject(project) && t.categoryId !== incomeId) {
+            if (!projectData[key]) projectData[key] = {};
+            projectData[key][project.id] = (projectData[key][project.id] || 0) + (t.amountOut - t.amountIn);
+            continue;
+          }
+          if (t.budgetItemId === null) continue;
           monthlyData[key][t.budgetItemId] = (monthlyData[key][t.budgetItemId] || 0) + (t.amountOut - t.amountIn);
         }
         const rows = Object.entries(monthlyData)
           .map(([key, categoryTotals]) => {
             const [y, m] = key.split("-").map(Number);
-            return { year: y, month: m, monthName: monthNames[m], categoryTotals };
+            return { year: y, month: m, monthName: monthNames[m], categoryTotals, projectTotals: projectData[key] || {} };
           })
           .sort((a, b) => a.year - b.year || a.month - b.month);
         return NextResponse.json({ data: rows, success: true });

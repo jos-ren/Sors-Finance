@@ -21,8 +21,9 @@ function Tile({ label, value, detail, valueClassName }: { label: string; value: 
 
 /**
  * Income, bills paid, and what was kept this month. Saved = income − bills −
- * spending. For the current month the Saved tile leads with the month-end
- * projection, since bills land early and pay arrives through the month.
+ * spending − separately funded project spending. For the current month the
+ * Saved tile leads with the month-end projection, since bills land early and
+ * pay arrives through the month.
  */
 export function SummaryTiles({ summary }: { summary: HomeSummary }) {
   const { formatAmount, isPrivacyMode } = usePrivacy();
@@ -31,9 +32,16 @@ export function SummaryTiles({ summary }: { summary: HomeSummary }) {
   const soFar = summary.isCurrentMonth ? " so far" : "";
   const projected = saving.projected;
   const headlineSaved = projected ? projected.saved : saving.saved;
-  const keptInCash = headlineSaved - saving.toGoals;
+  const keptInCash = headlineSaved - saving.toSavings;
   const monthEnd = new Date(summary.year, summary.month, summary.daysInMonth).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const billsLeft = Math.max(0, bills.budget - bills.paid);
+  // "$1,605 to Japan trip" when separately funded projects spent this month
+  const projectLine =
+    summary.projects.length === 1
+      ? `${formatAmount(saving.toProjects, currency, false)} to ${summary.projects[0].name}`
+      : summary.projects.length > 1
+        ? `${formatAmount(saving.toProjects, currency, false)} to ${summary.projects.length} projects`
+        : null;
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
@@ -62,7 +70,11 @@ export function SummaryTiles({ summary }: { summary: HomeSummary }) {
                   label={`On track to save by ${monthEnd}`}
                   value={formatAmount(projected.saved, currency, false)}
                   valueClassName={projected.saved < 0 ? "text-red-600 dark:text-red-400" : undefined}
-                  detail={`${formatAmount(saving.saved, currency, false)} so far · income from ${projected.incomeSource === "planned" ? "your plan" : "last month"}`}
+                  detail={
+                    projectLine
+                      ? `${formatAmount(saving.saved, currency, false)} so far · ${projectLine}`
+                      : `${formatAmount(saving.saved, currency, false)} so far · income from ${projected.incomeSource === "planned" ? "your plan" : "last month"}`
+                  }
                 />
               ) : (
                 <Tile
@@ -70,9 +82,12 @@ export function SummaryTiles({ summary }: { summary: HomeSummary }) {
                   value={formatAmount(saving.saved, currency, false)}
                   valueClassName={saving.saved < 0 ? "text-red-600 dark:text-red-400" : undefined}
                   detail={
-                    saving.income > 0 && !isPrivacyMode
-                      ? `${Math.round(saving.rate * 100)}% of income`
-                      : "Income minus bills and spending"
+                    [
+                      saving.income > 0 && !isPrivacyMode ? `${Math.round(saving.rate * 100)}% of income` : null,
+                      projectLine,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "Income minus bills and spending"
                   }
                 />
               )}
@@ -80,10 +95,10 @@ export function SummaryTiles({ summary }: { summary: HomeSummary }) {
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-[260px]">
             {projected && "Projected: "}
-            {formatAmount(saving.toGoals, currency, false)} planned to goals
+            {formatAmount(saving.toSavings, currency, false)} planned to savings
             {keptInCash >= 0
               ? `, ${formatAmount(keptInCash, currency, false)} kept in cash`
-              : `, ${formatAmount(-keptInCash, currency, false)} short of the goal plan`}
+              : `, ${formatAmount(-keptInCash, currency, false)} short of the savings plan`}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

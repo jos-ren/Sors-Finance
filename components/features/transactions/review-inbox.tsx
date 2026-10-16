@@ -27,6 +27,8 @@ import {
   invalidateTransactions,
 } from "@/hooks";
 import { useBudgetHierarchy, addKeywordToSubcategory } from "@/hooks/use-budget";
+import { useProjects } from "@/hooks/use-projects";
+import { ProjectChip } from "@/components/features/projects/project-chip";
 import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
 import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
@@ -52,6 +54,8 @@ export function ReviewInbox() {
   const transactions = useTransactions();
   const categories = useCategories();
   const hierarchy = useBudgetHierarchy(false);
+  const projects = useProjects();
+  const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
 
@@ -313,7 +317,17 @@ export function ReviewInbox() {
                 {/* Description + amount */}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{t.description}</p>
-                  <p className={`text-xs ${netClass || "text-muted-foreground"}`}>{amountStr}</p>
+                  <div className="flex items-center gap-2">
+                    <p className={`text-xs ${netClass || "text-muted-foreground"}`}>{amountStr}</p>
+                    {t.projectId != null && projectById.has(t.projectId) && (
+                      <ProjectChip
+                        id={t.projectId}
+                        name={projectById.get(t.projectId)!.name}
+                        color={projectById.get(t.projectId)!.color}
+                        className="py-0"
+                      />
+                    )}
+                  </div>
                 </div>
 
                 {/* Action area */}

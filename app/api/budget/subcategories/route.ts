@@ -4,6 +4,7 @@ import { asc, sql, eq, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { normalizeKeywords } from "@/lib/categories/keyword";
+import { toItemType } from "@/lib/budget/classify";
 
 // GET /api/budget/subcategories[?groupId=&includeArchived=]
 export async function GET(request: NextRequest) {
@@ -64,10 +65,10 @@ export async function POST(request: NextRequest) {
         name,
         groupId,
         keywords: normalizeKeywords(keywords),
-        itemType: itemType === "goal" ? "goal" : "expense",
+        itemType: toItemType(itemType),
         targetAmount,
         targetDate: targetDate != null ? new Date(targetDate) : null,
-        isRecurring: itemType !== "goal" && !!isRecurring,
+        isRecurring: toItemType(itemType) !== "saving" && !!isRecurring,
         isActive: true,
         order,
         userId,

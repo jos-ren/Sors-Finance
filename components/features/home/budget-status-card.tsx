@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Area, Bar, Cell, ComposedChart, Line, ReferenceDot, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { niceTicks } from "@/lib/utils/chart-ticks";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import type { HomeSummary } from "@/lib/budget/home-types";
+import { projectHatchFill, projectHatchPattern } from "@/components/features/projects/project-hatch";
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -28,8 +30,11 @@ const historyConfig = {
 
 /**
  * "Am I on track?" — left to spend, this month's spending vs the
- * budget pace, and the last 12 months on/over budget. Spending only: bills and
- * goal transfers are excluded (see lib/budget/classify.ts).
+ * budget pace, and the last 12 months on/over budget. Spending only: bills,
+ * saving transfers and separately funded projects are excluded (see
+ * lib/budget/classify.ts). Project spending is drawn on top of the history
+ * bars, striped in each project's colour, so a big month is explained, not
+ * marked over.
  */
 export function BudgetStatusCard({
   summary,
@@ -64,6 +69,13 @@ export function BudgetStatusCard({
     [spending, elapsedDays]
   );
 
+  // One stacked series per project that appears in the window (key p<id>)
+  const historyProjects = useMemo(() => {
+    const byId = new Map<number, { id: number; name: string; color: string }>();
+    for (const h of history) for (const p of h.projects) byId.set(p.id, { id: p.id, name: p.name, color: p.color });
+    return [...byId.values()];
+  }, [history]);
+
   const historyData = useMemo(
     () =>
       history.map((h) => ({
@@ -72,10 +84,16 @@ export function BudgetStatusCard({
         year: h.year,
         month: h.month,
         spent: h.spent,
+        hasProject: h.projects.some((p) => p.amount > 0),
+        ...Object.fromEntries(h.projects.map((p) => [`p${p.id}`, Math.max(0, p.amount)])),
         budget: h.budget,
         over: h.budget > 0 && h.spent > h.budget,
       })),
     [history]
+  );
+  const projectNameByKey = useMemo(
+    () => new Map(historyProjects.map((p) => [`p${p.id}`, p.name])),
+    [historyProjects]
   );
   const budgetedMonths = history.filter((h) => h.budget > 0);
   const onBudget = budgetedMonths.filter((h) => h.spent <= h.budget).length;
@@ -95,6 +113,21 @@ export function BudgetStatusCard({
             {formatAmount(spending.spent, currency, false)} spent of {formatAmount(spending.budget, currency, false)}
             {summary.isCurrentMonth && ` · ${daysLeft} ${daysLeft === 1 ? "day" : "days"} to go`}
           </p>
+          {summary.projects.length > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Not counted:{" "}
+              {summary.projects.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ", "}
+                  {formatAmount(p.amount, currency, false)} for{" "}
+                  <Link href={`/projects/${p.id}`} className="inline-flex items-center gap-1 text-foreground hover:underline">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
+                    {p.name}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
         <div className="shrink-0">
           <PeriodNavigator
@@ -167,6 +200,7 @@ export function BudgetStatusCard({
           </div>
           <ChartContainer config={historyConfig} className="h-[110px] w-full aspect-auto">
             <ComposedChart data={historyData} margin={{ left: 4, right: 12 }}>
+              <defs>{historyProjects.map((p) => projectHatchPattern("history", p))}</defs>
               <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={6} interval={0} fontSize={11} />
               <YAxis hide />
               <ChartTooltip
@@ -180,18 +214,23 @@ export function BudgetStatusCard({
                         ? `${row.full} · ${formatAmount(row.spent - row.budget, currency, false)} over`
                         : row.full;
                     }}
-                    formatter={(value, name) => (
-                      <span className="flex w-full justify-between gap-4">
-                        <span className="text-muted-foreground">{historyConfig[name as keyof typeof historyConfig]?.label}</span>
-                        <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
-                      </span>
-                    )}
+                    formatter={(value, name) => {
+                      const projectName = projectNameByKey.get(String(name));
+                      if (projectName !== undefined && !Number(value)) return null;
+                      const label = projectName ?? historyConfig[name as keyof typeof historyConfig]?.label;
+                      return (
+                        <span className="flex w-full justify-between gap-4">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
+                        </span>
+                      );
+                    }}
                   />
                 }
               />
               <Bar
                 dataKey="spent"
-                radius={[3, 3, 0, 0]}
+                stackId="month"
                 className="cursor-pointer"
                 onClick={(data) => {
                   const row = data?.payload as { year?: number; month?: number } | undefined;
@@ -199,9 +238,34 @@ export function BudgetStatusCard({
                 }}
               >
                 {historyData.map((h, i) => (
-                  <Cell key={i} fill={h.over ? "var(--alt-red)" : "var(--alt-emerald)"} fillOpacity={0.7} />
+                  <Cell
+                    key={i}
+                    fill={h.over ? "var(--alt-red)" : "var(--alt-emerald)"}
+                    fillOpacity={0.7}
+                    radius={(h.hasProject ? 0 : [3, 3, 0, 0]) as unknown as number}
+                  />
                 ))}
               </Bar>
+              {historyProjects.map((p, pi) => (
+                <Bar
+                  key={p.id}
+                  dataKey={`p${p.id}`}
+                  stackId="month"
+                  fill={projectHatchFill("history", p.id)}
+                  className="cursor-pointer"
+                  onClick={(data) => {
+                    const row = data?.payload as { year?: number; month?: number } | undefined;
+                    if (row?.year !== undefined && row.month !== undefined) router.push(budgetHref(row.year, row.month));
+                  }}
+                >
+                  {historyData.map((h, i) => {
+                    // Round the top of whichever project segment is highest this month
+                    const row = h as Record<string, unknown>;
+                    const isTop = !historyProjects.slice(pi + 1).some((q) => Number(row[`p${q.id}`] ?? 0) > 0);
+                    return <Cell key={i} radius={(isTop ? [3, 3, 0, 0] : 0) as unknown as number} />;
+                  })}
+                </Bar>
+              ))}
               <Line dataKey="budget" type="step" stroke="var(--color-budget)" strokeDasharray="4 4" dot={false} />
             </ComposedChart>
           </ChartContainer>

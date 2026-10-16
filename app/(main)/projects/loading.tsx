@@ -1,5 +1,5 @@
 import { PageLoader } from "@/components/page-loader";
 
-export default function GoalsLoading() {
+export default function ProjectsLoading() {
   return <PageLoader />;
 }

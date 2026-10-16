@@ -18,6 +18,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { addTransaction } from "@/hooks";
 import { BudgetItemPicker, fromPickerValue, toPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
+import { ProjectSelect } from "@/components/features/projects/project-select";
 
 interface AddTransactionDialogProps {
   open: boolean;
@@ -39,6 +40,7 @@ export function AddTransactionDialog({
   const [amount, setAmount] = useState("");
   const [assignment, setAssignment] = useState<PickerValue>(() => toPickerValue(null, defaultBudgetItemId ?? null));
   const [note, setNote] = useState<string>("");
+  const [projectId, setProjectId] = useState<number | null>(null);
   const [transactionType, setTransactionType] = useState<"expense" | "income">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,6 +51,7 @@ export function AddTransactionDialog({
     setAmount("");
     setAssignment(toPickerValue(null, defaultBudgetItemId ?? null));
     setNote("");
+    setProjectId(null);
     setTransactionType("expense");
   };
 
@@ -80,6 +83,7 @@ export function AddTransactionDialog({
         netAmount: transactionType === "income" ? amountNum : -amountNum,
         source: "Manual",
         note: note.trim() || null,
+        projectId,
         ...fromPickerValue(assignment),
         categoryLocked: false,
         importId: null,
@@ -183,6 +187,12 @@ export function AddTransactionDialog({
               placeholder="Uncategorized"
               disabled={defaultBudgetItemId != null}
             />
+          </div>
+
+          {/* Project (why), separate from the category (what) */}
+          <div className="space-y-2">
+            <Label>Project (optional)</Label>
+            <ProjectSelect value={projectId} onChange={setProjectId} />
           </div>
 
           {/* Note */}

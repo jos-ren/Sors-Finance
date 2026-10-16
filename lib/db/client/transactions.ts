@@ -182,14 +182,6 @@ export async function getIncomeTotal(year?: number, month?: number): Promise<num
   return data as number;
 }
 
-/** Lifetime cumulative net per goal item → Map<itemId, number>. */
-export async function getGoalProgress(): Promise<Map<number, number>> {
-  const res = await fetch("/api/transactions/aggregations?type=goalProgress");
-  if (!res.ok) throw new Error("Failed to fetch goal progress");
-  const { data } = await res.json();
-  return new Map(Object.entries(data).map(([k, v]) => [Number(k), v as number]));
-}
-
 export async function getTotalSpending(year: number, month?: number): Promise<{ income: number; expenses: number }> {
   const params = new URLSearchParams({
     type: "totals",
@@ -247,7 +239,7 @@ export async function getMonthlyByCategory(year: number): Promise<
 }
 
 export async function getAllTimeMonthlyByCategory(): Promise<
-  Array<{ year: number; month: number; monthName: string; categoryTotals: Record<number, number> }>
+  Array<{ year: number; month: number; monthName: string; categoryTotals: Record<number, number>; projectTotals?: Record<number, number> }>
 > {
   const res = await fetch("/api/transactions/aggregations?type=allTimeMonthlyByCategory");
   if (!res.ok) throw new Error("Failed to fetch all-time monthly by category");

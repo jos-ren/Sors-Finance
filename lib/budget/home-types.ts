@@ -21,11 +21,21 @@ export interface HomeOverspent {
   over: number;
 }
 
+/** Spending on one separately funded project within a month. */
+export interface HomeProjectSpend {
+  id: number;
+  name: string;
+  color: string;
+  amount: number;
+}
+
 export interface HomeHistoryMonth {
   year: number;
   month: number; // 0–11
   budget: number;
+  /** Everyday spending only; separately funded projects are in `projects`. */
   spent: number;
+  projects: HomeProjectSpend[];
 }
 
 export interface HomeSummary {
@@ -51,9 +61,11 @@ export interface HomeSummary {
   };
   saving: {
     income: number;
-    /** This month's planned amounts on goal categories (what goals count as contributed). */
-    toGoals: number;
-    /** income − bills.paid − spending.spent */
+    /** This month's planned amounts on saving categories. */
+    toSavings: number;
+    /** Separately funded project spending this month (see `projects`). */
+    toProjects: number;
+    /** income − bills.paid − spending.spent − toProjects */
     saved: number;
     /** saved / income, 0 when there is no income. */
     rate: number;
@@ -62,10 +74,12 @@ export interface HomeSummary {
       /** Planned income for the month, else last month's actual income. */
       income: number;
       incomeSource: "planned" | "last-month";
-      /** income − max(bills budget, paid) − spending projected at current pace */
+      /** income − max(bills budget, paid) − spending projected at current pace − project spending so far */
       saved: number;
     } | null;
   };
+  /** Separately funded projects with spending in the selected month, largest first. */
+  projects: HomeProjectSpend[];
   /** Previous 12 complete months, oldest first. */
   history: HomeHistoryMonth[];
   attention: {

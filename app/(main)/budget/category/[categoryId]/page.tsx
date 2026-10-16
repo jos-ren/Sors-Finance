@@ -21,6 +21,9 @@ import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useBudgetHierarchy } from "@/hooks";
+import { useProjects } from "@/hooks/use-projects";
+import { isSeparateProject } from "@/lib/budget/classify";
+import { ProjectChip } from "@/components/features/projects/project-chip";
 import { getTransactions } from "@/lib/db/client";
 import { AddTransactionDialog } from "@/components/features/transactions/add-transaction-dialog";
 import { CategoryDetailDialog } from "@/components/features/budget/category-detail-dialog";
@@ -57,7 +60,15 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
     { revalidateOnFocus: true }
   );
 
-  const total = transactions?.reduce((a, t) => a + (t.amountOut - t.amountIn), 0) ?? 0;
+  // Separately funded project spend is not part of this month's budget total
+  const projects = useProjects();
+  const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
+  const isProjectFunded = (projectId: number | null | undefined) =>
+    projectId != null && isSeparateProject(projectById.get(projectId));
+  const total =
+    transactions?.reduce((a, t) => (isProjectFunded(t.projectId) ? a : a + (t.amountOut - t.amountIn)), 0) ?? 0;
+  const projectTotal =
+    transactions?.reduce((a, t) => (isProjectFunded(t.projectId) ? a + (t.amountOut - t.amountIn) : a), 0) ?? 0;
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
@@ -91,7 +102,12 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xl font-semibold tabular-nums">{fmt(total)}</span>
+          <div className="text-right">
+            <span className="text-xl font-semibold tabular-nums">{fmt(total)}</span>
+            {projectTotal !== 0 && (
+              <p className="text-xs text-muted-foreground tabular-nums">+{fmt(projectTotal)} in projects</p>
+            )}
+          </div>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setEditOpen(true)} disabled={!category}>
             <Pencil className="h-4 w-4" />
             Edit
@@ -138,7 +154,17 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
                   <li key={t.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
                     <div className="min-w-0">
                       <p className="truncate text-sm">{t.description}</p>
-                      <p className="text-xs text-muted-foreground">{format(t.date, "MMM d, yyyy")}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-muted-foreground">{format(t.date, "MMM d, yyyy")}</p>
+                        {t.projectId != null && projectById.has(t.projectId) && (
+                          <ProjectChip
+                            id={t.projectId}
+                            name={projectById.get(t.projectId)!.name}
+                            color={projectById.get(t.projectId)!.color}
+                            className="py-0"
+                          />
+                        )}
+                      </div>
                     </div>
                     <span className={cn("shrink-0 text-sm tabular-nums", net < 0 && "text-primary")}>
                       {net < 0 ? `+${fmt(Math.abs(net))}` : fmt(net)}
