@@ -2,7 +2,8 @@
 
 A privacy-focused, self-hosted personal finance app for budget tracking, transaction categorization, and net worth management. All your data stays on your server — nothing is sent to external services.
 
-<img width="1277" height="950" alt="Screenshot 2026-01-01 214456" src="https://github.com/user-attachments/assets/0d05b80b-afbe-4bf1-89a9-7ead90287808" />
+<img width="1716" height="1320" alt="image" src="https://github.com/user-attachments/assets/90860d51-1705-4232-b0f2-f842b6f4d3e8" />
+
 
 ## Features
 
