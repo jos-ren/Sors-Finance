@@ -73,6 +73,22 @@ export interface DbBudgetSubcategory {
 // Transaction Types
 // ============================================
 
+/** Extra bank-feed context shown in the review inbox. All optional. */
+export interface TransactionDetails {
+  /** Plaid personal finance category, e.g. FOOD_AND_DRINK / FOOD_AND_DRINK_FAST_FOOD. */
+  plaidCategory?: { primary: string; detailed: string; confidence?: string | null } | null;
+  paymentChannel?: "online" | "in store" | "other" | null;
+  city?: string | null;
+  region?: string | null;
+  website?: string | null;
+  /** Plaid's account_id; maps the row to the Accounts item it came from. */
+  plaidAccountId?: string | null;
+  /** Day the purchase was made (YYYY-MM-DD). */
+  authorizedDate?: string | null;
+  /** Day it posted to the account (YYYY-MM-DD). */
+  postedDate?: string | null;
+}
+
 export interface DbTransaction {
   id?: number;
   uuid: string;
@@ -85,6 +101,15 @@ export interface DbTransaction {
   source: string;
   sourceMethod?: string | null; // "Plaid", "CSV", or "Manual"
   sourceAccountName?: string | null; // Specific account name for tooltip
+  /** Plaid's transaction_id; the dedup key for Plaid imports. */
+  plaidTransactionId?: string | null;
+  /** The raw string the bank sent (e.g. "AMZN Mktp CA*2K4X91"). */
+  originalDescription?: string | null;
+  /** Clean merchant name from the bank feed. */
+  merchantName?: string | null;
+  /** When the purchase happened, if the bank sends a real time. */
+  transactedAt?: Date | null;
+  details?: TransactionDetails | null;
   note?: string | null;
   categoryId: number | null;
   budgetItemId: number | null;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { PiggyBank, Pencil, Trash2, GripVertical } from "lucide-react";
+import { Pencil, Trash2, GripVertical } from "lucide-react";
+import { CategoryTypeIcon } from "@/components/features/budget/category-type-icon";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ export interface BuilderItem {
   id: number;
   name: string;
   itemType: "expense" | "saving";
+  isRecurring: boolean;
   planned: number; // effective (pending overlaid upstream)
 }
 
@@ -52,7 +54,7 @@ export function AllocationItemRow({
       </button>
 
       <div className="flex min-w-0 flex-[2] items-center gap-1.5">
-        {item.itemType === "saving" && <PiggyBank className="h-3.5 w-3.5 shrink-0 text-primary" />}
+        <CategoryTypeIcon category={item} />
         <InlineRename value={item.name} onCommit={onRename} className="text-sm" />
       </div>
 

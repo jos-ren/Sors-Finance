@@ -93,14 +93,14 @@ export function PlaidLinkButton({ onSuccess, onExit, accessToken, mode = "create
 
         const data = await response.json();
         
-        // For update mode, refresh balances now that the login works again (no bucket selector)
+        // Update mode: the connection is already marked active, so show that now.
+        // The live balance pull (slow, bank-dependent) runs in the background
+        // and refreshes the UI again when it lands.
         if (mode === "update") {
-          await syncItemBalances(data.item.id);
-          toast.success("Bank connection updated successfully");
-          if (onSuccess) {
-            onSuccess();
-          }
+          toast.success("Bank reconnected. Refreshing balances in the background.");
           setLinkToken(null);
+          onSuccess?.();
+          void syncItemBalances(data.item.id).then(() => onSuccess?.());
           return;
         }
         

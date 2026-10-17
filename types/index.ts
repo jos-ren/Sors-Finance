@@ -1,3 +1,5 @@
+import type { TransactionDetails } from "@/lib/db/types";
+
 /**
  * Unified transaction format after parsing
  */
@@ -12,6 +14,11 @@ export interface Transaction {
   source: string; // Bank/institution name (e.g., "My Bank", "Template Name")
   sourceMethod?: "Plaid" | "CSV" | "Manual"; // How the transaction was imported
   sourceAccountName?: string; // Specific account name (e.g., "Smart Checking Account")
+  plaidTransactionId?: string; // Plaid's transaction_id (dedup key)
+  originalDescription?: string; // Raw bank string
+  merchantName?: string; // Clean merchant name from the bank feed
+  transactedAt?: Date | null; // Time of purchase, when the bank sends one
+  details?: TransactionDetails; // Extra bank-feed context (Plaid category, channel, location)
   categoryId: string | null; // null if uncategorized
   isConflict: boolean; // true if matched multiple categories
   conflictingCategories?: string[]; // Category IDs if conflict

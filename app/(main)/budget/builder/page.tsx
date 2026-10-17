@@ -225,6 +225,7 @@ export default function BudgetBuilderPage() {
           />
           <BuilderList
             groups={groups}
+            income={incomeVal}
             pending={pending}
             formatAmount={fmt}
             onPlannedChange={setPlanned}

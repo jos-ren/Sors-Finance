@@ -31,6 +31,7 @@ export async function getTransactions(options?: GetTransactionsOptions): Promise
   return data.map((t: DbTransaction) => ({
     ...t,
     date: new Date(t.date),
+    transactedAt: t.transactedAt ? new Date(t.transactedAt) : null,
     createdAt: new Date(t.createdAt),
     updatedAt: new Date(t.updatedAt),
   }));
@@ -98,6 +99,30 @@ export async function addTransactionsBulk(
   }
   const { data } = await res.json();
   return data;
+}
+
+/** Backfill bank details (and the corrected date) onto older Plaid rows. */
+export async function addPlaidDetails(
+  updates: Array<{
+    id: number;
+    date: Date;
+    plaidTransactionId: string;
+    matchField: string;
+    originalDescription: string | null;
+    merchantName: string | null;
+    transactedAt: string | null;
+    details: DbTransaction["details"];
+  }>
+): Promise<number> {
+  if (updates.length === 0) return 0;
+  const res = await fetch("/api/transactions/plaid-details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ updates }),
+  });
+  if (!res.ok) throw new Error("Failed to update transaction details");
+  const { data } = await res.json();
+  return data.updated;
 }
 
 export async function categorizeTransaction(id: number, categoryId: number | null): Promise<void> {

@@ -84,6 +84,7 @@ export {
   addTransactionsBulk,
   categorizeTransaction,
   findDuplicateSignatures,
+  addPlaidDetails,
   getSpendingByCategory,
   getYTDSpendingByCategory,
   getIncomeTotal,

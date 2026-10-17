@@ -178,7 +178,11 @@ export function AccountSection({
                             plaidStatus === "active" ? "bg-green-500" : "bg-red-500"
                           )}
                         />
-                        {plaidStatus === "active" ? "Linked" : "Link Error"}
+                        {plaidStatus === "active"
+                          ? "Linked"
+                          : plaidStatus === "login_required"
+                          ? "Needs reconnecting"
+                          : "Link Error"}
                       </span>
                     )}
                   </div>

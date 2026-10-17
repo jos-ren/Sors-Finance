@@ -49,6 +49,8 @@ export interface BuilderGroupData {
 }
 
 interface SharedProps {
+  /** Expected income for the month; amounts show their share of it. */
+  income: number;
   pending: Map<number, string>;
   formatAmount: (n: number, showCode?: boolean) => string;
   onPlannedChange: (categoryId: number, value: string) => void;
@@ -58,6 +60,12 @@ interface SharedProps {
 const effective = (id: number, saved: number, pending: Map<number, string>) =>
   parsePending(pending.get(id), saved);
 
+/** Share of income as a short label ("12%", "<1%"); empty without income or amount. */
+function formatIncomeShare(amount: number, income: number): string {
+  if (income <= 0 || amount <= 0) return "";
+  const pct = (amount / income) * 100;
+  return pct < 0.5 ? "<1%" : `${Math.round(pct)}%`;
+}
 /** Full build + allocate list: drag-reorder + create/rename/delete groups,
  *  categories, and allocate amounts top-down. */
 export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] } & SharedProps) {
@@ -104,7 +112,7 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
 
 function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedProps) {
   const { group, categories } = data;
-  const { pending, formatAmount, onPlannedChange, onOpenDetail } = shared;
+  const { income, pending, formatAmount, onPlannedChange, onOpenDetail } = shared;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `group:${group.id}` });
 
@@ -125,6 +133,9 @@ function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedPr
             <InlineRename value={group.name} onCommit={(name) => updateGroup(group.id!, { name })} className="text-base font-semibold" />
           </div>
           <div className="flex items-center gap-2">
+            <span className="w-10 text-right text-sm tabular-nums text-muted-foreground/70">
+              {formatIncomeShare(allocated, income)}
+            </span>
             <span className="cursor-default text-base font-medium tabular-nums">{formatAmount(allocated, false)}</span>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setConfirmDelete(true)}>
               <Trash2 className="h-4 w-4" />
@@ -139,7 +150,13 @@ function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedPr
             {categories.map(({ category, saved }) => (
               <AllocationItemRow
                 key={category.id}
-                item={{ id: category.id!, name: category.name, itemType: category.itemType, planned: effective(category.id!, saved, pending) }}
+                item={{
+                  id: category.id!,
+                  name: category.name,
+                  itemType: category.itemType,
+                  isRecurring: category.isRecurring,
+                  planned: effective(category.id!, saved, pending),
+                }}
                 pendingValue={pending.get(category.id!)}
                 onChange={(v) => onPlannedChange(category.id!, v)}
                 onRename={(name) => updateSubcategory(category.id!, { name })}

@@ -3,6 +3,7 @@
  */
 
 import { PlaidEnvironments } from "plaid";
+import type { TransactionDetails } from "@/lib/db/types";
 
 /**
  * Plaid environment configuration
@@ -67,6 +68,39 @@ export interface PlaidTransactionImport {
   category?: string[];
   pending: boolean;
   transactionId: string;
+}
+
+/** Bank-feed fields carried by a Plaid transaction into the app. */
+export interface PlaidTransactionFields {
+  plaidTransactionId: string;
+  description: string;
+  matchField: string;
+  originalDescription: string | null;
+  merchantName: string | null;
+  /** ISO timestamp, only when the bank sends a real time. */
+  transactedAt: string | null;
+  details: TransactionDetails;
+}
+
+/** A new Plaid transaction, as returned by /api/plaid/transactions/fetch. */
+export interface FetchedPlaidTransaction extends PlaidTransactionFields {
+  /** YYYY-MM-DD; the client turns it into local midnight. */
+  day: string;
+  amountOut: number;
+  amountIn: number;
+  netAmount: number;
+  source: string;
+  sourceMethod: "Plaid";
+  sourceAccountName: string;
+}
+
+/**
+ * Details for a transaction imported before Plaid ids were stored. The client
+ * sends it to /api/transactions/plaid-details with the corrected local date.
+ */
+export interface PlaidEnrichment extends PlaidTransactionFields {
+  id: number;
+  day: string;
 }
 
 /**

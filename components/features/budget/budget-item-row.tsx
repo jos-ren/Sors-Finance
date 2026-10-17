@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { PiggyBank, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BudgetTreeCategory } from "@/lib/budget/types";
 import { SavingProgress } from "./saving-progress";
+import { CategoryTypeIcon } from "./category-type-icon";
 
 /**
  * A budget category row: expand chevron (only if it has transactions this
@@ -69,7 +70,7 @@ export function BudgetItemRow({
       <Link href={drillHref} className="group flex flex-1 items-center gap-3">
         {/* Name */}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm">
-          {isSaving && <PiggyBank className="h-3.5 w-3.5 shrink-0 text-primary" />}
+          <CategoryTypeIcon category={item} />
           <span className="truncate">{item.name}</span>
           {!item.isActive && (
             <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">archived</span>

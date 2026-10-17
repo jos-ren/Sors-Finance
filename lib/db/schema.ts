@@ -5,7 +5,7 @@
  */
 
 import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { Keyword } from "./types";
+import type { Keyword, TransactionDetails } from "./types";
 
 // ============================================
 // Users Table
@@ -180,6 +180,13 @@ export const transactions = sqliteTable(
     source: text("source").notNull(),
     sourceMethod: text("source_method"), // "Plaid", "CSV", or "Manual"
     sourceAccountName: text("source_account_name"), // Specific account name for tooltip
+    // Bank-provided detail (Plaid imports): stable id for dedup, raw bank string,
+    // clean merchant, time of purchase when the bank sends one, and extras
+    plaidTransactionId: text("plaid_transaction_id"),
+    originalDescription: text("original_description"),
+    merchantName: text("merchant_name"),
+    transactedAt: integer("transacted_at", { mode: "timestamp" }),
+    details: text("details", { mode: "json" }).$type<TransactionDetails>(),
     note: text("note"),
     categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
     budgetItemId: integer("budget_item_id").references(() => budgetSubcategories.id, { onDelete: "set null" }),
@@ -206,6 +213,7 @@ export const transactions = sqliteTable(
     index("transactions_date_budget_item_idx").on(table.date, table.budgetItemId),
     index("transactions_user_idx").on(table.userId),
     index("transactions_user_project_idx").on(table.userId, table.projectId),
+    index("transactions_user_plaid_idx").on(table.userId, table.plaidTransactionId),
   ]
 );
 

@@ -5,7 +5,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { invalidatePortfolio } from '@/hooks/use-database';
+import { invalidatePortfolio, invalidatePlaidHealth } from '@/hooks/use-database';
 
 interface PlaidSyncButtonProps {
   variant?: "default" | "secondary" | "ghost" | "outline";
@@ -78,6 +78,8 @@ export function PlaidSyncButton({
       if (accountsUpdated > 0 || pricesUpdated > 0) {
         invalidatePortfolio();
       }
+      // The sync runs a connection health check first; show any status change
+      invalidatePlaidHealth();
 
       // Pass results to parent component if callback provided
       if (onSyncComplete) {

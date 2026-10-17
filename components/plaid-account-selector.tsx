@@ -21,6 +21,8 @@ import { InfoCard } from "@/components/ui/info-card";
 import { CalendarIcon, Loader2, AlertCircle, Building2, ChevronDown, CreditCard, PiggyBank, TrendingUp, Home, Info } from "lucide-react";
 import { format, subMonths, startOfMonth, addDays, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { runPlaidHealthCheck } from "@/hooks";
 import {
   Collapsible,
   CollapsibleContent,
@@ -54,6 +56,9 @@ const BUCKET_ICONS: Record<string, { icon: typeof PiggyBank; color: string; bgCo
   Debt: { icon: CreditCard, color: "text-red-500", bgColor: "bg-red-500/20" },
 };
 
+/** The bank's login has to be renewed (Settings → Plaid) before it can be fetched. */
+const needsReconnect = (item: Pick<PlaidInstitutionWithAccounts, "status">) => item.status === "login_required";
+
 interface SelectedAccount {
   itemId: number;
   accountId: string;
@@ -80,6 +85,9 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
   useEffect(() => {
     loadPlaidItems();
     loadLastImportDate();
+    // Free connection check (skipped if done in the last 30 minutes), then
+    // reload quietly so banks that need a login are marked before fetching.
+    runPlaidHealthCheck({ preAction: true }).then(() => loadPlaidItems({ quiet: true }));
   }, []);
 
   const loadLastImportDate = async () => {
@@ -106,17 +114,23 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
   };
 
 
-  const loadPlaidItems = async () => {
+  const loadPlaidItems = async ({ quiet = false }: { quiet?: boolean } = {}) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const response = await fetch("/api/plaid/institutions");
       if (!response.ok) throw new Error("Failed to load Plaid items");
       const data = await response.json();
-      setPlaidItems(data.institutions || []);
+      const items: PlaidInstitutionWithAccounts[] = data.institutions || [];
+      setPlaidItems(items);
+      // A bank that turned out to need a login can't be fetched; drop its picks
+      const blocked = new Set(items.filter(needsReconnect).map((i) => i.id));
+      if (blocked.size > 0) {
+        setSelectedAccounts((prev) => new Map([...prev].filter(([, a]) => !blocked.has(a.itemId))));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load connected banks");
+      if (!quiet) setError(err instanceof Error ? err.message : "Failed to load connected banks");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
@@ -299,6 +313,25 @@ export function PlaidAccountSelector({ onFetchTransactions, onBack }: PlaidAccou
             const accountsSelected = item.accounts.filter(acc =>
               selectedAccounts.has(`${item.id}-${acc.accountId}`)
             ).length;
+
+            if (needsReconnect(item)) {
+              return (
+                <div key={item.id} className={cn("flex items-center gap-3 p-[20px]", index > 0 && "border-t")}>
+                  <div className="flex items-center justify-center h-9 w-9 rounded-md bg-red-500/10">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate text-muted-foreground">{item.institutionName}</p>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      Needs reconnecting before transactions can be fetched
+                    </p>
+                  </div>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/settings/plaid">Reconnect</Link>
+                  </Button>
+                </div>
+              );
+            }
 
             return (
               <Collapsible

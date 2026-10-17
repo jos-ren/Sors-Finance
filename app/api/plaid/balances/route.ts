@@ -13,6 +13,7 @@ import { plaidItems, plaidAccounts, portfolioItems, portfolioItemHistory, settin
 import type { HistoryChange } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
+import { checkPlaidHealth, statusForPlaidError, HEALTH_PRE_ACTION_MAX_AGE_MS } from "@/lib/plaid/health";
 import { PLAID_SETTINGS_KEYS } from "@/lib/plaid/types";
 import {
   getStockQuote,
@@ -357,8 +358,22 @@ export async function POST(request: NextRequest) {
       syncedPrices: [],
     };
 
+    // Sync All: free health check first, since a bank that needs a login would
+    // only fail the billed balance call below. A single-bank sync (right after
+    // linking or reconnecting) skips it: that bank's status is already fresh,
+    // and checking every other bank would only delay it.
+    const health = itemId ? null : await checkPlaidHealth(userId, { maxAgeMs: HEALTH_PRE_ACTION_MAX_AGE_MS });
+    const needsLogin = new Set(
+      (health?.items ?? []).filter((i) => i.status === "login_required").map((i) => i.id)
+    );
+
     // Process each Plaid item
     for (const item of userPlaidItems) {
+      if (needsLogin.has(item.id)) {
+        result.accountsFailed++;
+        result.errors.push(`${item.institutionName}: Needs reconnecting (Settings → Plaid). Skipped.`);
+        continue;
+      }
       try {
         // Use access token directly
         const accessToken = item.accessToken;
@@ -466,7 +481,7 @@ export async function POST(request: NextRequest) {
           .where(eq(plaidItems.id, item.id));
       } catch (error: unknown) {
         result.accountsFailed++;
-        const err = error as { response?: { data?: { error_message?: string } }; message?: string };
+        const err = error as { response?: { data?: { error_message?: string; error_code?: string } }; message?: string };
         const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
         result.errors.push(`${item.institutionName}: ${errorMessage}`);
 
@@ -474,7 +489,7 @@ export async function POST(request: NextRequest) {
         await db
           .update(plaidItems)
           .set({
-            status: "error",
+            status: statusForPlaidError(err?.response?.data?.error_code ?? "UNKNOWN"),
             errorMessage,
             updatedAt: new Date(),
           })

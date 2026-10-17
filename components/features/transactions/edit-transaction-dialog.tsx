@@ -92,7 +92,10 @@ export function EditTransactionDialog({
       await updateTransaction(transaction.id!, {
         date: transactionDate,
         description: description.trim(),
-        matchField: description.trim(),
+        // Keep the richer match text (raw bank string, extra CSV columns) unless the name changed
+        ...(description.trim() !== transaction.description && {
+          matchField: [description.trim(), transaction.originalDescription].filter(Boolean).join(" "),
+        }),
         amountOut: transactionType === "expense" ? amountNum : 0,
         amountIn: transactionType === "income" ? amountNum : 0,
         netAmount: transactionType === "income" ? amountNum : -amountNum,
