@@ -29,6 +29,7 @@ import {
 import { useBudgetHierarchy } from "@/hooks/use-budget";
 import { useProjects } from "@/hooks/use-projects";
 import { ProjectSelect } from "@/components/features/projects/project-select";
+import { AutoCategorizedDialog } from "./auto-categorized-dialog";
 import { matchProject } from "@/lib/projects/match";
 import {
   addTransactionsBulk,
@@ -74,6 +75,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [batchProjectId, setBatchProjectId] = useState<number | null>(null);
+  // Ids of rows keywords categorized in the last import, shown for review once it finishes.
+  const [reviewIds, setReviewIds] = useState<number[]>([]);
 
   // Live data used to categorize the incoming rows.
   const dbCategories = useCategories();
@@ -246,9 +249,15 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
       });
 
     try {
-      const { inserted } = await addTransactionsBulk(toDbFormat(finalized));
+      const { inserted, ids } = await addTransactionsBulk(toDbFormat(finalized));
       invalidateTransactions();
       invalidateImports();
+
+      // Rows a user keyword categorized (saved as reviewed): offer them for review.
+      const autoCategorized = ids
+        .filter(({ index }) => finalized[index]._reviewStatus === "reviewed" && finalized[index].categoryId)
+        .map(({ id }) => id);
+      if (autoCategorized.length > 0) setReviewIds(autoCategorized);
 
       if (method === "plaid") {
         // Remember the most recent Plaid import date (best effort).
@@ -435,6 +444,12 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   const wide = step === "manual" || step === "plaid";
 
   return (
+    <>
+    <AutoCategorizedDialog
+      open={reviewIds.length > 0}
+      onOpenChange={(next) => !next && setReviewIds([])}
+      transactionIds={reviewIds}
+    />
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className={wide ? "sm:max-w-2xl" : "sm:max-w-lg"}>
         <DialogHeader>
@@ -518,5 +533,6 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }

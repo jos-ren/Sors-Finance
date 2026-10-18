@@ -84,7 +84,7 @@ export async function deleteAllTransactions(): Promise<{ deleted: number }> {
 export async function addTransactionsBulk(
   transactions: Array<Omit<DbTransaction, "id" | "uuid" | "createdAt" | "updatedAt">>,
   options?: { skipDuplicates?: boolean }
-): Promise<{ inserted: number; skipped: number; total: number }> {
+): Promise<{ inserted: number; skipped: number; total: number; ids: { index: number; id: number }[] }> {
   const res = await fetch("/api/transactions/bulk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
