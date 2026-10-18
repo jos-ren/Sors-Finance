@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, use, useMemo, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Plus, Pencil, Loader2 } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import {
@@ -15,30 +15,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { useBudgetHierarchy, updateTransaction } from "@/hooks";
 import type { DbTransaction } from "@/lib/db/types";
-import {
-  BudgetItemPicker,
-  fromPickerValue,
-  toPickerValue,
-  type PickerValue,
-} from "@/components/features/budget/budget-item-picker";
-import { EditTransactionDialog } from "@/components/features/transactions/edit-transaction-dialog";
-import {
-  TransactionDetailLines,
-  accountLabel,
-  dayLabel,
-  useAccountLookup,
-} from "@/components/features/transactions/transaction-details";
-import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
+import { fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
+import { TransactionListCard } from "@/components/features/transactions/transaction-list-card";
 import { useProjects } from "@/hooks/use-projects";
 import { isSeparateProject } from "@/lib/budget/classify";
-import { ProjectChip } from "@/components/features/projects/project-chip";
 import { getTransactions } from "@/lib/db/client";
 import { AddTransactionDialog } from "@/components/features/transactions/add-transaction-dialog";
 import { CategoryDetailDialog } from "@/components/features/budget/category-detail-dialog";
@@ -86,9 +70,7 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
     transactions?.reduce((a, t) => (isProjectFunded(t.projectId) ? a + (t.amountOut - t.amountIn) : a), 0) ?? 0;
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
   const [movingId, setMovingId] = useState<number | null>(null);
-  const accountLookup = useAccountLookup();
 
   /** Recategorize from the row; the row leaves this list once it no longer belongs here. */
   const moveTransaction = async (t: DbTransaction, value: PickerValue) => {
@@ -131,7 +113,7 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
         <div>
           <h1 className="text-2xl font-semibold">{category?.name ?? "Category"}</h1>
           <p className="text-sm text-muted-foreground">
-            {MONTH_NAMES[month]} {year} · {transactions?.length ?? 0} transaction(s)
+            {MONTH_NAMES[month]} {year}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -170,88 +152,13 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
         open={editOpen}
         onOpenChange={setEditOpen}
       />
-      <EditTransactionDialog
-        open={editingTransaction !== null}
-        onOpenChange={(open) => !open && setEditingTransaction(null)}
-        transaction={editingTransaction}
+      <TransactionListCard
+        transactions={transactions}
+        emptyText="No transactions this month."
+        pickerPlaceholder={category?.name ?? "Category"}
+        movingId={movingId}
+        onCategoryChange={moveTransaction}
       />
-
-      <Card>
-        <CardContent className="p-0">
-          {!transactions ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-            </div>
-          ) : transactions.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No transactions this month.</p>
-          ) : (
-            <ul className="divide-y">
-              {transactions.map((t, i) => {
-                const net = t.amountOut - t.amountIn;
-                const showDayHeader = i === 0 || dayLabel(transactions[i - 1].date) !== dayLabel(t.date);
-                return (
-                  <Fragment key={t.id}>
-                  {showDayHeader && (
-                    <li className="bg-amber-100/30 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground dark:bg-amber-950/20">
-                      {dayLabel(t.date)}
-                    </li>
-                  )}
-                  <li className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <div className="shrink-0">
-                      <BankSourceBadge
-                        source={t.source}
-                        sourceMethod={(t.sourceMethod ?? undefined) as "Plaid" | "CSV" | "Manual" | undefined}
-                        sourceAccountName={accountLabel(t, accountLookup) ?? undefined}
-                        size="sm"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-baseline gap-2">
-                        <p className="truncate text-sm">{t.description}</p>
-                        {t.projectId != null && projectById.has(t.projectId) && (
-                          <ProjectChip
-                            id={t.projectId}
-                            name={projectById.get(t.projectId)!.name}
-                            color={projectById.get(t.projectId)!.color}
-                            className="py-0"
-                          />
-                        )}
-                      </div>
-                      <TransactionDetailLines transaction={t} lookup={accountLookup} />
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className={cn("text-sm tabular-nums", net < 0 && "text-primary")}>
-                        {net < 0 ? `+${fmt(Math.abs(net))}` : fmt(net)}
-                      </span>
-                      {movingId === t.id ? (
-                        <Loader2 className="mx-2 h-4 w-4 animate-spin text-muted-foreground" />
-                      ) : (
-                        <BudgetItemPicker
-                          variant="badge"
-                          allowCreate
-                          value={toPickerValue(t.categoryId, t.budgetItemId)}
-                          onChange={(v) => moveTransaction(t, v)}
-                          placeholder={category?.name ?? "Category"}
-                        />
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground"
-                        onClick={() => setEditingTransaction(t)}
-                        aria-label={`Edit ${t.description}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </li>
-                  </Fragment>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

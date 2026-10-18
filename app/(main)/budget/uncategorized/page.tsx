@@ -1,9 +1,8 @@
 "use client";
 
-import { Fragment, Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Breadcrumb,
@@ -13,8 +12,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
@@ -22,15 +19,8 @@ import { useCategories, useTransactionsByMonth, updateTransaction } from "@/hook
 import { useProjects } from "@/hooks/use-projects";
 import { isSeparateProject } from "@/lib/budget/classify";
 import type { DbTransaction } from "@/lib/db/types";
-import { BudgetItemPicker, fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
-import { EditTransactionDialog } from "@/components/features/transactions/edit-transaction-dialog";
-import {
-  TransactionDetailLines,
-  accountLabel,
-  dayLabel,
-  useAccountLookup,
-} from "@/components/features/transactions/transaction-details";
-import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
+import { fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
+import { TransactionListCard } from "@/components/features/transactions/transaction-list-card";
 import { SYSTEM_CATEGORIES } from "@/lib/db/types";
 
 const MONTH_NAMES = [
@@ -66,8 +56,6 @@ function UncategorizedContent() {
   const monthTransactions = useTransactionsByMonth(year, month);
   const categories = useCategories();
   const projects = useProjects();
-  const accountLookup = useAccountLookup();
-  const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
   const [movingId, setMovingId] = useState<number | null>(null);
 
   const transactions = useMemo(() => {
@@ -130,81 +118,20 @@ function UncategorizedContent() {
         <div>
           <h1 className="text-2xl font-semibold">Uncategorized</h1>
           <p className="text-sm text-muted-foreground">
-            {MONTH_NAMES[month]} {year} · {transactions?.length ?? 0} transaction(s) without a category
+            {MONTH_NAMES[month]} {year} · money out with no category
           </p>
         </div>
         <span className="text-xl font-semibold tabular-nums">{fmt(total)}</span>
       </div>
 
-      <EditTransactionDialog
-        open={editingTransaction !== null}
-        onOpenChange={(open) => !open && setEditingTransaction(null)}
-        transaction={editingTransaction}
+      <TransactionListCard
+        transactions={transactions}
+        emptyText="Everything this month has a category."
+        pickerPlaceholder="Select category"
+        showCurrentCategory={false}
+        movingId={movingId}
+        onCategoryChange={assign}
       />
-
-      <Card>
-        <CardContent className="p-0">
-          {!transactions ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-            </div>
-          ) : transactions.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">Everything this month has a category.</p>
-          ) : (
-            <ul className="divide-y">
-              {transactions.map((t, i) => {
-                const showDayHeader = i === 0 || dayLabel(transactions[i - 1].date) !== dayLabel(t.date);
-                return (
-                  <Fragment key={t.id}>
-                    {showDayHeader && (
-                      <li className="bg-amber-100/30 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground dark:bg-amber-950/20">
-                        {dayLabel(t.date)}
-                      </li>
-                    )}
-                    <li className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <div className="shrink-0">
-                        <BankSourceBadge
-                          source={t.source}
-                          sourceMethod={(t.sourceMethod ?? undefined) as "Plaid" | "CSV" | "Manual" | undefined}
-                          sourceAccountName={accountLabel(t, accountLookup) ?? undefined}
-                          size="sm"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <p className="truncate text-sm">{t.description}</p>
-                        <TransactionDetailLines transaction={t} lookup={accountLookup} />
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-sm tabular-nums">{fmt(t.amountOut)}</span>
-                        {movingId === t.id ? (
-                          <Loader2 className="mx-2 h-4 w-4 animate-spin text-muted-foreground" />
-                        ) : (
-                          <BudgetItemPicker
-                            variant="badge"
-                            allowCreate
-                            value={null}
-                            onChange={(v) => assign(t, v)}
-                            placeholder="Select category"
-                          />
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground"
-                          onClick={() => setEditingTransaction(t)}
-                          aria-label={`Edit ${t.description}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </li>
-                  </Fragment>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

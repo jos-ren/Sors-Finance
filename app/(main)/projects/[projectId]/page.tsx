@@ -1,10 +1,9 @@
 "use client";
 
-import { use, useState, type ReactNode } from "react";
+import { use, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
-import { MoreVertical, PencilLine, Plus, X } from "lucide-react";
+import { ChevronDown, MoreVertical, PencilLine, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -33,7 +33,11 @@ import { setTransactionsProject, updateProject, useProject } from "@/hooks/use-p
 import { ProjectDialog } from "@/components/features/projects/project-dialog";
 import { DeleteProjectDialog } from "@/components/features/projects/delete-project-dialog";
 import { STATUS_LABELS, formatProjectRange } from "@/components/features/projects/project-utils";
-import type { ProjectDetail, ProjectTransaction } from "@/lib/projects/types";
+import { TransactionListCard } from "@/components/features/transactions/transaction-list-card";
+import { fromPickerValue, type PickerValue } from "@/components/features/budget/budget-item-picker";
+import { useTransactions, updateTransaction } from "@/hooks";
+import type { DbTransaction } from "@/lib/db/types";
+import type { ProjectDetail } from "@/lib/projects/types";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -45,6 +49,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
   const { project, error } = useProject(id);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+
+  // A breakdown row opens that category's or month's transactions
+  const openTransactions = (param: "category" | "month", key: string) =>
+    router.push(`/projects/${id}/transactions?${param}=${encodeURIComponent(key)}`);
 
   const toggleArchive = async () => {
     if (!project) return;
@@ -136,6 +144,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
               }))}
               total={project.spent}
               color={project.color}
+              onSelect={(r) => openTransactions("category", r.key)}
             />
             <BreakdownCard
               title="By month"
@@ -148,12 +157,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ projec
               }))}
               total={project.spent}
               color={project.color}
+              onSelect={(r) => openTransactions("month", r.key)}
             />
           </div>
 
-          {project.suggestions.length > 0 && <SuggestionsCard project={project} />}
-
           <TransactionsCard project={project} />
+
+          {project.suggestions.length > 0 && <SuggestionsCard project={project} />}
 
           <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
           <DeleteProjectDialog
@@ -221,12 +231,15 @@ function BreakdownCard({
   rows,
   total,
   color,
+  onSelect,
 }: {
   title: string;
   description: string;
   rows: { key: string; label: string; sub: string | null; amount: number }[];
   total: number;
   color: string;
+  /** Opens the transactions behind a row. */
+  onSelect: (row: { key: string; label: string }) => void;
 }) {
   const fmt = useFormat();
   const max = Math.max(0, ...rows.map((r) => r.amount));
@@ -243,10 +256,16 @@ function BreakdownCard({
         ) : (
           <ul className="space-y-3">
             {rows.map((r) => (
-              <li key={r.key} className="space-y-1">
+              <li key={r.key}>
+              <button
+                type="button"
+                onClick={() => onSelect(r)}
+                title="Show these transactions"
+                className="group block w-full cursor-pointer space-y-1 text-left"
+              >
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate">
-                    {r.label}
+                    <span className="underline-offset-4 group-hover:underline">{r.label}</span>
                     {r.sub && <span className="ml-1.5 text-xs text-muted-foreground">{r.sub}</span>}
                   </span>
                   <span className="shrink-0 tabular-nums">
@@ -264,6 +283,7 @@ function BreakdownCard({
                     style={{ width: `${max > 0 ? Math.max(0, (r.amount / max) * 100) : 0}%`, backgroundColor: color }}
                   />
                 </div>
+              </button>
               </li>
             ))}
           </ul>
@@ -273,35 +293,46 @@ function BreakdownCard({
   );
 }
 
-function TransactionRow({
-  t,
-  action,
-}: {
-  t: ProjectTransaction;
-  action: ReactNode;
-}) {
-  const fmt = useFormat();
-  const net = t.amountOut - t.amountIn;
-  return (
-    <li className="flex items-center justify-between gap-3 px-5 py-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-sm">{t.description}</p>
-        <p className="text-xs text-muted-foreground">
-          {format(new Date(t.date), "MMM d, yyyy")} · {t.categoryName}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <span className={cn("text-sm tabular-nums", net < 0 && "text-primary")}>
-          {net < 0 ? `+${fmt(Math.abs(net))}` : fmt(net)}
-        </span>
-        {action}
-      </div>
-    </li>
-  );
+/**
+ * Full transactions for the project's own rows and its suggestions, newest first.
+ * The project detail only carries slim rows; the shared list needs the real ones.
+ */
+function useProjectRows(project: ProjectDetail) {
+  const all = useTransactions();
+  return useMemo(() => {
+    if (!all) return { transactions: undefined, suggestions: undefined };
+    const newestFirst = (a: DbTransaction, b: DbTransaction) =>
+      b.date.getTime() - a.date.getTime() || (b.transactedAt?.getTime() ?? 0) - (a.transactedAt?.getTime() ?? 0);
+    const suggestionIds = new Set(project.suggestions.map((s) => s.id));
+    return {
+      transactions: all.filter((t) => t.projectId === project.id).sort(newestFirst),
+      suggestions: all.filter((t) => t.id != null && suggestionIds.has(t.id)).sort(newestFirst),
+    };
+  }, [all, project.id, project.suggestions]);
+}
+
+/** Recategorize a row from the list; locked so keyword re-matching never moves it back. */
+function useRecategorize() {
+  const [movingId, setMovingId] = useState<number | null>(null);
+  const changeCategory = async (t: DbTransaction, value: PickerValue) => {
+    if (!value || t.id == null) return;
+    setMovingId(t.id);
+    try {
+      await updateTransaction(t.id, { ...fromPickerValue(value), categoryLocked: true });
+      toast.success("Transaction recategorized");
+    } catch {
+      toast.error("Failed to recategorize transaction");
+    } finally {
+      setMovingId(null);
+    }
+  };
+  return { movingId, changeCategory };
 }
 
 function SuggestionsCard({ project }: { project: ProjectDetail }) {
   const [busy, setBusy] = useState(false);
+  const { suggestions } = useProjectRows(project);
+  const { movingId, changeCategory } = useRecategorize();
 
   const add = async (ids: number[]) => {
     setBusy(true);
@@ -316,14 +347,10 @@ function SuggestionsCard({ project }: { project: ProjectDetail }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3">
-        <div className="space-y-1.5">
-          <CardTitle>Suggestions ({project.suggestions.length})</CardTitle>
-          <CardDescription>
-            Unassigned spending between the project dates. Add the ones that belong to this project.
-          </CardDescription>
-        </div>
+    <CollapsibleCard
+      title={`Suggestions (${project.suggestions.length})`}
+      description="Unassigned spending between the project dates. Add the ones that belong to this project."
+      actions={
         <Button
           variant="outline"
           size="sm"
@@ -333,35 +360,81 @@ function SuggestionsCard({ project }: { project: ProjectDetail }) {
         >
           Add all
         </Button>
-      </CardHeader>
-      <CardContent className="p-0">
-        <ul className="max-h-[420px] divide-y overflow-y-auto border-t">
-          {project.suggestions.map((t) => (
-            <TransactionRow
-              key={t.id}
-              t={t}
-              action={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={busy}
-                  onClick={() => add([t.id])}
-                  aria-label={`Add ${t.description} to project`}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              }
-            />
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
+      }
+    >
+      <TransactionListCard
+        embedded
+        transactions={suggestions}
+        emptyText="No suggestions."
+        pickerPlaceholder="Category"
+        movingId={movingId}
+        onCategoryChange={changeCategory}
+        rowAction={(t) => (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            disabled={busy}
+            onClick={() => add([t.id!])}
+            aria-label={`Add ${t.description} to project`}
+            title="Add to project"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
+      />
+    </CollapsibleCard>
+  );
+}
+
+/** A card whose header toggles its body open and closed. The body grows with its content (no inner scrollbar). */
+function CollapsibleCard({
+  title,
+  description,
+  actions,
+  children,
+}: {
+  title: string;
+  description: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card>
+        {/* CardHeader is a grid by default; `flex` replaces it so the buttons sit on the right */}
+        <CardHeader className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {actions}
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="shrink-0"
+                aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+              >
+                <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="p-0">{children}</CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 
 function TransactionsCard({ project }: { project: ProjectDetail }) {
   const [busy, setBusy] = useState(false);
+  const { transactions } = useProjectRows(project);
+  const { movingId, changeCategory } = useRecategorize();
 
   const remove = async (id: number) => {
     setBusy(true);
@@ -376,40 +449,33 @@ function TransactionsCard({ project }: { project: ProjectDetail }) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Transactions ({project.transactions.length})</CardTitle>
-        <CardDescription>Each one keeps its category. Removing it only takes it out of this project.</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        {project.transactions.length === 0 ? (
-          <p className="border-t p-8 text-center text-sm text-muted-foreground">
-            No transactions yet. Add them from the suggestions above or from the Transactions page.
-          </p>
-        ) : (
-          <ul className="divide-y border-t">
-            {project.transactions.map((t) => (
-              <TransactionRow
-                key={t.id}
-                t={t}
-                action={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground"
-                    disabled={busy}
-                    onClick={() => remove(t.id)}
-                    aria-label={`Remove ${t.description} from project`}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                }
-              />
-            ))}
-          </ul>
+    <CollapsibleCard
+      title={`Transactions (${project.transactions.length})`}
+      description="Each one keeps its category. Removing it only takes it out of this project."
+    >
+      <TransactionListCard
+        embedded
+        hideProjectChip
+        transactions={transactions}
+        emptyText="No transactions yet. Add them from the suggestions below or from the Transactions page."
+        pickerPlaceholder="Category"
+        movingId={movingId}
+        onCategoryChange={changeCategory}
+        rowAction={(t) => (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground"
+            disabled={busy}
+            onClick={() => remove(t.id!)}
+            aria-label={`Remove ${t.description} from project`}
+            title="Remove from project"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         )}
-      </CardContent>
-    </Card>
+      />
+    </CollapsibleCard>
   );
 }
 
