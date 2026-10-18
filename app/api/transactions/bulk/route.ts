@@ -80,8 +80,10 @@ export async function POST(request: NextRequest) {
       ).map((r) => r.plaidTransactionId!)
     );
 
-    // Filter out duplicates and prepare for insert
+    // Filter out duplicates and prepare for insert. `insertedIndexes` keeps each
+    // inserted row's position in the request so callers can map ids back to inputs.
     const toInsert = [];
+    const insertedIndexes: number[] = [];
     for (let i = 0; i < transactions.length; i++) {
       const t = transactions[i];
       const sig = signatures[i];
@@ -103,6 +105,7 @@ export async function POST(request: NextRequest) {
         budgetItemId: t.budgetItemId,
       });
 
+      insertedIndexes.push(i);
       toInsert.push({
         uuid: randomUUID(),
         date: new Date(t.date),
@@ -134,10 +137,12 @@ export async function POST(request: NextRequest) {
     // Bulk insert in batches to stay under SQLite's variable limit
     // (~27 columns per row; 30 rows keeps it under the old 999 default)
     const BATCH_SIZE = 30;
+    const insertedIds: number[] = [];
     if (toInsert.length > 0) {
       for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
         const batch = toInsert.slice(i, i + BATCH_SIZE);
-        await db.insert(schema.transactions).values(batch);
+        const rows = await db.insert(schema.transactions).values(batch).returning({ id: schema.transactions.id });
+        insertedIds.push(...rows.map((r) => r.id));
       }
       insertedCount = toInsert.length;
     }
@@ -147,6 +152,8 @@ export async function POST(request: NextRequest) {
         inserted: insertedCount,
         skipped: skippedCount,
         total: transactions.length,
+        // Parallel to the request: which input rows were inserted, and their new ids.
+        ids: insertedIndexes.map((index, n) => ({ index, id: insertedIds[n] })),
       },
       success: true,
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox, ChevronDown } from "lucide-react";
+import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox, ChevronDown, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,7 +36,11 @@ import { TransactionDetailLines, accountLabel, dayLabel, useAccountLookup } from
 import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { useBudgetHierarchy, addKeywordToSubcategory } from "@/hooks/use-budget";
 import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
-import { ProjectMenu } from "@/components/features/projects/project-menu";import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
+import { ProjectMenu } from "@/components/features/projects/project-menu";
+import { AutoCategorizedDialog } from "./auto-categorized-dialog";
+import { findMatchingCategories } from "@/lib/categories/categorizer";
+import { matchPlaidCategory } from "@/lib/categories/plaid-category";
+import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
 import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
@@ -83,6 +87,9 @@ export function ReviewInbox() {
   const [ruleText, setRuleText] = useState<Map<number, string>>(new Map());
   const [ruleMode, setRuleMode] = useState<Map<number, KeywordMatchMode>>(new Map());
   const [bulkApply, setBulkApply] = useState<Map<number, boolean>>(new Map()); // default on when siblings exist
+  const [refreshing, setRefreshing] = useState(false);
+  // Rows a refresh just categorized by keyword, shown for review.
+  const [reviewIds, setReviewIds] = useState<number[]>([]);
 
   // Newest first; within a day, by time of purchase when the bank sent one.
   const pending = useMemo(
@@ -121,7 +128,17 @@ export function ReviewInbox() {
     return targets;
   }, [hierarchy, categories]);
 
-  if (pending.length === 0) return null;
+  // Kept outside the list so it survives a refresh that clears every pending row.
+  const reviewDialog = (
+    <AutoCategorizedDialog
+      open={reviewIds.length > 0}
+      onOpenChange={(next) => !next && setReviewIds([])}
+      transactionIds={reviewIds}
+      title="Review newly categorized transactions"
+    />
+  );
+
+  if (pending.length === 0) return reviewIds.length > 0 ? reviewDialog : null;
 
   const categoryName = (t: DbTransaction): string => {
     if (t.budgetItemId != null) return subById.get(t.budgetItemId)?.name ?? "Category";
@@ -179,6 +196,81 @@ export function ReviewInbox() {
       await setTransactionsProject([t.id], projectId);
     } catch {
       toast.error("Failed to set project");
+    }
+  };
+
+  /**
+   * Re-run the rules on the inbox. A single keyword match is confirmed (saved as
+   * reviewed, like an import) and offered for review; rows with no keyword match
+   * get their dictionary / Plaid suggestion refreshed quietly.
+   */
+  const refreshSuggestions = async () => {
+    setRefreshing(true);
+    try {
+      type Target = { uuid: string; name: string; keywords: Keyword[]; value: { kind: "item" | "system"; id: number } };
+      const targets: Target[] = [
+        ...(hierarchy?.subcategories ?? []).map((s) => ({
+          uuid: s.uuid,
+          name: s.name,
+          keywords: s.keywords ?? [],
+          value: { kind: "item" as const, id: s.id! },
+        })),
+        ...(categories ?? []).map((c) => ({
+          uuid: c.uuid,
+          name: c.name,
+          keywords: c.keywords ?? [],
+          value: { kind: "system" as const, id: c.id! },
+        })),
+      ];
+      const byUuid = new Map(targets.map((x) => [x.uuid, x]));
+
+      const confirmed: number[] = [];
+      const updates: Array<() => Promise<void>> = [];
+      for (const t of pending) {
+        // Rows with a choice in progress or a hand-set category are left alone.
+        if (t.id == null || t.categoryLocked || picks.has(t.id)) continue;
+        const id = t.id;
+        const matches = findMatchingCategories(t.matchField, targets);
+
+        if (matches.length === 1) {
+          const value = matches[0].value;
+          confirmed.push(id);
+          updates.push(() =>
+            updateTransaction(id, { ...fromPickerValue(value), reviewStatus: "reviewed", conflictCategories: null })
+          );
+          continue;
+        }
+        if (matches.length > 1) {
+          if (rowKind(t) !== "conflict") {
+            const conflicting = matches.map((m) => m.uuid);
+            updates.push(() => updateTransaction(id, { categoryId: null, budgetItemId: null, conflictCategories: conflicting }));
+          }
+          continue;
+        }
+
+        const suggestedUuid =
+          matchGlobalDictionary(t.matchField, dictionaryTargets)?.categoryUuid ??
+          matchPlaidCategory(t.details?.plaidCategory, dictionaryTargets)?.uuid;
+        const suggested = suggestedUuid ? byUuid.get(suggestedUuid) : undefined;
+        if (!suggested) continue;
+        const current = toPickerValue(t.categoryId, t.budgetItemId);
+        if (rowKind(t) !== "conflict" && current?.kind === suggested.value.kind && current.id === suggested.value.id) continue;
+        updates.push(() =>
+          updateTransaction(id, { ...fromPickerValue(suggested.value), reviewStatus: "pending", conflictCategories: null })
+        );
+      }
+
+      for (let i = 0; i < updates.length; i += 10) {
+        await Promise.all(updates.slice(i, i + 10).map((run) => run()));
+      }
+      invalidateTransactions();
+
+      if (confirmed.length > 0) setReviewIds(confirmed);
+      else toast.success(updates.length > 0 ? "Suggestions refreshed" : "Everything is already up to date");
+    } catch {
+      toast.error("Failed to refresh suggestions");
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -294,6 +386,8 @@ export function ReviewInbox() {
   const suggestionCount = pending.filter(isOpenSuggestion).length;
 
   return (
+    <>
+    {reviewDialog}
     <section className="rounded-lg border border-amber-300/60 dark:border-amber-700/50 bg-amber-50/40 dark:bg-amber-950/10">
       <div className="flex items-center justify-between gap-3 border-b border-amber-300/40 dark:border-amber-700/30 px-4 py-3">
         <div className="flex items-center gap-2">
@@ -304,6 +398,10 @@ export function ReviewInbox() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={refreshSuggestions} disabled={refreshing || busy.size > 0}>
+            <RefreshCw className={cn("h-4 w-4 mr-1.5", refreshing && "animate-spin")} />
+            Refresh
+          </Button>
           {suggestionCount > 0 && (
             <Button size="sm" onClick={approveAll} disabled={busy.size > 0}>
               <Check className="h-4 w-4 mr-1.5" />
@@ -570,5 +668,6 @@ export function ReviewInbox() {
       </div>
       )}
     </section>
+    </>
   );
 }

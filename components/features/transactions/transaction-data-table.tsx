@@ -14,7 +14,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Lock, RotateCcw, Sparkles, FolderKanban } from "lucide-react";
+import { ArrowUpDown, Search, X, ChevronLeft, ChevronRight, MoreHorizontal, Pencil, Trash2, StickyNote, Pin, RotateCcw, Sparkles, FolderKanban } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,10 +72,18 @@ import { useBudgetHierarchy } from "@/hooks/use-budget";
 import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
 import { ProjectChip } from "@/components/features/projects/project-chip";
 import { ProjectMenu } from "@/components/features/projects/project-menu";
+import { accountLabel, useAccountLookup } from "./transaction-details";
 import { BudgetItemPicker, toPickerValue, fromPickerValue } from "@/components/features/budget/budget-item-picker";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency, useTimezone } from "@/contexts/settings-context";
 import { formatDate } from "@/lib/utils/formatters";
+
+/**
+ * The description column takes all the width the other columns leave over, and
+ * the title truncates at the cell edge (max-w-0 lets a w-full table cell shrink
+ * below its text), so there is no gap before the next column.
+ */
+const DESCRIPTION_CELL_CLASS = "w-full min-w-[240px] max-w-0";
 
 interface TransactionDataTableProps {
   transactions: DbTransaction[];
@@ -122,6 +130,8 @@ export function TransactionDataTable({
 
   // Projects: a separate "why" label alongside the category
   const projects = useProjects();
+  // Account names as they are called in Accounts, not the bank's own title
+  const accountLookup = useAccountLookup();
   const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const assignableProjects = useMemo(() => (projects ?? []).filter((p) => !p.isArchived), [projects]);
 
@@ -256,20 +266,26 @@ export function TransactionDataTable({
         ),
         cell: ({ row }) => {
           const note = row.original.note;
+          const description = row.original.description;
+          // The bank's raw string, when it says more than the merchant name
+          const raw = row.original.originalDescription?.trim();
           return (
             <div className="flex items-center gap-1.5">
-              <TooltipProvider delayDuration={300}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="max-w-[300px] truncate cursor-default">
-                      {row.getValue("description")}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-[400px] break-words">
-                    {row.getValue("description")}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <div className="min-w-0 flex-1">
+                <TooltipProvider delayDuration={300}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="truncate cursor-default">{description}</div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-[400px] break-words">
+                      {description}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {raw && raw !== description.trim() && (
+                  <div className="break-words font-mono text-[11px] text-muted-foreground/80">{raw}</div>
+                )}
+              </div>
               {note && (
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -349,9 +365,9 @@ export function TransactionDataTable({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Lock className="h-3 w-3 text-muted-foreground shrink-0 cursor-default" />
+                      <Pin className="h-3 w-3 text-muted-foreground shrink-0 cursor-default" />
                     </TooltipTrigger>
-                    <TooltipContent side="top">Manually set</TooltipContent>
+                    <TooltipContent side="top">Manually set. Keyword rules will not change it.</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               )}
@@ -384,7 +400,7 @@ export function TransactionDataTable({
           <BankSourceBadge
             source={row.getValue("source")}
             sourceMethod={row.original.sourceMethod as "Plaid" | "CSV" | "Manual" | undefined}
-            sourceAccountName={row.original.sourceAccountName as string | undefined}
+            sourceAccountName={accountLabel(row.original, accountLookup) ?? undefined}
             size="sm"
           />
         ),
@@ -428,7 +444,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency, projectById, projects, handleSetProject]
+    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency, projectById, projects, handleSetProject, accountLookup]
   );
 
   // Apply filters to transactions
@@ -837,7 +853,7 @@ export function TransactionDataTable({
                 table.getRowModel().rows.map((row) => (
                   <TableRow key={row.id}>
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
+                      <TableCell key={cell.id} className={cell.column.id === "description" ? DESCRIPTION_CELL_CLASS : undefined}>
                         {flexRender(
                           cell.column.columnDef.cell,
                           cell.getContext()
