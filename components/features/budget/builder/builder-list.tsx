@@ -5,12 +5,16 @@ import { Trash2, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -74,33 +78,103 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // The group a category is dragged from, and the group it is currently over,
+  // so a different group can light up as a drop target.
+  const [dragFromGroup, setDragFromGroup] = useState<number | null>(null);
+  const [overGroup, setOverGroup] = useState<number | null>(null);
+
+  const groupOfSub = (subId: number) => groups.find((g) => g.categories.some((c) => c.category.id === subId))?.group.id;
+
+  /** Group a drop target belongs to: a category row, or a group's drop zone. */
+  const groupOfTarget = (id: string): number | undefined => {
+    const [type, rawId] = id.split(":");
+    if (type === "sub") return groupOfSub(Number(rawId));
+    if (type === "groupdrop") return Number(rawId);
+    return undefined;
+  };
+
   const collisionDetection: CollisionDetection = (args) => {
     const activeType = String(args.active.id).split(":")[0];
-    const filtered = args.droppableContainers.filter((c) => String(c.id).startsWith(`${activeType}:`));
-    return closestCenter({ ...args, droppableContainers: filtered });
+    const containers = args.droppableContainers;
+    if (activeType !== "sub") {
+      return closestCenter({ ...args, droppableContainers: containers.filter((c) => String(c.id).startsWith(`${activeType}:`)) });
+    }
+    // A category can land on another category (any group) or on a group's drop
+    // zone, which is how it reaches an empty group or the end of a list.
+    const subs = containers.filter((c) => String(c.id).startsWith("sub:"));
+    const zones = containers.filter((c) => String(c.id).startsWith("groupdrop:"));
+    const hits = pointerWithin({ ...args, droppableContainers: [...subs, ...zones] });
+    const subHits = hits.filter((c) => String(c.id).startsWith("sub:"));
+    if (subHits.length > 0) return subHits;
+    if (hits.length > 0) return hits;
+    return closestCenter({ ...args, droppableContainers: subs });
+  };
+
+  const handleDragStart = (e: DragStartEvent) => {
+    const [type, id] = String(e.active.id).split(":");
+    if (type === "sub") setDragFromGroup(groupOfSub(Number(id)) ?? null);
+  };
+
+  const handleDragOver = (e: DragOverEvent) => {
+    setOverGroup(e.over ? groupOfTarget(String(e.over.id)) ?? null : null);
+  };
+
+  const clearDrag = () => {
+    setDragFromGroup(null);
+    setOverGroup(null);
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    clearDrag();
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const [aType, aId] = String(active.id).split(":");
     const [oType, oId] = String(over.id).split(":");
-    if (aType !== oType) return;
     try {
-      if (aType === "group") await reorderGroups(Number(aId), Number(oId));
-      else if (aType === "sub") await reorderSubcategories(Number(aId), Number(oId));
+      if (aType === "group" && oType === "group") {
+        await reorderGroups(Number(aId), Number(oId));
+        return;
+      }
+      if (aType !== "sub") return;
+      const fromGroup = groupOfSub(Number(aId));
+      const toGroup = groupOfTarget(String(over.id));
+      if (fromGroup === undefined || toGroup === undefined) return;
+
+      if (fromGroup === toGroup) {
+        if (oType === "sub") await reorderSubcategories(Number(aId), Number(oId));
+        return;
+      }
+
+      // Different group: move it to the end of that group, then slide it into
+      // place when it was dropped on a specific category.
+      const target = groups.find((g) => g.group.id === toGroup);
+      const nextOrder = target && target.categories.length > 0 ? Math.max(...target.categories.map((c) => c.category.order)) + 1 : 0;
+      await updateSubcategory(Number(aId), { groupId: toGroup, order: nextOrder });
+      if (oType === "sub") await reorderSubcategories(Number(aId), Number(oId), toGroup);
     } catch {
-      toast.error("Failed to reorder");
+      toast.error("Failed to move category");
     }
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragCancel={clearDrag}
+      onDragEnd={handleDragEnd}
+    >
       <div className="space-y-4">
         <div className="divide-y overflow-hidden rounded-xl border bg-card">
           <SortableContext items={groups.map((g) => `group:${g.group.id}`)} strategy={verticalListSortingStrategy}>
             {groups.map((g) => (
-              <BuilderGroup key={g.group.id} data={g} {...shared} />
+              <BuilderGroup
+                key={g.group.id}
+                data={g}
+                dropTarget={dragFromGroup !== null && overGroup === g.group.id && dragFromGroup !== g.group.id}
+                {...shared}
+              />
             ))}
           </SortableContext>
         </div>
@@ -110,11 +184,13 @@ export function BuilderList({ groups, ...shared }: { groups: BuilderGroupData[] 
   );
 }
 
-function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedProps) {
+function BuilderGroup({ data, dropTarget, ...shared }: { data: BuilderGroupData; dropTarget: boolean } & SharedProps) {
   const { group, categories } = data;
   const { income, pending, formatAmount, onPlannedChange, onOpenDetail } = shared;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `group:${group.id}` });
+  // The category area is also a drop zone, so a category can be dropped into an empty group.
+  const { setNodeRef: setDropRef } = useDroppable({ id: `groupdrop:${group.id}` });
 
   const allocated = categories.reduce((a, { category, saved }) => a + effective(category.id!, saved, pending), 0);
 
@@ -144,8 +220,8 @@ function BuilderGroup({ data, ...shared }: { data: BuilderGroupData } & SharedPr
         </div>
       </div>
 
-      <div className="py-3 pr-4">
-        <div className="ml-4 divide-y divide-border/40 border-l-2 border-border/40 pl-4">
+      <div ref={setDropRef} className={cn("py-3 pr-4 transition-colors", dropTarget && "bg-primary/5")}>
+        <div className="ml-4 min-h-8 divide-y divide-border/40 border-l-2 border-border/40 pl-4">
           <SortableContext items={categories.map(({ category }) => `sub:${category.id}`)} strategy={verticalListSortingStrategy}>
             {categories.map(({ category, saved }) => (
               <AllocationItemRow
