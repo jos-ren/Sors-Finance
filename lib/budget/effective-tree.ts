@@ -37,6 +37,7 @@ export function computeEffectiveTree(tree: BudgetTree, pending: Map<number, stri
     totalBudgeted,
     totalActual,
     availableToAssign: tree.summary.incomeActual - totalBudgeted,
+    uncategorizedOut: tree.summary.uncategorizedOut,
   };
 
   return { ...tree, groups, summary };

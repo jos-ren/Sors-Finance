@@ -176,6 +176,13 @@
       "when": 1792120823631,
       "tag": "0024_goals_to_saving",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1792254782184,
+      "tag": "0025_add_transaction_details",
+      "breakpoints": true
     }
   ]
 }

@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { useSnapshot } from "@/contexts/snapshot-context";
+import { usePlaidReconnectNeeded } from "@/hooks";
 
 const navItems = [
   {
@@ -88,6 +89,7 @@ function NavLink({ href, children, className }: { href: string; children: React.
 export function AppSidebar() {
   const pathname = usePathname();
   const { progress, isSnapshotInProgress } = useSnapshot();
+  const reconnectNeeded = usePlaidReconnectNeeded();
 
   const progressPercent = progress.total > 0
     ? Math.round((progress.completed / progress.total) * 100)
@@ -207,11 +209,21 @@ export function AppSidebar() {
             <SidebarMenuButton
               asChild
               isActive={pathname.startsWith("/settings")}
-              tooltip="Settings"
+              tooltip={
+                reconnectNeeded.length > 0
+                  ? `Settings · ${reconnectNeeded.map((i) => i.institutionName).join(", ")} ${reconnectNeeded.length === 1 ? "needs" : "need"} reconnecting`
+                  : "Settings"
+              }
             >
-              <NavLink href="/settings">
+              <NavLink href={reconnectNeeded.length > 0 ? "/settings/plaid" : "/settings"} className="relative">
                 <Settings />
                 <span>Settings</span>
+                {reconnectNeeded.length > 0 && (
+                  <span
+                    className="absolute left-[19px] top-[5px] size-2 rounded-full bg-red-500 ring-2 ring-sidebar"
+                    aria-label="A bank needs reconnecting"
+                  />
+                )}
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>

@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { Fragment, use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { format } from "date-fns";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import {
   Breadcrumb,
@@ -20,7 +20,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
-import { useBudgetHierarchy } from "@/hooks";
+import { useBudgetHierarchy, updateTransaction } from "@/hooks";
+import type { DbTransaction } from "@/lib/db/types";
+import {
+  BudgetItemPicker,
+  fromPickerValue,
+  toPickerValue,
+  type PickerValue,
+} from "@/components/features/budget/budget-item-picker";
+import { EditTransactionDialog } from "@/components/features/transactions/edit-transaction-dialog";
+import {
+  TransactionDetailLines,
+  accountLabel,
+  dayLabel,
+  useAccountLookup,
+} from "@/components/features/transactions/transaction-details";
+import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { useProjects } from "@/hooks/use-projects";
 import { isSeparateProject } from "@/lib/budget/classify";
 import { ProjectChip } from "@/components/features/projects/project-chip";
@@ -71,6 +86,24 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
     transactions?.reduce((a, t) => (isProjectFunded(t.projectId) ? a + (t.amountOut - t.amountIn) : a), 0) ?? 0;
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<DbTransaction | null>(null);
+  const [movingId, setMovingId] = useState<number | null>(null);
+  const accountLookup = useAccountLookup();
+
+  /** Recategorize from the row; the row leaves this list once it no longer belongs here. */
+  const moveTransaction = async (t: DbTransaction, value: PickerValue) => {
+    if (!value || t.id == null || (value.kind === "item" && value.id === id)) return;
+    setMovingId(t.id);
+    try {
+      // Locked so keyword re-matching never moves it back
+      await updateTransaction(t.id, { ...fromPickerValue(value), categoryLocked: true });
+      toast.success("Transaction moved");
+    } catch {
+      toast.error("Failed to move transaction");
+    } finally {
+      setMovingId(null);
+    }
+  };
 
   return (
     <div className="space-y-5 p-6">
@@ -137,6 +170,11 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
         open={editOpen}
         onOpenChange={setEditOpen}
       />
+      <EditTransactionDialog
+        open={editingTransaction !== null}
+        onOpenChange={(open) => !open && setEditingTransaction(null)}
+        transaction={editingTransaction}
+      />
 
       <Card>
         <CardContent className="p-0">
@@ -148,14 +186,28 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
             <p className="p-8 text-center text-sm text-muted-foreground">No transactions this month.</p>
           ) : (
             <ul className="divide-y">
-              {transactions.map((t) => {
+              {transactions.map((t, i) => {
                 const net = t.amountOut - t.amountIn;
+                const showDayHeader = i === 0 || dayLabel(transactions[i - 1].date) !== dayLabel(t.date);
                 return (
-                  <li key={t.id} className="flex items-center justify-between gap-4 px-4 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm">{t.description}</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-muted-foreground">{format(t.date, "MMM d, yyyy")}</p>
+                  <Fragment key={t.id}>
+                  {showDayHeader && (
+                    <li className="bg-amber-100/30 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground dark:bg-amber-950/20">
+                      {dayLabel(t.date)}
+                    </li>
+                  )}
+                  <li className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="shrink-0">
+                      <BankSourceBadge
+                        source={t.source}
+                        sourceMethod={(t.sourceMethod ?? undefined) as "Plaid" | "CSV" | "Manual" | undefined}
+                        sourceAccountName={accountLabel(t, accountLookup) ?? undefined}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-baseline gap-2">
+                        <p className="truncate text-sm">{t.description}</p>
                         {t.projectId != null && projectById.has(t.projectId) && (
                           <ProjectChip
                             id={t.projectId}
@@ -165,11 +217,35 @@ export default function BudgetCategoryPage({ params }: { params: Promise<{ categ
                           />
                         )}
                       </div>
+                      <TransactionDetailLines transaction={t} lookup={accountLookup} />
                     </div>
-                    <span className={cn("shrink-0 text-sm tabular-nums", net < 0 && "text-primary")}>
-                      {net < 0 ? `+${fmt(Math.abs(net))}` : fmt(net)}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className={cn("text-sm tabular-nums", net < 0 && "text-primary")}>
+                        {net < 0 ? `+${fmt(Math.abs(net))}` : fmt(net)}
+                      </span>
+                      {movingId === t.id ? (
+                        <Loader2 className="mx-2 h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <BudgetItemPicker
+                          variant="badge"
+                          allowCreate
+                          value={toPickerValue(t.categoryId, t.budgetItemId)}
+                          onChange={(v) => moveTransaction(t, v)}
+                          placeholder={category?.name ?? "Category"}
+                        />
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground"
+                        onClick={() => setEditingTransaction(t)}
+                        aria-label={`Edit ${t.description}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </li>
+                  </Fragment>
                 );
               })}
             </ul>

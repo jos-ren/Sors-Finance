@@ -22,6 +22,8 @@ const CATEGORY_COLORS = [
 const INCOME_COLOR = "var(--primary)";
 const UNSPENT_COLOR = "var(--muted-foreground)";
 const PROJECTS_COLOR = "var(--alt-blue)";
+// Muted grey like Unspent, but lighter so the two stay distinguishable.
+const UNCATEGORIZED_COLOR = "color-mix(in oklab, var(--muted-foreground) 55%, transparent)";
 
 interface FlowNode {
   name: string;
@@ -65,7 +67,8 @@ function buildMoneyFlow(
   }
   const projectChildren = [...projectTotals.values()].filter((p) => p.value > 0);
   const totalProjects = projectChildren.reduce((sum, p) => sum + p.value, 0);
-  const unspent = incomeActual - totalGroupActual - totalProjects;
+  const uncategorized = tree.summary.uncategorizedOut;
+  const unspent = incomeActual - totalGroupActual - totalProjects - uncategorized;
 
   // Depth-1 nodes (groups + Unspent) are ranked together by amount, then
   // each group's categories are ranked among themselves — so, with
@@ -93,6 +96,11 @@ function buildMoneyFlow(
     topLevel.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent });
   }
   topLevel.sort((a, b) => b.value - a.value);
+  // Uncategorized money out always sits last (bottom) so it stands apart from
+  // the ranked groups: it is the part of the month still waiting for a category.
+  if (uncategorized > 0.005) {
+    topLevel.push({ name: "Uncategorized", color: UNCATEGORIZED_COLOR, value: uncategorized });
+  }
 
   for (const item of topLevel) {
     // Groupless items (Unspent) have no real second hop, but recharts

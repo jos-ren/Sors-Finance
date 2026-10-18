@@ -89,7 +89,7 @@ const c = (stems: readonly string[], ...texts: string[]): GlobalEntry => ({
  * user's category names in order; the first that resolves wins. Kept long
  * enough to dodge the substring landmines documented at the top of the file.
  */
-const STEMS = {
+export const STEMS = {
   groceries: ["grocer", "supermarket"],
   restaurants: ["restaurant", "dining", "food"],
   coffee: ["coffee", "cafe", "dining", "restaurant"],
@@ -813,6 +813,18 @@ function nameMatchesStem(categoryName: string, stem: string): boolean {
   const name = categoryName.toLowerCase();
   const s = stem.toLowerCase();
   return name.includes(s) || s.includes(name);
+}
+
+/** The first user category whose name matches one of `stems`, in stem order. */
+export function resolveStems(
+  stems: readonly string[],
+  userCategories: DictionaryTarget[]
+): DictionaryTarget | null {
+  for (const stem of stems) {
+    const target = userCategories.find((cat) => nameMatchesStem(cat.name, stem));
+    if (target) return target;
+  }
+  return null;
 }
 
 /**

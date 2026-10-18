@@ -27,6 +27,7 @@ import { PeriodNavigator } from "@/components/features/budget/period-navigator";
 import { BudgetSummaryHero, type AssignSuggestion } from "@/components/features/budget/budget-summary-hero";
 import { MoneyFlowSankey } from "@/components/features/budget/money-flow-sankey";
 import { BudgetTreeView } from "@/components/features/budget/budget-tree";
+import { ApplyToPreviousButton } from "@/components/features/budget/apply-to-previous-button";
 import { CopyPreviousMonthCard } from "@/components/features/budget/copy-previous-month-card";
 import { YearlyTotalsView } from "@/components/features/budget/yearly-totals-view";
 import { CategoryDetailDialog, type DetailCategory } from "@/components/features/budget/category-detail-dialog";
@@ -99,6 +100,9 @@ function BudgetPageContent() {
             onMonthSelect={(year, month) => setSelected({ year, month })}
             onYearChange={(v) => setSelectedYear(parseInt(v, 10))}
           />
+          {viewMode === "monthly" && tree && tree.groups.length > 0 && (
+            <ApplyToPreviousButton year={selected.year} month={selected.month} />
+          )}
           {viewMode === "monthly" && (
             <Button asChild variant="outline" size="sm" className="gap-1.5">
               <Link href="/budget/builder">

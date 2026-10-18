@@ -83,10 +83,12 @@ Uncategorized money out counts as spending; Excluded rows are ignored. Plan and 
 
 1. **Source**: file upload (`.csv`, `.xlsx`, `.xls`) or Plaid
 2. **Parsing**: parser registry (`lib/parsers`) with the custom column-mapping parser and auto-detection (`column-detection.ts`); mappings can be saved as templates (`custom_import_templates`)
-3. **Dedup**: exact duplicates are silently discarded
+3. **Dedup**: exact duplicates are silently discarded. Plaid rows dedup on `plaidTransactionId` instead (in `app/api/plaid/transactions/fetch/route.ts`); Plaid rows imported before ids were stored are matched up and backfilled through `POST /api/transactions/plaid-details`
 4. **Categorization** (`lib/categories/categorizer.ts`): user keywords first (match modes in `lib/categories/keyword.ts`). A single match is trusted; multiple matches are a conflict
-5. **Gap fill**: unmatched rows get a suggestion from the global dictionary (`lib/categories/global-dictionary.ts`)
-6. **Insert** with `reviewStatus`: trusted matches are `reviewed`; conflicts, suggestions and unknowns are `pending` and appear in the review inbox (`review-inbox.tsx`)
+5. **Gap fill**: unmatched rows get a suggestion from the global dictionary (`lib/categories/global-dictionary.ts`), then from Plaid's own category when it is confident (`lib/categories/plaid-category.ts`)
+6. **Insert** with `reviewStatus`: trusted matches are `reviewed`; conflicts, suggestions and unknowns are `pending` and appear in the review inbox (`review-inbox.tsx`), grouped by day with time, account, channel, place and the raw bank string
+
+Plaid rows keep `description` as the clean merchant name; `matchField` joins merchant, Plaid `name` and `original_description` so keywords can target the raw bank text. Plaid days (`authorized_date`, else posted `date`) travel as `YYYY-MM-DD` and become local midnight on the client, like the file parsers. Extra bank context lives in `originalDescription`, `merchantName`, `transactedAt` (only when the bank sends a real time) and the `details` JSON (`TransactionDetails` in `lib/db/types.ts`).
 
 ### Bank Parser Architecture (Extensible)
 
@@ -148,6 +150,16 @@ Point-in-time totals (savings, investments, assets, debt, net worth) plus per-ac
 3. **Scheduled** (production only, `NODE_ENV=production`): `lib/services/scheduler.ts` via node-cron, started from `instrumentation.ts` (respects settings)
 
 Settings keys: `SNAPSHOT_ENABLED`, `SNAPSHOT_TIME` (default `03:00`), `TIMEZONE`, `PLAID_SYNC_WITH_SNAPSHOT`, `PRICE_REFRESH_WITH_SNAPSHOT`.
+
+#### Plaid Connection Health
+
+`lib/plaid/health.ts` reads each bank's state with `/item/get` (free; `/accounts/balance/get` is billed per call) and stores `plaid_items.status` (`active` | `login_required` | `error`). Checks are gated on the per-user `PLAID_HEALTH_CHECKED_AT` setting, not a clock, so a missed check runs on the next app load:
+
+- App load (`app/(main)/layout.tsx`) → `POST /api/plaid/health`, Plaid asked when the last check is over 6 hours old
+- Import account picker, Settings → Plaid, Sync All and the scheduled balance sync use a 30 minute window; Sync All and the scheduler skip `login_required` banks
+- Production scheduler also runs it every 6 hours
+
+Shown via `usePlaidHealth` / `usePlaidReconnectNeeded` (`hooks/use-database.ts`, key `plaid/health`, refreshed with `invalidatePlaidHealth`): red dot on Settings in the sidebar, Home "Needs attention" chip, marked bank in the import picker and Settings → Plaid, and a warning on linked Accounts items.
 
 ### Environment Variables
 

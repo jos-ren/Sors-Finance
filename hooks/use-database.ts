@@ -875,18 +875,41 @@ export async function findDuplicateSignatures(
 // Plaid Institution Status Hook
 // ============================================
 
-/** Maps plaid account ID → institution status ('active' | 'login_required' | 'error') */
-export function usePlaidAccountStatuses(): Map<number, string> {
+/** A connected bank and its accounts, with the Accounts item each one feeds. */
+export interface PlaidInstitutionSummary {
+  id: number;
+  institutionName: string;
+  status: string;
+  accounts: Array<{
+    id: number;
+    /** Plaid's account_id */
+    accountId: string;
+    name: string;
+    officialName: string | null;
+    mask: string | null;
+    /** What the account is called in Accounts, when linked */
+    portfolioItemName: string | null;
+  }>;
+}
+
+/** Connected banks from /api/plaid/institutions (shared cache, refreshed by invalidatePlaidHealth). */
+export function usePlaidInstitutions(): PlaidInstitutionSummary[] | undefined {
   const { data } = useSWR(
     "plaid/institution-statuses",
     async () => {
       const response = await fetch("/api/plaid/institutions");
       if (!response.ok) return [];
       const json = await response.json();
-      return json.institutions || [];
+      return (json.institutions || []) as PlaidInstitutionSummary[];
     },
     { ...swrConfig, revalidateOnFocus: false }
   );
+  return data;
+}
+
+/** Maps plaid account ID → institution status ('active' | 'login_required' | 'error') */
+export function usePlaidAccountStatuses(): Map<number, string> {
+  const data = usePlaidInstitutions();
 
   const map = new Map<number, string>();
   if (data) {
@@ -897,4 +920,59 @@ export function usePlaidAccountStatuses(): Map<number, string> {
     }
   }
   return map;
+}
+
+// ============================================
+// Plaid Connection Health
+// ============================================
+
+export interface PlaidItemHealth {
+  id: number;
+  institutionName: string;
+  status: "active" | "login_required" | "error";
+  errorMessage: string | null;
+}
+
+/** Stored connection statuses (no Plaid call). Kept fresh by `runPlaidHealthCheck`. */
+export function usePlaidHealth(): PlaidItemHealth[] | undefined {
+  const { data } = useSWR(
+    "plaid/health",
+    async () => {
+      const response = await fetch("/api/plaid/health");
+      if (!response.ok) return [];
+      const json = await response.json();
+      return (json.data?.items ?? []) as PlaidItemHealth[];
+    },
+    { ...swrConfig, revalidateOnFocus: false }
+  );
+  return data;
+}
+
+/** Banks whose login has to be renewed in Settings → Plaid. */
+export function usePlaidReconnectNeeded(): PlaidItemHealth[] {
+  return (usePlaidHealth() ?? []).filter((i) => i.status === "login_required");
+}
+
+/** Refresh every view of Plaid connection status. */
+export function invalidatePlaidHealth() {
+  mutate("plaid/health");
+  mutate("plaid/institution-statuses");
+}
+
+/**
+ * Ask the server to check connections with Plaid (free). The server skips the
+ * Plaid call when the last check is recent: 30 minutes with `preAction`
+ * (before an import or sync), otherwise 6 hours.
+ */
+export async function runPlaidHealthCheck(options?: { preAction?: boolean; force?: boolean }): Promise<void> {
+  try {
+    await fetch("/api/plaid/health", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options ?? {}),
+    });
+  } catch {
+    // Non-critical; stored statuses still show
+  }
+  invalidatePlaidHealth();
 }

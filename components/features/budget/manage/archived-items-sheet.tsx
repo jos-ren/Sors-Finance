@@ -1,6 +1,7 @@
 "use client";
 
-import { ArchiveRestore, PiggyBank } from "lucide-react";
+import { ArchiveRestore } from "lucide-react";
+import { CategoryTypeIcon } from "@/components/features/budget/category-type-icon";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ export function ArchivedItemsSheet({ open, onOpenChange }: { open: boolean; onOp
                   <li key={category.id} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 truncate text-sm">
-                        {category.itemType === "saving" && <PiggyBank className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                        <CategoryTypeIcon category={category} />
                         {category.name}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">{group?.name ?? ""}</p>

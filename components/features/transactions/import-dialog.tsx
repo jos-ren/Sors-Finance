@@ -20,6 +20,7 @@ import { Transaction, UploadedFile } from "@/types";
 import { parseFile } from "@/lib/parsers";
 import { categorizeTransactions } from "@/lib/categories/categorizer";
 import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
+import { matchPlaidCategory } from "@/lib/categories/plaid-category";
 import {
   useCategories,
   invalidateTransactions,
@@ -27,14 +28,17 @@ import {
 } from "@/hooks";
 import { useBudgetHierarchy } from "@/hooks/use-budget";
 import { useProjects } from "@/hooks/use-projects";
+import { ProjectSelect } from "@/components/features/projects/project-select";
 import { matchProject } from "@/lib/projects/match";
 import {
   addTransactionsBulk,
+  addPlaidDetails,
   addImport,
   deleteImport,
   findDuplicateSignatures,
 } from "@/lib/db/client";
 import type { DbCategory } from "@/lib/db/types";
+import type { FetchedPlaidTransaction, PlaidEnrichment } from "@/lib/plaid/types";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -53,10 +57,23 @@ function normalizeDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/** YYYY-MM-DD → local midnight, the same convention the file parsers use. */
+function parseLocalDay(day: string): Date {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Counts from the Plaid fetch that never reach the pipeline, for the summary toast. */
+interface PlaidExtras {
+  alreadyImported: number;
+  enriched: number;
+}
+
 export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   const [step, setStep] = useState<Step>("source");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [batchProjectId, setBatchProjectId] = useState<number | null>(null);
 
   // Live data used to categorize the incoming rows.
   const dbCategories = useCategories();
@@ -94,7 +111,18 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
     setStep("source");
     setUploadedFiles([]);
     setErrors([]);
+    setBatchProjectId(null);
   };
+
+  const batchProjectPicker = (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">Project (optional)</p>
+      <ProjectSelect value={batchProjectId} onChange={setBatchProjectId} className="w-full" />
+      <p className="text-xs text-muted-foreground">
+        Applies to rows that no project keyword matched. You can also set a project per transaction in the review inbox.
+      </p>
+    </div>
+  );
 
   const handleOpenChange = (next: boolean) => {
     if (!next) reset();
@@ -109,22 +137,28 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
    */
   const runPipelineAndInsert = async (
     rawTransactions: Transaction[],
-    method: "manual" | "plaid"
+    method: "manual" | "plaid",
+    plaidExtras: PlaidExtras = { alreadyImported: 0, enriched: 0 }
   ): Promise<boolean> => {
-    // Step A — Deduplication: silently discard exact matches.
+    // Step A — Deduplication: silently discard exact matches. Plaid rows were
+    // already deduped on their transaction id by the fetch route.
     const duplicateSignatures = await findDuplicateSignatures(rawTransactions);
     const deduped = rawTransactions.filter((t) => {
+      if (t.plaidTransactionId) return true;
       const sig = `${t.source}|${normalizeDate(t.date)}|${t.description}|${t.amountOut}|${t.amountIn}`;
       return !duplicateSignatures.has(sig);
     });
-    const duplicatesSkipped = rawTransactions.length - deduped.length;
+    const duplicatesSkipped = rawTransactions.length - deduped.length + plaidExtras.alreadyImported;
 
     if (deduped.length === 0) {
-      toast.info(
-        duplicatesSkipped > 0
-          ? `All ${duplicatesSkipped} transactions were already imported (duplicates skipped).`
-          : "No transactions to import."
-      );
+      const parts: string[] = [];
+      if (plaidExtras.enriched > 0) {
+        parts.push(
+          `Updated ${plaidExtras.enriched} existing transaction${plaidExtras.enriched !== 1 ? "s" : ""} with bank details`
+        );
+      }
+      if (duplicatesSkipped > 0) parts.push(`${duplicatesSkipped} already imported`);
+      toast.info(parts.length > 0 ? parts.join(" · ") : "No transactions to import.");
       return true;
     }
 
@@ -143,6 +177,11 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
       const global = matchGlobalDictionary(t.matchField, dictionaryTargets);
       if (global) {
         return { ...t, categoryId: global.categoryUuid, _reviewStatus: "pending" as const };
+      }
+      // Last resort → the bank's own category (Plaid), when it is confident.
+      const fromBank = matchPlaidCategory(t.details?.plaidCategory, dictionaryTargets);
+      if (fromBank) {
+        return { ...t, categoryId: fromBank.uuid, _reviewStatus: "pending" as const };
       }
       // Truly uncategorized → needs review.
       return { ...t, _reviewStatus: "pending" as const };
@@ -191,13 +230,18 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
           source: t.source,
           sourceMethod: t.sourceMethod,
           sourceAccountName: t.sourceAccountName,
+          plaidTransactionId: t.plaidTransactionId ?? null,
+          originalDescription: t.originalDescription ?? null,
+          merchantName: t.merchantName ?? null,
+          transactedAt: t.transactedAt ?? null,
+          details: t.details ?? null,
           categoryId: isItem ? null : assignable?.id ?? null,
           budgetItemId: isItem ? assignable?.id ?? null : null,
           categoryLocked: false,
           reviewStatus: t._reviewStatus,
           conflictCategories: t.isConflict ? t.conflictingCategories ?? null : null,
           importId: importIdMap.get(t.source) ?? null,
-          projectId: matchProject(t.matchField, t.date, projects ?? []),
+          projectId: matchProject(t.matchField, t.date, projects ?? []) ?? batchProjectId,
         };
       });
 
@@ -225,6 +269,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
       const needsReview = finalized.filter((t) => t._reviewStatus === "pending").length;
       const parts = [`Imported ${inserted} transaction${inserted !== 1 ? "s" : ""}`];
       if (needsReview > 0) parts.push(`${needsReview} need review`);
+      if (plaidExtras.enriched > 0) parts.push(`${plaidExtras.enriched} existing updated with bank details`);
       if (duplicatesSkipped > 0) parts.push(`${duplicatesSkipped} duplicate${duplicatesSkipped !== 1 ? "s" : ""} skipped`);
       toast.success(parts.join(" · "));
       return true;
@@ -297,6 +342,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
     setStep("processing");
     try {
       let allPlaidTransactions: Transaction[] = [];
+      let allEnrichments: PlaidEnrichment[] = [];
+      let alreadyImported = 0;
       const fetchErrors: string[] = [];
 
       for (const [itemId, { accountIds, institutionName }] of accountsByItem.entries()) {
@@ -308,27 +355,64 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
           });
           if (!response.ok) {
             const error = await response.json();
-            fetchErrors.push(`${institutionName}: ${error.error || "Failed to fetch"}`);
+            const code = error.errorCode ? ` (${error.errorCode})` : "";
+            fetchErrors.push(`${institutionName}: ${error.error || "Failed to fetch"}${code}`);
             continue;
           }
           const data = await response.json();
-          const plaidTransactions = data.transactions.map((t: Transaction) => ({ ...t, date: new Date(t.date) }));
+          const plaidTransactions = (data.transactions as FetchedPlaidTransaction[]).map(
+            ({ day, transactedAt, originalDescription, merchantName, ...t }): Transaction => ({
+              ...t,
+              id: generateId(),
+              date: parseLocalDay(day),
+              transactedAt: transactedAt ? new Date(transactedAt) : null,
+              originalDescription: originalDescription ?? undefined,
+              merchantName: merchantName ?? undefined,
+              categoryId: null,
+              isConflict: false,
+            })
+          );
           allPlaidTransactions = [...allPlaidTransactions, ...plaidTransactions];
+          allEnrichments = [...allEnrichments, ...(data.enrichments ?? [])];
+          alreadyImported += data.alreadyImported ?? 0;
         } catch (err) {
           fetchErrors.push(`${institutionName}: ${err instanceof Error ? err.message : "Unknown error"}`);
         }
       }
 
-      if (allPlaidTransactions.length === 0) {
+      // Older Plaid rows found again: backfill their details and fix the date.
+      let enriched = 0;
+      if (allEnrichments.length > 0) {
+        try {
+          enriched = await addPlaidDetails(
+            allEnrichments.map((e) => ({
+              id: e.id,
+              date: parseLocalDay(e.day),
+              plaidTransactionId: e.plaidTransactionId,
+              matchField: e.matchField,
+              originalDescription: e.originalDescription,
+              merchantName: e.merchantName,
+              transactedAt: e.transactedAt,
+              details: e.details,
+            }))
+          );
+          if (enriched > 0) invalidateTransactions();
+        } catch {
+          fetchErrors.push("Could not update existing transactions with bank details.");
+        }
+      }
+
+      if (allPlaidTransactions.length === 0 && enriched === 0 && alreadyImported === 0) {
         setErrors(fetchErrors.length > 0 ? fetchErrors : ["No transactions found for the selected date range and accounts."]);
         setStep("plaid");
         return;
       }
 
-      const ok = await runPipelineAndInsert(allPlaidTransactions, "plaid");
-      if (ok) {
+      const ok = await runPipelineAndInsert(allPlaidTransactions, "plaid", { alreadyImported, enriched });
+      if (ok && fetchErrors.length === 0) {
         handleOpenChange(false);
       } else {
+        // Keep the dialog open so a bank that failed isn't hidden behind one that worked.
         setErrors(fetchErrors);
         setStep("plaid");
       }
@@ -407,6 +491,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         {step === "manual" && (
           <div className="space-y-4">
             <FileUpload onFilesSelected={setUploadedFiles} />
+            {batchProjectPicker}
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => { setUploadedFiles([]); setErrors([]); setStep("source"); }}>
                 Back
@@ -419,7 +504,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         )}
 
         {step === "plaid" && (
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+            {batchProjectPicker}
             <PlaidAccountSelector onFetchTransactions={handlePlaidFetch} onBack={() => { setErrors([]); setStep("source"); }} />
           </div>
         )}

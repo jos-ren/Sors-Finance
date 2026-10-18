@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { normalizeAssignment } from "@/lib/budget/normalize-assignment";
@@ -69,13 +69,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Plaid rows dedup on their transaction id instead: two identical coffees
+    // on the same day are two transactions, not a duplicate.
+    const existingPlaidIds = new Set(
+      (
+        await db
+          .select({ plaidTransactionId: schema.transactions.plaidTransactionId })
+          .from(schema.transactions)
+          .where(and(eq(schema.transactions.userId, userId), isNotNull(schema.transactions.plaidTransactionId)))
+      ).map((r) => r.plaidTransactionId!)
+    );
+
     // Filter out duplicates and prepare for insert
     const toInsert = [];
     for (let i = 0; i < transactions.length; i++) {
       const t = transactions[i];
       const sig = signatures[i];
 
-      if (skipDuplicates && existingSignatures.has(sig)) {
+      const plaidTransactionId = typeof t.plaidTransactionId === "string" ? t.plaidTransactionId : null;
+      if (plaidTransactionId) {
+        if (existingPlaidIds.has(plaidTransactionId)) {
+          skippedCount++;
+          continue;
+        }
+        existingPlaidIds.add(plaidTransactionId);
+      } else if (skipDuplicates && existingSignatures.has(sig)) {
         skippedCount++;
         continue;
       }
@@ -96,6 +114,11 @@ export async function POST(request: NextRequest) {
         source: t.source || "Manual",
         sourceMethod: t.sourceMethod || null,
         sourceAccountName: t.sourceAccountName || null,
+        plaidTransactionId,
+        originalDescription: t.originalDescription || null,
+        merchantName: t.merchantName || null,
+        transactedAt: t.transactedAt ? new Date(t.transactedAt) : null,
+        details: t.details ?? null,
         categoryId,
         budgetItemId,
         projectId: ownedProjectIds.has(t.projectId) ? t.projectId : null,
@@ -108,9 +131,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Bulk insert in batches to avoid SQLite variable limit
-    // 16 columns per row, SQLite max 999 variables = 66 rows per batch (use 50 for safety)
-    const BATCH_SIZE = 50;
+    // Bulk insert in batches to stay under SQLite's variable limit
+    // (~27 columns per row; 30 rows keeps it under the old 999 default)
+    const BATCH_SIZE = 30;
     if (toInsert.length > 0) {
       for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
         const batch = toInsert.slice(i, i + BATCH_SIZE);

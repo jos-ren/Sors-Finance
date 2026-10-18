@@ -16,6 +16,7 @@ import { db, schema } from "@/lib/db/connection";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { createPlaidClient, isPlaidConfigured } from "@/lib/plaid/client";
+import { checkPlaidHealth, statusForPlaidError, HEALTH_PRE_ACTION_MAX_AGE_MS } from "@/lib/plaid/health";
 import {
   getStockQuote,
   getCryptoQuote,
@@ -147,8 +148,17 @@ async function syncPlaidBalancesForUser(
     let accountsUpdated = 0;
     const errors: string[] = [];
 
+    // Free health check first; banks that need a login are skipped rather
+    // than spending a billed balance call that will fail.
+    const health = await checkPlaidHealth(userId, { maxAgeMs: HEALTH_PRE_ACTION_MAX_AGE_MS });
+    const needsLogin = new Set(health.items.filter((i) => i.status === "login_required").map((i) => i.id));
+
     // Process each Plaid item
     for (const item of userPlaidItems) {
+      if (needsLogin.has(item.id)) {
+        errors.push(`${item.institutionName}: Needs reconnecting. Skipped.`);
+        continue;
+      }
       try {
         // Use access token directly
         const accessToken = item.accessToken;
@@ -214,7 +224,7 @@ async function syncPlaidBalancesForUser(
           })
           .where(eq(schema.plaidItems.id, item.id));
       } catch (error: unknown) {
-        const err = error as { response?: { data?: { error_message?: string } }; message?: string };
+        const err = error as { response?: { data?: { error_message?: string; error_code?: string } }; message?: string };
         const errorMessage = err?.response?.data?.error_message || err.message || "Unknown error";
         errors.push(`${item.institutionName}: ${errorMessage}`);
 
@@ -222,7 +232,7 @@ async function syncPlaidBalancesForUser(
         await db
           .update(schema.plaidItems)
           .set({
-            status: "error",
+            status: statusForPlaidError(err?.response?.data?.error_code ?? "UNKNOWN"),
             errorMessage,
             updatedAt: new Date(),
           })
@@ -746,6 +756,23 @@ function scheduleSnapshotJob(cronExpression: string, timezone?: string): Schedul
 /**
  * Initialize the scheduler
  */
+/** Check every user's Plaid connections; each check skips itself when recent. */
+async function runPlaidHealthTask() {
+  try {
+    const allUsers = await db.select({ id: schema.users.id }).from(schema.users);
+    for (const user of allUsers) {
+      try {
+        // Slightly under the 6 hour cadence so a check from the last run never blocks this one
+        await checkPlaidHealth(user.id, { maxAgeMs: 5 * 60 * 60 * 1000 });
+      } catch (error) {
+        console.error(`[Scheduler] Plaid health check failed for user #${user.id}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error("[Scheduler] Plaid health task failed:", error);
+  }
+}
+
 export async function initScheduler() {
   if (schedulerInitialized) {
     console.log("[Scheduler] Already initialized");
@@ -766,6 +793,10 @@ export async function initScheduler() {
     console.log(`[Scheduler] Initializing with snapshot time: ${snapshotTime} (cron: ${cronExpression}, timezone: ${timezone || "server default"})`);
 
     currentJob = scheduleSnapshotJob(cronExpression, timezone);
+
+    // Bank connection health every 6 hours (free /item/get). App load runs the
+    // same stale-gated check, so a missed run catches up on the next visit.
+    cron.schedule("0 */6 * * *", runPlaidHealthTask);
 
     schedulerInitialized = true;
     console.log("[Scheduler] Initialized successfully");

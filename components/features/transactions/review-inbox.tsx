@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { CircleCheck, AlertTriangle, Circle, Check, Loader2, Inbox, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -26,15 +32,20 @@ import {
   addKeywordToCategory,
   invalidateTransactions,
 } from "@/hooks";
+import { TransactionDetailLines, accountLabel, dayLabel, useAccountLookup } from "./transaction-details";
+import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { useBudgetHierarchy, addKeywordToSubcategory } from "@/hooks/use-budget";
-import { useProjects } from "@/hooks/use-projects";
-import { ProjectChip } from "@/components/features/projects/project-chip";
-import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
+import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
+import { ProjectMenu } from "@/components/features/projects/project-menu";import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
 import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { cn } from "@/lib/utils";
 import type { DbTransaction, Keyword, KeywordMatchMode } from "@/lib/db/types";
+
+/** Category picker fills its fixed column; dashed while the row still needs a category from the user. */
+const PICKER_CLASS = "w-full justify-between";
+const PICKER_CLASS_DASHED = `${PICKER_CLASS} border-dashed`;
 
 const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
   contains: "contains",
@@ -50,26 +61,39 @@ function rowKind(t: DbTransaction): RowKind {
   return "uncategorized";
 }
 
+/** Starting text for a new rule. Plaid rows match on several fields, so start from the merchant. */
+function defaultRuleText(t: DbTransaction): string {
+  return t.plaidTransactionId ? t.description : t.matchField;
+}
+
 export function ReviewInbox() {
   const transactions = useTransactions();
   const categories = useCategories();
   const hierarchy = useBudgetHierarchy(false);
   const projects = useProjects();
-  const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
+  const accountLookup = useAccountLookup();
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
 
   // Local UI state
   const [collapsed, setCollapsed] = useState(false);
   const [busy, setBusy] = useState<Set<number>>(new Set());
-  const [overrides, setOverrides] = useState<Map<number, PickerValue>>(new Map()); // suggestion FK changes
-  const [picks, setPicks] = useState<Map<number, PickerValue>>(new Map()); // uncategorized: chosen but not committed
+  // Chosen but not committed: uncategorized rows, and suggestions the user overrode
+  const [picks, setPicks] = useState<Map<number, PickerValue>>(new Map());
   const [ruleText, setRuleText] = useState<Map<number, string>>(new Map());
   const [ruleMode, setRuleMode] = useState<Map<number, KeywordMatchMode>>(new Map());
   const [bulkApply, setBulkApply] = useState<Map<number, boolean>>(new Map()); // default on when siblings exist
 
+  // Newest first; within a day, by time of purchase when the bank sent one.
   const pending = useMemo(
-    () => (transactions ?? []).filter((t) => t.reviewStatus === "pending"),
+    () =>
+      (transactions ?? [])
+        .filter((t) => t.reviewStatus === "pending")
+        .sort(
+          (a, b) =>
+            b.date.getTime() - a.date.getTime() ||
+            (b.transactedAt?.getTime() ?? 0) - (a.transactedAt?.getTime() ?? 0)
+        ),
     [transactions]
   );
 
@@ -125,23 +149,21 @@ export function ReviewInbox() {
     invalidateTransactions();
   };
 
-  /** Approve a global suggestion: promote the merchant pattern to a keyword, then clear it. */
-  const approveSuggestion = async (t: DbTransaction) => {
+  /** A suggestion still waiting for approval (not one the user is re-categorizing). */
+  const isOpenSuggestion = (t: DbTransaction) => rowKind(t) === "suggestion" && !(t.id != null && picks.has(t.id));
+
+  /** Approve a global suggestion: promote the merchant pattern to a keyword (unless `saveKeyword` is off), then clear it. */
+  const approveSuggestion = async (t: DbTransaction, saveKeyword = true) => {
     if (t.id == null || busy.has(t.id)) return;
     setBusyFor(t.id, true);
     try {
-      const chosen = overrides.get(t.id) ?? toPickerValue(t.categoryId, t.budgetItemId);
-      const match = matchGlobalDictionary(t.matchField, dictionaryTargets);
+      const chosen = toPickerValue(t.categoryId, t.budgetItemId);
+      const match = saveKeyword ? matchGlobalDictionary(t.matchField, dictionaryTargets) : null;
       if (match) await promoteKeyword(chosen, match.pattern, match.mode);
       await updateTransaction(t.id, {
         ...fromPickerValue(chosen),
         reviewStatus: "reviewed",
         conflictCategories: null,
-      });
-      setOverrides((prev) => {
-        const next = new Map(prev);
-        next.delete(t.id!);
-        return next;
       });
     } catch {
       toast.error("Failed to approve transaction");
@@ -150,8 +172,18 @@ export function ReviewInbox() {
     }
   };
 
+  /** Set or clear a row's project without touching its category or review state. */
+  const assignProject = async (t: DbTransaction, projectId: number | null) => {
+    if (t.id == null) return;
+    try {
+      await setTransactionsProject([t.id], projectId);
+    } catch {
+      toast.error("Failed to set project");
+    }
+  };
+
   const approveAll = async () => {
-    const suggestions = pending.filter((t) => rowKind(t) === "suggestion");
+    const suggestions = pending.filter(isOpenSuggestion);
     for (const t of suggestions) {
       // eslint-disable-next-line no-await-in-loop
       await approveSuggestion(t);
@@ -223,7 +255,7 @@ export function ReviewInbox() {
     if (t.id == null || busy.has(t.id)) return;
     const value = picks.get(t.id);
     if (!value) return;
-    const pattern = (ruleText.get(t.id) ?? t.matchField).trim();
+    const pattern = (ruleText.get(t.id) ?? defaultRuleText(t)).trim();
     const mode = ruleMode.get(t.id) ?? "contains";
     const doBulk = (bulkApply.get(t.id) ?? true) && pattern.length > 0;
     const siblings = doBulk ? matchingSiblings(pattern, mode, t.id) : [];
@@ -259,7 +291,7 @@ export function ReviewInbox() {
     }
   };
 
-  const suggestionCount = pending.filter((t) => rowKind(t) === "suggestion").length;
+  const suggestionCount = pending.filter(isOpenSuggestion).length;
 
   return (
     <section className="rounded-lg border border-amber-300/60 dark:border-amber-700/50 bg-amber-50/40 dark:bg-amber-950/10">
@@ -275,7 +307,7 @@ export function ReviewInbox() {
           {suggestionCount > 0 && (
             <Button size="sm" onClick={approveAll} disabled={busy.size > 0}>
               <Check className="h-4 w-4 mr-1.5" />
-              Approve All ({suggestionCount})
+              Approve All Suggestions ({suggestionCount})
             </Button>
           )}
           <Button
@@ -293,19 +325,27 @@ export function ReviewInbox() {
 
       {!collapsed && (
       <div className="divide-y divide-border/60">
-        {pending.map((t) => {
-          const kind = rowKind(t);
+        {pending.map((t, i) => {
+          const pickedValue = t.id != null ? picks.get(t.id) : undefined;
+          // Picking another category on a suggestion drops the suggestion: the row is
+          // categorized by hand like any uncategorized one (Cancel brings it back).
+          const kind: RowKind = rowKind(t) === "suggestion" && pickedValue ? "uncategorized" : rowKind(t);
+          const showDayHeader = i === 0 || dayLabel(pending[i - 1].date) !== dayLabel(t.date);
           const isBusy = t.id != null && busy.has(t.id);
           const netClass = t.amountIn > 0 ? "text-emerald-600 dark:text-emerald-400" : "";
           const amountStr =
             t.amountIn > 0
-              ? `+${formatAmount(t.amountIn, userCurrency)}`
-              : `-${formatAmount(t.amountOut, userCurrency)}`;
-
-          const pickedValue = t.id != null ? picks.get(t.id) : undefined;
+              ? `+${formatAmount(t.amountIn, userCurrency, false)}`
+              : `-${formatAmount(t.amountOut, userCurrency, false)}`;
 
           return (
-            <div key={t.id} className="px-4 py-3">
+            <Fragment key={t.id}>
+            {showDayHeader && (
+              <div className="bg-amber-100/30 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground dark:bg-amber-950/20">
+                {dayLabel(t.date)}
+              </div>
+            )}
+            <div className="group px-4 py-3">
               <div className="flex items-center gap-3">
                 {/* Status icon */}
                 <div className="shrink-0">
@@ -314,61 +354,66 @@ export function ReviewInbox() {
                   {kind === "uncategorized" && <Circle className="h-5 w-5 text-muted-foreground/50" />}
                 </div>
 
-                {/* Description + amount */}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{t.description}</p>
-                  <div className="flex items-center gap-2">
-                    <p className={`text-xs ${netClass || "text-muted-foreground"}`}>{amountStr}</p>
-                    {t.projectId != null && projectById.has(t.projectId) && (
-                      <ProjectChip
-                        id={t.projectId}
-                        name={projectById.get(t.projectId)!.name}
-                        color={projectById.get(t.projectId)!.color}
-                        className="py-0"
-                      />
-                    )}
-                  </div>
+                <div className="shrink-0">
+                  <BankSourceBadge
+                    source={t.source}
+                    sourceMethod={(t.sourceMethod ?? undefined) as "Plaid" | "CSV" | "Manual" | undefined}
+                    sourceAccountName={accountLabel(t, accountLookup) ?? undefined}
+                    size="sm"
+                  />
                 </div>
 
-                {/* Action area */}
-                <div className="flex shrink-0 items-center gap-2">
-                  {isBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  ) : kind === "suggestion" ? (
-                    <>
+                {/* Merchant, then bank context: when, which account, how, where, raw bank text */}
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-baseline gap-2">
+                    <p className="truncate text-sm font-medium">{t.description}</p>
+                  </div>
+                  <TransactionDetailLines transaction={t} lookup={accountLookup} />
+                </div>
+
+                <p className={cn("w-28 shrink-0 text-right text-sm font-medium tabular-nums", netClass)}>{amountStr}</p>
+
+                {/* Action area: fixed columns so amounts, controls and buttons line up row to row */}
+                <div className="flex shrink-0 items-center gap-3">
+                  <ProjectMenu
+                    projects={projects ?? []}
+                    currentId={t.projectId ?? null}
+                    disabled={isBusy}
+                    onSelect={(projectId) => assignProject(t, projectId)}
+                  />
+
+                  <div className="flex w-[116px] items-center">
+                    {isBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : kind === "suggestion" ? (
                       <BudgetItemPicker
                         variant="badge"
+                        className={PICKER_CLASS}
                         allowCreate
-                        value={t.id != null ? overrides.get(t.id) ?? toPickerValue(t.categoryId, t.budgetItemId) : null}
-                        onChange={(v) =>
-                          setOverrides((prev) => {
-                            const next = new Map(prev);
-                            if (t.id != null) next.set(t.id, v);
-                            return next;
-                          })
-                        }
+                        value={toPickerValue(t.categoryId, t.budgetItemId)}
+                        onChange={(v) => {
+                          const suggested = toPickerValue(t.categoryId, t.budgetItemId);
+                          if (!v || t.id == null || (suggested && v.kind === suggested.kind && v.id === suggested.id)) return;
+                          setPicks((prev) => new Map(prev).set(t.id!, v));
+                        }}
                         placeholder={categoryName(t)}
                       />
-                      <Button size="sm" onClick={() => approveSuggestion(t)}>
-                        <Check className="h-4 w-4 mr-1" />
-                        Approve
-                      </Button>
-                    </>
-                  ) : kind === "conflict" ? (
-                    <BudgetItemPicker
-                      variant="badge"
-                      allowCreate
-                      value={null}
-                      onChange={(v) => resolveConflict(t, v)}
-                      placeholder="Select Category (Multiple Matches)"
-                    />
-                  ) : (
-                    // uncategorized — hide the picker once a category is chosen (composer takes over)
-                    !pickedValue && (
+                    ) : kind === "conflict" ? (
                       <BudgetItemPicker
                         variant="badge"
+                        className={PICKER_CLASS_DASHED}
                         allowCreate
                         value={null}
+                        onChange={(v) => resolveConflict(t, v)}
+                        placeholder="Multiple matches"
+                      />
+                    ) : (
+                      // uncategorized: once a category is picked it shows here and the composer opens below
+                      <BudgetItemPicker
+                        variant="badge"
+                        className={PICKER_CLASS_DASHED}
+                        allowCreate
+                        value={pickedValue ?? null}
                         onChange={(v) =>
                           setPicks((prev) => {
                             const next = new Map(prev);
@@ -376,16 +421,48 @@ export function ReviewInbox() {
                             return next;
                           })
                         }
-                        placeholder="Select Category"
+                        placeholder="Select category"
                       />
-                    )
-                  )}
+                    )}
+                  </div>
+
+                  <div className="flex w-[72px] justify-end">
+                    {!isBusy && kind === "suggestion" && (
+                      <div className="flex">
+                        <Button
+                          size="icon-sm"
+                          className="rounded-r-none border-r-0"
+                          onClick={() => approveSuggestion(t)}
+                          aria-label="Approve"
+                          title="Approve"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon-sm"
+                              className="w-6 rounded-l-none border-l-0 shadow-[inset_1px_0_0_0_color-mix(in_oklab,var(--primary-foreground)_30%,transparent)]"
+                              aria-label="More approve options"
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => approveSuggestion(t, false)}>
+                              Approve without saving keyword
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Rule composer — appears once a category is chosen for an uncategorized row */}
               {kind === "uncategorized" && pickedValue && t.id != null && !isBusy && (() => {
-                const rt = ruleText.get(t.id) ?? t.matchField;
+                const rt = ruleText.get(t.id) ?? defaultRuleText(t);
                 const rm = ruleMode.get(t.id) ?? "contains";
                 const bulk = bulkApply.get(t.id) ?? true;
                 const siblingCount = matchingSiblings(rt, rm, t.id).length;
@@ -487,6 +564,7 @@ export function ReviewInbox() {
                 );
               })()}
             </div>
+            </Fragment>
           );
         })}
       </div>

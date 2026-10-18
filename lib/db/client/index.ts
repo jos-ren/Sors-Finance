@@ -41,6 +41,7 @@ export {
   setBudget,
   deleteBudget,
   copyBudgetToMonth,
+  applyBudgetToEmptyPreviousMonths,
   findPreviousMonthWithBudgets,
   autoCopyBudgetsIfEmpty,
 } from "./budgets";
@@ -84,6 +85,7 @@ export {
   addTransactionsBulk,
   categorizeTransaction,
   findDuplicateSignatures,
+  addPlaidDetails,
   getSpendingByCategory,
   getYTDSpendingByCategory,
   getIncomeTotal,

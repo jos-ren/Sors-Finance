@@ -11,6 +11,7 @@ import { UnsavedChangesProvider } from "@/contexts/unsaved-changes-context";
 import { SettingsProvider } from "@/contexts/settings-context";
 import { SnapshotProvider } from "@/contexts/snapshot-context";
 import { useAuth } from "@/contexts/auth-context";
+import { runPlaidHealthCheck } from "@/hooks";
 import {
   Tooltip,
   TooltipContent,
@@ -81,6 +82,14 @@ function ScrollableContent({ children }: { children: React.ReactNode }) {
     }).catch(() => {
       // Non-critical; will retry on next load
     });
+  }, []);
+
+  useEffect(() => {
+    // Bank connection health on every app load. The server only asks Plaid
+    // when its last check is over 6 hours old, so checks missed while the app
+    // was closed catch up here.
+    const timer = setTimeout(() => runPlaidHealthCheck(), 1500);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {

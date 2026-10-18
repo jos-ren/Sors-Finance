@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useState } from "react";
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, History } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, Circle, History, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,7 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { IconBadge } from "@/components/ui/icon-badge";
-import { deletePortfolioItem, updatePortfolioItem, DbPortfolioItem, BucketType } from '@/hooks/use-database';
+import {
+  deletePortfolioItem,
+  updatePortfolioItem,
+  usePlaidAccountStatuses,
+  DbPortfolioItem,
+  BucketType,
+} from '@/hooks/use-database';
 import { usePrivacy } from "@/contexts/privacy-context";
 import { EditItemDialog } from "./edit-item-dialog";
 import { ItemHistoryDialog } from "./item-history-dialog";
@@ -58,6 +64,8 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
   const { formatAmount } = usePrivacy();
 
   const hasTicker = Boolean(item.ticker);
+  const plaidStatuses = usePlaidAccountStatuses();
+  const bankNeedsLogin = item.plaidAccountId != null && plaidStatuses.get(item.plaidAccountId) === "login_required";
 
   const handleDelete = async () => {
     try {
@@ -228,6 +236,17 @@ export function PortfolioItem({ item, bucket }: PortfolioItemProps) {
               {item.pricePerUnit !== undefined && item.currency && ` @ ${formatAmount(item.pricePerUnit, item.currency)}`}
               {item.lastPriceUpdate && ` · ${getTimeAgo(new Date(item.lastPriceUpdate))}`}
             </p>
+          ) : item.plaidAccountId && bankNeedsLogin ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <p className="inline-flex max-w-full items-center gap-1 text-xs text-red-600 dark:text-red-400 truncate mt-0.5 cursor-help">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  Bank needs reconnecting
+                  {item.updatedAt && ` · balance from ${getTimeAgo(new Date(item.updatedAt))}`}
+                </p>
+              </TooltipTrigger>
+              <TooltipContent>This balance may be out of date. Reconnect the bank in Settings → Plaid.</TooltipContent>
+            </Tooltip>
           ) : item.plaidAccountId && item.updatedAt ? (
             <p className="text-xs text-muted-foreground truncate mt-0.5">
               Synced {getTimeAgo(new Date(item.updatedAt))}

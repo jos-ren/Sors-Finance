@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, schema } from "@/lib/db/connection";
-import { eq, and, gte, lte, sql, isNotNull } from "drizzle-orm";
+import { eq, and, or, gt, gte, lte, sql, isNotNull, isNull } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth/api-helper";
 import { SYSTEM_CATEGORIES, type BudgetItemType } from "@/lib/db/types";
 import type { BudgetTree, BudgetTreeGroup, BudgetTreeCategory, BudgetTreeProjectSpend } from "@/lib/budget/types";
@@ -126,6 +126,39 @@ export async function GET(request: NextRequest) {
       incomeActual = incomeRows[0]?.total ?? 0;
     }
 
+    // Uncategorized money out for the period (no budget category; Income and
+    // Excluded rows are not uncategorized). Separately funded projects are reported on their own.
+    const uncategorizedCat = await db
+      .select({ id: schema.categories.id })
+      .from(schema.categories)
+      .where(and(eq(schema.categories.name, SYSTEM_CATEGORIES.UNCATEGORIZED), eq(schema.categories.userId, userId)))
+      .limit(1);
+    const uncategorizedRows = await db
+      .select({
+        projectId: schema.transactions.projectId,
+        total: sql<number>`SUM(${schema.transactions.amountOut})`,
+      })
+      .from(schema.transactions)
+      .where(
+        and(
+          eq(schema.transactions.userId, userId),
+          isNull(schema.transactions.budgetItemId),
+          uncategorizedCat[0]
+            ? or(isNull(schema.transactions.categoryId), eq(schema.transactions.categoryId, uncategorizedCat[0].id))
+            : isNull(schema.transactions.categoryId),
+          gt(schema.transactions.amountOut, 0),
+          gte(schema.transactions.date, startDate),
+          lte(schema.transactions.date, endDate)
+        )
+      )
+      .groupBy(schema.transactions.projectId);
+    let uncategorizedOut = 0;
+    for (const r of uncategorizedRows) {
+      const project = r.projectId != null ? projectOf.get(r.projectId) : undefined;
+      if (isSeparateProject(project)) continue;
+      uncategorizedOut += r.total ?? 0;
+    }
+
     // Assemble the tree.
     const categoriesByGroup = new Map<number, typeof categories>();
     for (const c of categories) {
@@ -195,6 +228,7 @@ export async function GET(request: NextRequest) {
         totalBudgeted,
         totalActual,
         availableToAssign: incomeActual - totalBudgeted,
+        uncategorizedOut,
       },
     };
 

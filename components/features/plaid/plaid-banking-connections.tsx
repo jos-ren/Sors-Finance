@@ -52,6 +52,7 @@ import { PlaidLinkButton } from "./plaid-link-button";
 import { PlaidSyncButton } from "./plaid-sync-button";
 import { PlaidBucketSelector } from "./plaid-bucket-selector";
 import { IconBadge } from "@/components/ui/icon-badge";
+import { runPlaidHealthCheck, invalidatePlaidHealth } from "@/hooks";
 
 interface PlaidInstitution {
   id: number;
@@ -171,7 +172,15 @@ export function PlaidBankingConnections({ plaidConfigured }: PlaidBankingConnect
 
   useEffect(() => {
     loadInstitutions();
+    // Then ask Plaid (free, skipped if checked in the last 30 minutes) and show any change
+    runPlaidHealthCheck({ preAction: true }).then(loadInstitutions);
   }, []);
+
+  /** After a reconnect or sync, refresh this list and every other status indicator. */
+  const refreshAfterChange = async () => {
+    await loadInstitutions();
+    invalidatePlaidHealth();
+  };
 
   const handleTestCredentials = async () => {
     setIsTesting(true);
@@ -492,7 +501,7 @@ PLAID_SECRET=your_secret_here`}
                                 {institution.status === "active"
                                   ? "Active"
                                   : institution.status === "login_required"
-                                  ? "Login Required"
+                                  ? "Needs reconnecting"
                                   : "Error"}
                               </span>
                             </div>
@@ -512,7 +521,7 @@ PLAID_SECRET=your_secret_here`}
                               mode="update"
                               accessToken={institution.accessToken}
                               environment={institution.environment}
-                              onSuccess={loadInstitutions}
+                              onSuccess={refreshAfterChange}
                             />
                           )}
 
@@ -521,7 +530,7 @@ PLAID_SECRET=your_secret_here`}
                             size="icon"
                             itemId={institution.id}
                             bankName={institution.institutionName}
-                            onSyncComplete={() => loadInstitutions()}
+                            onSyncComplete={refreshAfterChange}
                           />
 
                           <Button
