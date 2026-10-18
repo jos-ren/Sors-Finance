@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type KeyboardEvent } from "react";
+import { useRouter } from "next/navigation";
 import { ResponsiveContainer, Sankey, Layer, Rectangle, Tooltip } from "recharts";
 import type { BudgetTree } from "@/lib/budget/types";
 
@@ -31,6 +32,8 @@ interface FlowNode {
   // Named `value` (not `amount`) because recharts' Sankey tooltip payload
   // reads a node's amount via the `value` dataKey by convention.
   value: number;
+  /** Where clicking the node goes (a category's month page, a project); absent for non-drillable nodes. */
+  href?: string;
 }
 interface FlowLink {
   source: number;
@@ -55,11 +58,11 @@ function buildMoneyFlow(
 
   // Separately funded projects are not in group actuals; show them as their
   // own branch so the flow still accounts for that money.
-  const projectTotals = new Map<number, { name: string; value: number }>();
+  const projectTotals = new Map<number, { name: string; value: number; href: string }>();
   for (const g of tree.groups) {
     for (const c of g.categories) {
       for (const p of c.projectSpend) {
-        const cur = projectTotals.get(p.projectId) ?? { name: p.name, value: 0 };
+        const cur = projectTotals.get(p.projectId) ?? { name: p.name, value: 0, href: `/projects/${p.projectId}` };
         cur.value += p.amount;
         projectTotals.set(p.projectId, cur);
       }
@@ -80,15 +83,24 @@ function buildMoneyFlow(
   // Each group (and all of its categories) shares one color from the
   // palette, assigned by group identity rather than by rank, so a group's
   // color doesn't shift around as amounts change period to period.
-  const topLevel: Array<{ name: string; color: string; value: number; children?: Array<{ name: string; value: number }> }> =
-    tree.groups
-      .filter((g) => g.actual > 0)
-      .map((g, i) => ({
-        name: g.name,
-        color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
-        value: g.actual,
-        children: g.categories.map((c) => ({ name: c.name, value: c.actual })),
-      }));
+  const topLevel: Array<{
+    name: string;
+    color: string;
+    value: number;
+    href?: string;
+    children?: Array<{ name: string; value: number; href?: string }>;
+  }> = tree.groups
+    .filter((g) => g.actual > 0)
+    .map((g, i) => ({
+      name: g.name,
+      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
+      value: g.actual,
+      children: g.categories.map((c) => ({
+        name: c.name,
+        value: c.actual,
+        href: `/budget/category/${c.id}?year=${tree.year}&month=${tree.month}`,
+      })),
+    }));
   if (totalProjects > 0.005) {
     topLevel.push({ name: "Projects", color: PROJECTS_COLOR, value: totalProjects, children: projectChildren });
   }
@@ -99,7 +111,12 @@ function buildMoneyFlow(
   // Uncategorized money out always sits last (bottom) so it stands apart from
   // the ranked groups: it is the part of the month still waiting for a category.
   if (uncategorized > 0.005) {
-    topLevel.push({ name: "Uncategorized", color: UNCATEGORIZED_COLOR, value: uncategorized });
+    topLevel.push({
+      name: "Uncategorized",
+      color: UNCATEGORIZED_COLOR,
+      value: uncategorized,
+      href: `/budget/uncategorized?year=${tree.year}&month=${tree.month}`,
+    });
   }
 
   for (const item of topLevel) {
@@ -117,7 +134,7 @@ function buildMoneyFlow(
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
     if (!children) {
-      const passThroughIdx = nodes.push({ name: item.name, color: item.color, value: item.value }) - 1;
+      const passThroughIdx = nodes.push({ name: item.name, color: item.color, value: item.value, href: item.href }) - 1;
       links.push({ source: itemIdx, target: passThroughIdx, value: item.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
@@ -125,7 +142,7 @@ function buildMoneyFlow(
     }
     const sortedChildren = [...children].filter((c) => c.value > 0).sort((a, b) => b.value - a.value);
     for (const c of sortedChildren) {
-      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.value }) - 1;
+      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.value, href: c.href }) - 1;
       links.push({ source: itemIdx, target: catIdx, value: c.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
@@ -154,9 +171,22 @@ function SankeyNode({
   maxDepth: number;
   formatAmountShort: (n: number) => string;
 }) {
+  const router = useRouter();
   const isLastColumn = payload.depth === maxDepth;
+  const { href } = payload;
+  // Drillable nodes (categories, projects) are links: click or Enter opens the page.
+  const linkProps = href
+    ? {
+        role: "link",
+        tabIndex: 0,
+        "aria-label": `${payload.name}, ${formatAmountShort(payload.value)}`,
+        onClick: () => router.push(href),
+        onKeyDown: (e: KeyboardEvent) => e.key === "Enter" && router.push(href),
+        className: "cursor-pointer outline-none hover:opacity-80 focus-visible:opacity-80 [&:hover_text:first-of-type]:underline",
+      }
+    : {};
   return (
-    <Layer>
+    <Layer {...linkProps}>
       <Rectangle x={x} y={y} width={width} height={height} fill={payload.color} fillOpacity={0.85} />
       <text
         x={isLastColumn ? x - 6 : x + width + 6}
