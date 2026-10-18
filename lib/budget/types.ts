@@ -52,6 +52,8 @@ export interface BudgetTreeSummary {
   totalBudgeted: number;
   totalActual: number;
   availableToAssign: number;
+  /** Money out in the period with no budget category (Uncategorized), excluding separately funded projects. */
+  uncategorizedOut: number;
 }
 
 export interface BudgetTree {
