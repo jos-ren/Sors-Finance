@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { format } from "date-fns";
 import { syncDataLoaderFeature, hotkeysCoreFeature } from "@headless-tree/core";
 import { useTree } from "@headless-tree/react";
 import { Tree, TreeItem } from "@/components/reui/tree";
@@ -15,14 +14,7 @@ import { useBudgetTreeInputs } from "./budget-tree-context";
 const INDENT = 22;
 const EXPAND_KEY = "sors:budget:tree-expanded";
 
-export interface CategoryTransaction {
-  id: number;
-  description: string;
-  amount: number;
-  date: Date;
-}
-
-type NodeKind = "root" | "group" | "category" | "tx";
+type NodeKind = "root" | "group" | "category";
 interface TNode {
   name: string;
   kind: NodeKind;
@@ -35,45 +27,31 @@ interface BudgetTreeViewProps {
   year: number;
   month: number;
   onOpenDetail: (category: BudgetTreeCategory) => void;
-  transactionsByCategory: Map<number, CategoryTransaction[]>;
 }
 
 /**
- * Collapsible budget tree (Category Group → Category → this period's
- * transactions) built on the reui/headless-tree component: expand/collapse +
- * keyboard nav at every level, indentation guide lines. Planned amounts are
- * read-only here — set them in the Builder. Remounts (via a structure key)
- * only when the hierarchy/transaction shape changes.
+ * Collapsible budget tree (Category Group → Category) built on the
+ * reui/headless-tree component: expand/collapse + keyboard nav, indentation
+ * guide lines. Planned amounts are read-only here — set them in the Builder.
+ * A category's transactions live on its own page (click the category).
+ * Remounts (via a structure key) only when the hierarchy shape changes.
  */
 export function BudgetTreeView(props: BudgetTreeViewProps) {
-  const structureKey = useMemo(() => {
-    const categories = props.tree.groups
-      .map((g) => `${g.id}:${g.categories.map((c) => c.id).join(",")}`)
-      .join(";");
-    const txIds = [...props.transactionsByCategory.entries()]
-      .map(([catId, txs]) => `${catId}=${txs.map((t) => t.id).join(",")}`)
-      .join(";");
-    return `${categories}|${txIds}`;
-  }, [props.tree, props.transactionsByCategory]);
+  const structureKey = useMemo(
+    () => props.tree.groups.map((g) => `${g.id}:${g.categories.map((c) => c.id).join(",")}`).join(";"),
+    [props.tree]
+  );
   return <HeadlessBudgetTree key={structureKey} {...props} />;
 }
 
-function HeadlessBudgetTree({
-  tree: budget,
-  formatAmountShort,
-  year,
-  month,
-  onOpenDetail,
-  transactionsByCategory,
-}: BudgetTreeViewProps) {
+function HeadlessBudgetTree({ tree: budget, formatAmountShort, year, month, onOpenDetail }: BudgetTreeViewProps) {
   // Build the headless-tree node map + per-node lookups into the effective tree.
-  const { nodes, allFolderIds, groupByNode, categoryByNode, txByNode } = useMemo(() => {
+  const { nodes, allFolderIds, groupByNode, categoryByNode } = useMemo(() => {
     const nodes: Record<string, TNode> = {
       root: { name: "root", kind: "root", children: budget.groups.map((g) => `group:${g.id}`) },
     };
     const groupByNode: Record<string, BudgetTreeGroup> = {};
     const categoryByNode: Record<string, BudgetTreeCategory> = {};
-    const txByNode: Record<string, CategoryTransaction> = {};
     const allFolderIds: string[] = [];
 
     for (const g of budget.groups) {
@@ -84,28 +62,18 @@ function HeadlessBudgetTree({
       for (const c of g.categories) {
         const cid = `category:${c.id}`;
         categoryByNode[cid] = c;
-        const txs = transactionsByCategory.get(c.id) ?? [];
-        nodes[cid] = {
-          name: c.name,
-          kind: "category",
-          children: txs.length ? txs.map((t) => `tx:${t.id}`) : undefined,
-        };
-        for (const t of txs) {
-          const tid = `tx:${t.id}`;
-          txByNode[tid] = t;
-          nodes[tid] = { name: t.description, kind: "tx" };
-        }
+        nodes[cid] = { name: c.name, kind: "category" };
       }
     }
-    return { nodes, allFolderIds, groupByNode, categoryByNode, txByNode };
-  }, [budget, transactionsByCategory]);
+    return { nodes, allFolderIds, groupByNode, categoryByNode };
+  }, [budget]);
 
   const [expandedItems, setExpandedItems] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(EXPAND_KEY);
       if (raw) return JSON.parse(raw);
     } catch { /* ignore */ }
-    return allFolderIds; // default: groups expanded, categories/transactions collapsed
+    return allFolderIds; // default: groups expanded
   });
 
   const applyExpanded = useCallback((updater: string[] | ((prev: string[]) => string[])) => {
@@ -137,9 +105,7 @@ function HeadlessBudgetTree({
     isItemFolder: (item) => {
       const data = item.getItemData();
       if (!data) return false;
-      if (data.kind === "root" || data.kind === "group") return true;
-      if (data.kind === "category") return !!data.children?.length;
-      return false;
+      return data.kind === "root" || data.kind === "group";
     },
     dataLoader: {
       getItem: (id) => nodes[id],
@@ -194,28 +160,6 @@ function HeadlessBudgetTree({
           );
         }
 
-        if (node.kind === "tx") {
-          const t = txByNode[id];
-          const isRefund = t.amount < 0;
-          return (
-            <TreeItem key={id} item={item} render={<div />} className="!ps-0 !pb-0">
-              <div className="flex items-stretch bg-muted/20">
-                {guides}
-                <div className="flex flex-1 items-center gap-1.5 py-1 pl-1 pr-2">
-                  {/* Sized so the category→transaction indent step matches the
-                      group→category indent step exactly. */}
-                  <span className="w-2 shrink-0" aria-hidden />
-                  <span className="w-9 shrink-0 text-[11px] text-muted-foreground/70">{format(t.date, "MMM d")}</span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.description}</span>
-                  <span className={cn("shrink-0 text-xs tabular-nums text-muted-foreground", isRefund && "text-primary")}>
-                    {isRefund ? `+${formatAmountShort(Math.abs(t.amount))}` : formatAmountShort(t.amount)}
-                  </span>
-                </div>
-              </div>
-            </TreeItem>
-          );
-        }
-
         // Leaf category — reuse BudgetItemRow; stop propagation so typing/clicks
         // don't reach the tree's keyboard/primary-action handlers.
         const c = categoryByNode[id];
@@ -233,9 +177,6 @@ function HeadlessBudgetTree({
                   item={c}
                   formatAmountShort={formatAmountShort}
                   drillHref={drillHref(c.id)}
-                  hasTransactions={!!node.children?.length}
-                  isExpanded={item.isExpanded()}
-                  onToggleExpand={() => (item.isExpanded() ? item.collapse() : item.expand())}
                   onOpenDetail={() => onOpenDetail(c)}
                 />
               </div>
