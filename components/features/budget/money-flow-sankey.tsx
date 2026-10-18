@@ -24,11 +24,10 @@ const CATEGORY_COLORS = [
   "var(--alt-pink)",
   "var(--alt-green)",
 ];
-const INCOME_COLOR = "var(--primary)";
-const UNSPENT_COLOR = "var(--muted-foreground)";
+const SPENT_COLOR = "var(--primary)";
 // Several projects share the Projects node: a neutral colour that no group can have.
 const PROJECTS_COLOR = "var(--foreground)";
-// Slate (a cool blue-grey), so it stays distinct from Unspent's neutral grey.
+// Slate (a cool blue-grey), so Uncategorized stands apart from the group colours.
 const UNCATEGORIZED_COLOR = "color-mix(in oklab, oklch(0.62 0.05 250) 80%, transparent)";
 
 interface FlowNode {
@@ -41,6 +40,8 @@ interface FlowNode {
   href?: string;
   /** Project spending: drawn with the same diagonal hatch as the Home charts, in the project's colour. */
   hatch?: { projectId: number; color: string };
+  /** The "Spent" node only: the month's income, shown in its tooltip as context (never drawn as a bar). */
+  income?: { budgeted: number | null; received: number };
 }
 interface FlowLink {
   source: number;
@@ -49,19 +50,15 @@ interface FlowLink {
 }
 
 function buildMoneyFlow(
-  tree: BudgetTree
+  tree: BudgetTree,
+  plannedIncome: number | null
 ): { nodes: FlowNode[]; links: FlowLink[]; maxDepth: number; maxColumnCount: number } | null {
-  const { incomeActual } = tree.summary;
   const nodes: FlowNode[] = [];
   const links: FlowLink[] = [];
   let maxDepth = 0;
-  // Nodes per column (depth 0 = Income), so the chart can grow tall enough
+  // Nodes per column (depth 0 = Spent), so the chart can grow tall enough
   // that no column's rows get squeezed thin enough to clip their labels.
   const depthCounts: number[] = [1];
-
-  const incomeIdx = nodes.push({ name: "Income", color: INCOME_COLOR, value: incomeActual }) - 1;
-
-  const totalGroupActual = tree.groups.reduce((sum, g) => sum + (g.actual > 0 ? g.actual : 0), 0);
 
   // Separately funded projects are not in group actuals; show them as their
   // own branch so the flow still accounts for that money.
@@ -84,14 +81,13 @@ function buildMoneyFlow(
   const projectChildren = [...projectTotals.values()].filter((p) => p.value > 0);
   const totalProjects = projectChildren.reduce((sum, p) => sum + p.value, 0);
   const uncategorized = tree.summary.uncategorizedOut;
-  const unspent = incomeActual - totalGroupActual - totalProjects - uncategorized;
 
-  // Depth-1 nodes (groups + Unspent) are ranked together by amount, then
+  // Depth-1 nodes (groups, Projects) are ranked together by amount, then
   // each group's categories are ranked among themselves — so, with
   // `sort={false}` on <Sankey> below, recharts lays everything out in this
   // exact order instead of re-ranking nodes by amount across the whole
   // column, which would otherwise pull a small category up above a larger
-  // group's rows (or Unspent below a smaller group).
+  // group's rows.
   //
   // Each group (and all of its categories) shares one color from the
   // palette, assigned by group identity rather than by rank, so a group's
@@ -134,9 +130,6 @@ function buildMoneyFlow(
       })),
     });
   }
-  if (unspent > 0.005) {
-    topLevel.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent });
-  }
   topLevel.sort((a, b) => b.value - a.value);
   // Uncategorized money out always sits last (bottom) so it stands apart from
   // the ranked groups: it is the part of the month still waiting for a category.
@@ -149,18 +142,30 @@ function buildMoneyFlow(
     });
   }
 
+  // The first node is simply everything that was spent, so every bar's height
+  // is exactly its number. Income is context only: it lives in this node's tooltip.
+  const totalSpent = topLevel.reduce((sum, item) => sum + item.value, 0);
+  const budgeted = plannedIncome != null && plannedIncome > 0 ? plannedIncome : null;
+  const spentIdx =
+    nodes.push({
+      name: "Spent",
+      color: SPENT_COLOR,
+      value: totalSpent,
+      income: { budgeted, received: tree.summary.incomeActual },
+    }) - 1;
+
   for (const item of topLevel) {
-    // Groupless items (Unspent) have no real second hop, but recharts
+    // Groupless items (Uncategorized) have no real second hop, but recharts
     // forces any node with no outgoing links into the rightmost column —
-    // which would otherwise strand Unspent one column ahead of where its
-    // Income link visually starts, and throw off the per-column row count
-    // used for sizing. Route it through an unlabeled same-value
-    // pass-through node so it lands in the categories column like every
-    // other leaf, with its name/amount label on the actual rightmost node.
+    // which would otherwise strand it one column ahead of where its Spent
+    // link visually starts, and throw off the per-column row count used for
+    // sizing. Route it through an unlabeled same-value pass-through node so
+    // it lands in the categories column like every other leaf, with its
+    // name/amount label on the actual rightmost node.
     const { children } = item;
     const itemIdx =
       nodes.push({ name: children ? item.name : "", color: item.color, value: item.value, hatch: item.hatch }) - 1;
-    links.push({ source: incomeIdx, target: itemIdx, value: item.value });
+    links.push({ source: spentIdx, target: itemIdx, value: item.value });
     maxDepth = Math.max(maxDepth, 1);
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
 
@@ -263,11 +268,12 @@ function SankeyLinkPath(props: {
   payload: { target: FlowNode };
 }) {
   const { sourceX, sourceY, sourceControlX, targetX, targetY, targetControlX, linkWidth, payload } = props;
+  const stroke = payload.target.color; // tinted by where the money went
   return (
     <path
       d={`M${sourceX},${sourceY} C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
       fill="none"
-      stroke={payload.target.color}
+      stroke={stroke}
       strokeOpacity={0.25}
       strokeWidth={linkWidth}
     />
@@ -280,34 +286,59 @@ function FlowTooltip({
   formatAmountShort,
 }: {
   active?: boolean;
-  payload?: Array<{ name?: string; value?: number }>;
+  payload?: Array<{
+    name?: string;
+    value?: number;
+    payload?: Pick<FlowNode, "income">;
+  }>;
   formatAmountShort: (n: number) => string;
 }) {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
+  const income = payload[0].payload?.income;
   // recharts labels link hovers "Source - Target"; render as an arrow instead.
   const label = name?.includes(" - ") ? name.replace(" - ", " → ") : name;
+
+  // Spent node only: how the month's income compares. Measured against the
+  // budgeted income when there is one, otherwise what has been received.
+  const base = income ? income.budgeted ?? income.received : 0;
+  const diff = base - (value ?? 0);
   return (
     <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs shadow-md">
       <div className="font-medium">{label}</div>
       <div className="tabular-nums text-muted-foreground">{formatAmountShort(value ?? 0)}</div>
+      {income && base > 0 && (
+        <div className="mt-1 space-y-0.5 border-t pt-1 tabular-nums text-muted-foreground">
+          {income.budgeted != null && <div>Budgeted income {formatAmountShort(income.budgeted)}</div>}
+          <div>Received {formatAmountShort(income.received)}</div>
+          <div className={diff < 0 ? "text-destructive" : undefined}>
+            {formatAmountShort(Math.abs(diff))} {diff < 0 ? "over" : "left"}
+            {income.budgeted != null ? " of budget" : ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Income → Category Group → Category money-flow diagram for the current
+ * Spent → Category Group → Category money-flow diagram for the current
  * period, using actual spending (not planned amounts) so it shows where
- * money really went. Renders nothing if there's no income/spending yet.
+ * money really went. Every bar's height is its own amount. The month's
+ * income (budgeted and received) is only context, in the Spent node's tooltip.
+ * Renders nothing if there's no spending yet.
  */
 export function MoneyFlowSankey({
   tree,
   formatAmountShort,
+  plannedIncome = null,
 }: {
   tree: BudgetTree;
   formatAmountShort: (n: number) => string;
+  /** The month's budgeted income, if set. */
+  plannedIncome?: number | null;
 }) {
-  const flow = useMemo(() => buildMoneyFlow(tree), [tree]);
+  const flow = useMemo(() => buildMoneyFlow(tree, plannedIncome), [tree, plannedIncome]);
 
   if (!flow) return null;
   const { maxDepth, maxColumnCount, ...data } = flow;
