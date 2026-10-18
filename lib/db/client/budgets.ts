@@ -56,6 +56,31 @@ export async function copyBudgetToMonth(
   return data.copied;
 }
 
+export interface ApplyToPreviousResult {
+  /** Earlier months (0-based) that have transactions but had no budget. */
+  months: { year: number; month: number }[];
+  copied: number;
+}
+
+/**
+ * Copy a month's budget into every earlier month that has transactions but no
+ * budget. `dryRun` only lists the months it would fill.
+ */
+export async function applyBudgetToEmptyPreviousMonths(
+  fromYear: number,
+  fromMonth: number,
+  dryRun = false
+): Promise<ApplyToPreviousResult> {
+  const res = await fetch("/api/budgets/apply-to-previous", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fromYear, fromMonth, dryRun }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? "Failed to apply budget to earlier months");
+  return body.data;
+}
+
 export async function findPreviousMonthWithBudgets(
   year: number,
   month: number,

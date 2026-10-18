@@ -168,3 +168,12 @@ export async function copyBudgetToMonth(fromYear: number, fromMonth: number, toY
   invalidateBudgetTree();
   return copied;
 }
+/** Preview (dryRun) or apply a month's budget to earlier months that have transactions but no budget. */
+export async function applyBudgetToEmptyPreviousMonths(fromYear: number, fromMonth: number, dryRun = false) {
+  const result = await api.applyBudgetToEmptyPreviousMonths(fromYear, fromMonth, dryRun);
+  if (!dryRun) {
+    invalidateBudgetTree();
+    mutate((key) => typeof key === "string" && key.startsWith("planned-income"));
+  }
+  return result;
+}

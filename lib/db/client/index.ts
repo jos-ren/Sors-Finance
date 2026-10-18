@@ -41,6 +41,7 @@ export {
   setBudget,
   deleteBudget,
   copyBudgetToMonth,
+  applyBudgetToEmptyPreviousMonths,
   findPreviousMonthWithBudgets,
   autoCopyBudgetsIfEmpty,
 } from "./budgets";
