@@ -28,6 +28,7 @@ import {
 } from "@/hooks";
 import { useBudgetHierarchy } from "@/hooks/use-budget";
 import { useProjects } from "@/hooks/use-projects";
+import { ProjectSelect } from "@/components/features/projects/project-select";
 import { matchProject } from "@/lib/projects/match";
 import {
   addTransactionsBulk,
@@ -72,6 +73,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
   const [step, setStep] = useState<Step>("source");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [batchProjectId, setBatchProjectId] = useState<number | null>(null);
 
   // Live data used to categorize the incoming rows.
   const dbCategories = useCategories();
@@ -109,7 +111,18 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
     setStep("source");
     setUploadedFiles([]);
     setErrors([]);
+    setBatchProjectId(null);
   };
+
+  const batchProjectPicker = (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">Project (optional)</p>
+      <ProjectSelect value={batchProjectId} onChange={setBatchProjectId} className="w-full" />
+      <p className="text-xs text-muted-foreground">
+        Applies to rows that no project keyword matched. You can also set a project per transaction in the review inbox.
+      </p>
+    </div>
+  );
 
   const handleOpenChange = (next: boolean) => {
     if (!next) reset();
@@ -228,7 +241,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
           reviewStatus: t._reviewStatus,
           conflictCategories: t.isConflict ? t.conflictingCategories ?? null : null,
           importId: importIdMap.get(t.source) ?? null,
-          projectId: matchProject(t.matchField, t.date, projects ?? []),
+          projectId: matchProject(t.matchField, t.date, projects ?? []) ?? batchProjectId,
         };
       });
 
@@ -478,6 +491,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         {step === "manual" && (
           <div className="space-y-4">
             <FileUpload onFilesSelected={setUploadedFiles} />
+            {batchProjectPicker}
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => { setUploadedFiles([]); setErrors([]); setStep("source"); }}>
                 Back
@@ -490,7 +504,8 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
         )}
 
         {step === "plaid" && (
-          <div className="max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto">
+            {batchProjectPicker}
             <PlaidAccountSelector onFetchTransactions={handlePlaidFetch} onBack={() => { setErrors([]); setStep("source"); }} />
           </div>
         )}

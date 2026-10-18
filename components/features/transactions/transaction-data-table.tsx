@@ -71,6 +71,7 @@ import { updateTransaction, invalidateTransactions } from "@/hooks";
 import { useBudgetHierarchy } from "@/hooks/use-budget";
 import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
 import { ProjectChip } from "@/components/features/projects/project-chip";
+import { ProjectMenu } from "@/components/features/projects/project-menu";
 import { BudgetItemPicker, toPickerValue, fromPickerValue } from "@/components/features/budget/budget-item-picker";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency, useTimezone } from "@/contexts/settings-context";
@@ -123,6 +124,15 @@ export function TransactionDataTable({
   const projects = useProjects();
   const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const assignableProjects = useMemo(() => (projects ?? []).filter((p) => !p.isArchived), [projects]);
+
+  /** Set a single transaction's project from its row; the category is untouched. */
+  const handleSetProject = useCallback(async (id: number, projectId: number | null) => {
+    try {
+      await setTransactionsProject([id], projectId);
+    } catch {
+      toast.error("Failed to update project");
+    }
+  }, []);
 
   const handleResetCategory = useCallback(async (id: number) => {
     setResettingId(id);
@@ -355,7 +365,15 @@ export function TransactionDataTable({
         enableSorting: false,
         cell: ({ row }) => {
           const project = row.original.projectId != null ? projectById.get(row.original.projectId) : undefined;
-          return project ? <ProjectChip id={project.id} name={project.name} color={project.color} /> : null;
+          if (project) return <ProjectChip id={project.id} name={project.name} color={project.color} />;
+          // No project yet: same picker as the review inbox
+          return (
+            <ProjectMenu
+              projects={projects ?? []}
+              currentId={null}
+              onSelect={(projectId) => handleSetProject(row.original.id!, projectId)}
+            />
+          );
         },
       },
       {
@@ -410,7 +428,7 @@ export function TransactionDataTable({
         ),
       },
     ],
-    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency, projectById]
+    [handleAssign, formatAmount, handleResetCategory, isPrivacyMode, onDeleteTransaction, resettingId, userCurrency, projectById, projects, handleSetProject]
   );
 
   // Apply filters to transactions

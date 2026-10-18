@@ -35,14 +35,17 @@ import {
 import { TransactionDetailLines, accountLabel, dayLabel, useAccountLookup } from "./transaction-details";
 import { BankSourceBadge } from "@/components/features/layout/bank-source-badge";
 import { useBudgetHierarchy, addKeywordToSubcategory } from "@/hooks/use-budget";
-import { useProjects } from "@/hooks/use-projects";
-import { ProjectChip } from "@/components/features/projects/project-chip";
-import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
+import { useProjects, setTransactionsProject } from "@/hooks/use-projects";
+import { ProjectMenu } from "@/components/features/projects/project-menu";import { matchGlobalDictionary } from "@/lib/categories/global-dictionary";
 import { matchesKeyword } from "@/lib/categories/keyword";
 import { usePrivacy } from "@/contexts/privacy-context";
 import { useCurrency } from "@/contexts/settings-context";
 import { cn } from "@/lib/utils";
 import type { DbTransaction, Keyword, KeywordMatchMode } from "@/lib/db/types";
+
+/** Category picker fills its fixed column; dashed while the row still needs a category from the user. */
+const PICKER_CLASS = "w-full justify-between";
+const PICKER_CLASS_DASHED = `${PICKER_CLASS} border-dashed`;
 
 const MATCH_MODE_LABELS: Record<KeywordMatchMode, string> = {
   contains: "contains",
@@ -68,7 +71,6 @@ export function ReviewInbox() {
   const categories = useCategories();
   const hierarchy = useBudgetHierarchy(false);
   const projects = useProjects();
-  const projectById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
   const accountLookup = useAccountLookup();
   const { formatAmount } = usePrivacy();
   const userCurrency = useCurrency();
@@ -167,6 +169,16 @@ export function ReviewInbox() {
       toast.error("Failed to approve transaction");
     } finally {
       setBusyFor(t.id, false);
+    }
+  };
+
+  /** Set or clear a row's project without touching its category or review state. */
+  const assignProject = async (t: DbTransaction, projectId: number | null) => {
+    if (t.id == null) return;
+    try {
+      await setTransactionsProject([t.id], projectId);
+    } catch {
+      toast.error("Failed to set project");
     }
   };
 
@@ -323,8 +335,8 @@ export function ReviewInbox() {
           const netClass = t.amountIn > 0 ? "text-emerald-600 dark:text-emerald-400" : "";
           const amountStr =
             t.amountIn > 0
-              ? `+${formatAmount(t.amountIn, userCurrency)}`
-              : `-${formatAmount(t.amountOut, userCurrency)}`;
+              ? `+${formatAmount(t.amountIn, userCurrency, false)}`
+              : `-${formatAmount(t.amountOut, userCurrency, false)}`;
 
           return (
             <Fragment key={t.id}>
@@ -333,7 +345,7 @@ export function ReviewInbox() {
                 {dayLabel(t.date)}
               </div>
             )}
-            <div className="px-4 py-3">
+            <div className="group px-4 py-3">
               <div className="flex items-center gap-3">
                 {/* Status icon */}
                 <div className="shrink-0">
@@ -355,28 +367,28 @@ export function ReviewInbox() {
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <div className="flex items-baseline gap-2">
                     <p className="truncate text-sm font-medium">{t.description}</p>
-                    {t.projectId != null && projectById.has(t.projectId) && (
-                      <ProjectChip
-                        id={t.projectId}
-                        name={projectById.get(t.projectId)!.name}
-                        color={projectById.get(t.projectId)!.color}
-                        className="py-0"
-                      />
-                    )}
                   </div>
                   <TransactionDetailLines transaction={t} lookup={accountLookup} />
                 </div>
 
-                <p className={cn("shrink-0 text-sm font-medium tabular-nums", netClass)}>{amountStr}</p>
+                <p className={cn("w-28 shrink-0 text-right text-sm font-medium tabular-nums", netClass)}>{amountStr}</p>
 
-                {/* Action area */}
-                <div className="flex shrink-0 items-center gap-2">
-                  {isBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  ) : kind === "suggestion" ? (
-                    <>
+                {/* Action area: fixed columns so amounts, controls and buttons line up row to row */}
+                <div className="flex shrink-0 items-center gap-3">
+                  <ProjectMenu
+                    projects={projects ?? []}
+                    currentId={t.projectId ?? null}
+                    disabled={isBusy}
+                    onSelect={(projectId) => assignProject(t, projectId)}
+                  />
+
+                  <div className="flex w-[116px] items-center">
+                    {isBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : kind === "suggestion" ? (
                       <BudgetItemPicker
                         variant="badge"
+                        className={PICKER_CLASS}
                         allowCreate
                         value={toPickerValue(t.categoryId, t.budgetItemId)}
                         onChange={(v) => {
@@ -386,16 +398,51 @@ export function ReviewInbox() {
                         }}
                         placeholder={categoryName(t)}
                       />
+                    ) : kind === "conflict" ? (
+                      <BudgetItemPicker
+                        variant="badge"
+                        className={PICKER_CLASS_DASHED}
+                        allowCreate
+                        value={null}
+                        onChange={(v) => resolveConflict(t, v)}
+                        placeholder="Multiple matches"
+                      />
+                    ) : (
+                      // uncategorized: once a category is picked it shows here and the composer opens below
+                      <BudgetItemPicker
+                        variant="badge"
+                        className={PICKER_CLASS_DASHED}
+                        allowCreate
+                        value={pickedValue ?? null}
+                        onChange={(v) =>
+                          setPicks((prev) => {
+                            const next = new Map(prev);
+                            if (t.id != null) next.set(t.id, v);
+                            return next;
+                          })
+                        }
+                        placeholder="Select category"
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex w-[72px] justify-end">
+                    {!isBusy && kind === "suggestion" && (
                       <div className="flex">
-                        <Button size="sm" className="rounded-r-none" onClick={() => approveSuggestion(t)}>
-                          <Check className="h-4 w-4 mr-1" />
-                          Approve
+                        <Button
+                          size="icon-sm"
+                          className="rounded-r-none border-r-0"
+                          onClick={() => approveSuggestion(t)}
+                          aria-label="Approve"
+                          title="Approve"
+                        >
+                          <Check className="h-4 w-4" />
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
-                              size="sm"
-                              className="rounded-l-none border-l border-primary-foreground/20 px-1.5"
+                              size="icon-sm"
+                              className="w-6 rounded-l-none border-l-0 shadow-[inset_1px_0_0_0_color-mix(in_oklab,var(--primary-foreground)_30%,transparent)]"
                               aria-label="More approve options"
                             >
                               <ChevronDown className="h-4 w-4" />
@@ -408,33 +455,8 @@ export function ReviewInbox() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
-                    </>
-                  ) : kind === "conflict" ? (
-                    <BudgetItemPicker
-                      variant="badge"
-                      allowCreate
-                      value={null}
-                      onChange={(v) => resolveConflict(t, v)}
-                      placeholder="Select Category (Multiple Matches)"
-                    />
-                  ) : (
-                    // uncategorized — hide the picker once a category is chosen (composer takes over)
-                    !pickedValue && (
-                      <BudgetItemPicker
-                        variant="badge"
-                        allowCreate
-                        value={null}
-                        onChange={(v) =>
-                          setPicks((prev) => {
-                            const next = new Map(prev);
-                            if (t.id != null) next.set(t.id, v);
-                            return next;
-                          })
-                        }
-                        placeholder="Select Category"
-                      />
-                    )
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
 
