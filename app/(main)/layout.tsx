@@ -130,7 +130,7 @@ function ScrollableContent({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="min-w-0 flex-1 overflow-auto">
       {children}
       {/* Breathing room at the bottom of every page */}
       <div className="h-16" />
@@ -156,7 +156,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <UnsavedChangesProvider>
           <SidebarProvider>
             <AppSidebar />
-            <SidebarInset>
+            {/* min-w-0: a flex child never shrinks below its content, so one wide chart would widen the whole page */}
+            <SidebarInset className="min-w-0">
               <PageHeaderProvider>
                 <HeaderContent />
                 <ScrollableContent>{children}</ScrollableContent>

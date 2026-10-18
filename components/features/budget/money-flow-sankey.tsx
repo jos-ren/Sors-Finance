@@ -349,7 +349,7 @@ export function MoneyFlowSankey({
   const height = Math.max(360, maxColumnCount * 40 + 20);
 
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="min-w-0 overflow-hidden rounded-xl border bg-card p-4">
       <ResponsiveContainer width="100%" height={height}>
         <Sankey
           data={data}
