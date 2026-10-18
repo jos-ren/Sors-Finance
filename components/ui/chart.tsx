@@ -263,10 +263,18 @@ function ChartTooltipContent({
  * Small colour square for tooltip rows, beside the series name. `hatched` draws
  * diagonal stripes, matching project segments (funded separately) in the charts.
  */
-function ChartSwatch({ color, hatched = false }: { color: string; hatched?: boolean }) {
+function ChartSwatch({
+  color,
+  hatched = false,
+  className,
+}: {
+  color: string
+  hatched?: boolean
+  className?: string
+}) {
   return (
     <span
-      className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]"
+      className={cn("inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]", className)}
       style={
         hatched
           ? {

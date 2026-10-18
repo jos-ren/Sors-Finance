@@ -31,6 +31,27 @@ import { projectHatchFill, projectHatchPattern } from "@/components/features/pro
 /** Chart key for a project's series, kept apart from group names. */
 const projectKey = (id: number) => `__project_${id}`;
 
+interface LegendItem {
+  key: string;
+  label: string;
+  color: string;
+  hatched: boolean;
+}
+
+/** The group chart's legend. It ignores the props recharts passes in and draws its own items. */
+function GroupLegend({ items }: { items: LegendItem[] }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 pt-3 text-xs">
+      {items.map((item) => (
+        <div key={item.key} className="flex items-center gap-1.5">
+          <ChartSwatch color={item.color} hatched={item.hatched} className="h-2 w-2" />
+          {item.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type Span = 3 | 6 | 12;
@@ -135,6 +156,26 @@ export function TrendsSection() {
     [groupData]
   );
 
+  // Legend for the group chart: only series with spending in the visible months, and
+  // a striped swatch for projects (recharts' own legend cannot draw a pattern fill).
+  const groupLegend = useMemo(() => {
+    if (!groupData) return [];
+    const hasData = (key: string) => groupData.chartRows.some((row) => Number((row as Record<string, unknown>)[key]) > 0);
+    return [
+      ...groupData.categorySeries
+        .map((s, i) => ({
+          key: s.categoryName,
+          label: s.categoryName,
+          color: GROUP_COLORS[i % GROUP_COLORS.length],
+          hatched: false,
+        }))
+        .filter((item) => hasData(item.key)),
+      ...groupData.projectSeries
+        .map((p) => ({ key: projectKey(p.id), label: p.name, color: p.color, hatched: true }))
+        .filter((item) => hasData(item.key)),
+    ];
+  }, [groupData]);
+
   const moneyTooltip = (
     <ChartTooltipContent
       formatter={(value, name, item) => (
@@ -222,7 +263,7 @@ export function TrendsSection() {
                       </span>
                     )} />}
                   />
-                  <ChartLegend content={<ChartLegendContent className="flex-wrap gap-y-1" />} />
+                  <ChartLegend content={<GroupLegend items={groupLegend} />} />
                   <defs>{groupData.projectSeries.map((p) => projectHatchPattern("trends", p))}</defs>
                   {groupData.categorySeries.map((s, i) => (
                     <Bar

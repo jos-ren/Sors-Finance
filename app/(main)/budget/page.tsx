@@ -15,6 +15,7 @@ import {
   useBudgetTree,
   useYearlyBudgetSummary,
   useAvailablePeriods,
+  usePlannedIncome,
   invalidateBudgets,
 } from "@/hooks";
 import { setBudget, getSetting, setSetting, findPreviousMonthWithBudgets, copyBudgetToMonth, seedDefaultBudget } from "@/lib/db/client";
@@ -206,6 +207,8 @@ function MonthlyContent({
   const [isCopying, setIsCopying] = useState(false);
 
   const monthEmpty = tree.groups.every((g) => g.categories.every((c) => c.planned === 0));
+  // Budgeted income for the month: the Sankey's base, so it reads right before pay lands
+  const plannedIncome = usePlannedIncome(year, month);
 
   useEffect(() => {
     getSetting("autoCopyBudgets").then((v) => setAutoCopy(v === "true"));
@@ -295,7 +298,7 @@ function MonthlyContent({
         onFocusItem={focus}
       />
 
-      <MoneyFlowSankey tree={tree} formatAmountShort={fmtShort} />
+      <MoneyFlowSankey tree={tree} formatAmountShort={fmtShort} plannedIncome={plannedIncome ?? null} />
 
       {previous && monthEmpty && (
         <CopyPreviousMonthCard
