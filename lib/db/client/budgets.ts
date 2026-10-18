@@ -56,29 +56,41 @@ export async function copyBudgetToMonth(
   return data.copied;
 }
 
-export interface ApplyToPreviousResult {
-  /** Earlier months (0-based) that have transactions but had no budget. */
-  months: { year: number; month: number }[];
-  copied: number;
+export interface BudgetPeriod {
+  year: number;
+  /** 0-based */
+  month: number;
 }
 
-/**
- * Copy a month's budget into every earlier month that has transactions but no
- * budget. `dryRun` only lists the months it would fill.
- */
-export async function applyBudgetToEmptyPreviousMonths(
-  fromYear: number,
-  fromMonth: number,
-  dryRun = false
-): Promise<ApplyToPreviousResult> {
+/** An earlier month a budget can be copied into; `hasBudget` means copying replaces it. */
+export interface ApplyTarget extends BudgetPeriod {
+  hasBudget: boolean;
+}
+
+async function postApplyToPrevious<T>(body: object): Promise<T> {
   const res = await fetch("/api/budgets/apply-to-previous", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fromYear, fromMonth, dryRun }),
+    body: JSON.stringify(body),
   });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error ?? "Failed to apply budget to earlier months");
-  return body.data;
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error ?? "Failed to apply budget to earlier months");
+  return json.data;
+}
+
+/** Earlier months (with transactions or an existing budget) a month's budget could be copied into. */
+export async function getApplyTargets(fromYear: number, fromMonth: number): Promise<ApplyTarget[]> {
+  const data = await postApplyToPrevious<{ months: ApplyTarget[] }>({ fromYear, fromMonth });
+  return data.months;
+}
+
+/** Copy a month's budget into the chosen earlier months, replacing any budget they already have. */
+export async function applyBudgetToMonths(
+  fromYear: number,
+  fromMonth: number,
+  months: BudgetPeriod[]
+): Promise<{ months: BudgetPeriod[]; copied: number }> {
+  return postApplyToPrevious({ fromYear, fromMonth, months });
 }
 
 export async function findPreviousMonthWithBudgets(
