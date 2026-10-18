@@ -23,8 +23,8 @@ const CATEGORY_COLORS = [
 const INCOME_COLOR = "var(--primary)";
 const UNSPENT_COLOR = "var(--muted-foreground)";
 const PROJECTS_COLOR = "var(--alt-blue)";
-// Muted grey like Unspent, but lighter so the two stay distinguishable.
-const UNCATEGORIZED_COLOR = "color-mix(in oklab, var(--muted-foreground) 55%, transparent)";
+// Slate (a cool blue-grey), so it stays distinct from Unspent's neutral grey.
+const UNCATEGORIZED_COLOR = "color-mix(in oklab, oklch(0.62 0.05 250) 80%, transparent)";
 
 interface FlowNode {
   name: string;
