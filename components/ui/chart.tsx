@@ -111,6 +111,7 @@ function ChartTooltipContent({
   indicator = "dot",
   hideLabel = false,
   hideIndicator = false,
+  hideZero = true,
   label,
   labelFormatter,
   labelClassName,
@@ -122,6 +123,8 @@ function ChartTooltipContent({
   React.ComponentProps<"div"> & {
     hideLabel?: boolean
     hideIndicator?: boolean
+    /** Drop series whose value is exactly 0 from the tooltip (default on; kept if every series is 0). */
+    hideZero?: boolean
     indicator?: "line" | "dot" | "dashed"
     nameKey?: string
     labelKey?: string
@@ -168,6 +171,13 @@ function ChartTooltipContent({
     return null
   }
 
+  // Rows worth showing. Zero-valued series are dropped (a group or project with
+  // nothing in that period), unless everything is zero: then keep them all so
+  // the tooltip is not empty.
+  const isZero = (item: (typeof payload)[number]) => typeof item.value === "number" && item.value === 0
+  const rows = payload.filter((item) => item.type !== "none")
+  const shownRows = hideZero && rows.some((item) => !isZero(item)) ? rows.filter((item) => !isZero(item)) : rows
+
   const nestLabel = payload.length === 1 && indicator !== "dot"
 
   return (
@@ -179,8 +189,7 @@ function ChartTooltipContent({
     >
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
-        {payload
-          .filter((item) => item.type !== "none")
+        {shownRows
           .map((item, index) => {
             const key = `${nameKey || item.name || item.dataKey || "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
@@ -247,6 +256,26 @@ function ChartTooltipContent({
           })}
       </div>
     </div>
+  )
+}
+
+/**
+ * Small colour square for tooltip rows, beside the series name. `hatched` draws
+ * diagonal stripes, matching project segments (funded separately) in the charts.
+ */
+function ChartSwatch({ color, hatched = false }: { color: string; hatched?: boolean }) {
+  return (
+    <span
+      className="inline-block h-2.5 w-2.5 shrink-0 rounded-[2px]"
+      style={
+        hatched
+          ? {
+              backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 2px, color-mix(in oklab, ${color} 30%, transparent) 2px 4px)`,
+            }
+          : { backgroundColor: color }
+      }
+      aria-hidden
+    />
   )
 }
 
@@ -350,6 +379,7 @@ export {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
+  ChartSwatch,
   ChartLegend,
   ChartLegendContent,
   ChartStyle,

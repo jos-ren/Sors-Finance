@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Area, Bar, Cell, ComposedChart, Line, ReferenceDot, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
+import { ChartContainer, ChartSwatch, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { PeriodNavigator } from "@/components/features/budget/period-navigator";
 import { CardTitleLink } from "@/components/features/home/card-title-link";
 import { cn } from "@/lib/utils";
@@ -167,8 +167,11 @@ export function BudgetStatusCard({
                 <ChartTooltipContent
                   labelFormatter={(_, payload) => `${MONTH_SHORT[summary.month]} ${payload?.[0]?.payload?.day ?? ""}`}
                   formatter={(value, name) => (
-                    <span className="flex w-full justify-between gap-4">
-                      <span className="text-muted-foreground">{paceConfig[name as keyof typeof paceConfig]?.label}</span>
+                    <span className="flex w-full items-center justify-between gap-4">
+                      <span className="flex items-center gap-1.5 text-muted-foreground">
+                        <ChartSwatch color={paceConfig[name as keyof typeof paceConfig]?.color ?? "var(--muted-foreground)"} />
+                        {paceConfig[name as keyof typeof paceConfig]?.label}
+                      </span>
                       <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
                     </span>
                   )}
@@ -218,9 +221,14 @@ export function BudgetStatusCard({
                       const projectName = projectNameByKey.get(String(name));
                       if (projectName !== undefined && !Number(value)) return null;
                       const label = projectName ?? historyConfig[name as keyof typeof historyConfig]?.label;
+                      const project = historyProjects.find((p) => `p${p.id}` === String(name));
+                      const swatchColor = project?.color ?? historyConfig[name as keyof typeof historyConfig]?.color;
                       return (
-                        <span className="flex w-full justify-between gap-4">
-                          <span className="text-muted-foreground">{label}</span>
+                        <span className="flex w-full items-center justify-between gap-4">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            {swatchColor && <ChartSwatch color={swatchColor} hatched={!!project} />}
+                            {label}
+                          </span>
                           <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
                         </span>
                       );

@@ -15,7 +15,6 @@ import {
   useBudgetTree,
   useYearlyBudgetSummary,
   useAvailablePeriods,
-  useTransactions,
   invalidateBudgets,
 } from "@/hooks";
 import { setBudget, getSetting, setSetting, findPreviousMonthWithBudgets, copyBudgetToMonth, seedDefaultBudget } from "@/lib/db/client";
@@ -208,23 +207,6 @@ function MonthlyContent({
 
   const monthEmpty = tree.groups.every((g) => g.categories.every((c) => c.planned === 0));
 
-  // Transactions for the period, grouped by category, so the tree can show
-  // each category's transactions nested underneath it (desc + amount only).
-  const { start: periodStart, end: periodEnd } = useMemo(
-    () => ({ start: new Date(year, month, 1), end: new Date(year, month + 1, 0, 23, 59, 59) }),
-    [year, month]
-  );
-  const monthTransactions = useTransactions({ startDate: periodStart, endDate: periodEnd });
-  const transactionsByCategory = useMemo(() => {
-    const map = new Map<number, { id: number; description: string; amount: number; date: Date }[]>();
-    for (const t of monthTransactions ?? []) {
-      if (t.budgetItemId == null) continue;
-      if (!map.has(t.budgetItemId)) map.set(t.budgetItemId, []);
-      map.get(t.budgetItemId)!.push({ id: t.id!, description: t.description, amount: t.amountOut - t.amountIn, date: t.date });
-    }
-    return map;
-  }, [monthTransactions]);
-
   useEffect(() => {
     getSetting("autoCopyBudgets").then((v) => setAutoCopy(v === "true"));
   }, []);
@@ -352,7 +334,6 @@ function MonthlyContent({
         year={year}
         month={month}
         onOpenDetail={openDetail}
-        transactionsByCategory={transactionsByCategory}
       />
 
       {/* Save/Cancel FAB */}

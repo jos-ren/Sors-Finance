@@ -1,17 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { BudgetTreeCategory } from "@/lib/budget/types";
 import { SavingProgress } from "./saving-progress";
 import { CategoryTypeIcon } from "./category-type-icon";
 
 /**
- * A budget category row: expand chevron (only if it has transactions this
- * period) | name | total spent this period (read-only — planned amounts are
- * set in the Builder). Clicking the name/amount drills into the category;
- * the chevron toggles the nested transaction list without navigating.
+ * A budget category row: name | total spent this period (read-only — planned
+ * amounts are set in the Builder). Clicking the name/amount opens the
+ * category's page, which lists its transactions for the month.
  * Spending on separately funded projects is not in the total; a note links to
  * the project instead.
  * TODO: no entry point for category actions right now (menu removed pending
@@ -21,17 +18,11 @@ export function BudgetItemRow({
   item,
   formatAmountShort,
   drillHref,
-  hasTransactions,
-  isExpanded,
-  onToggleExpand,
   onOpenDetail: _onOpenDetail,
 }: {
   item: BudgetTreeCategory;
   formatAmountShort: (n: number) => string;
   drillHref: string;
-  hasTransactions: boolean;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
   onOpenDetail: () => void;
 }) {
   const isSaving = item.itemType === "saving";
@@ -49,29 +40,13 @@ export function BudgetItemRow({
           flush against the row's left padding, no extra centering box) so
           the depth-guide lines — which assume a fixed offset — line up
           under this chevron the same way they do under a group's. */}
-      <button
-        type="button"
-        disabled={!hasTransactions}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onToggleExpand();
-        }}
-        className={cn(
-          "shrink-0 rounded text-muted-foreground",
-          hasTransactions ? "hover:bg-accent" : "invisible"
-        )}
-        aria-label={isExpanded ? "Collapse transactions" : "Expand transactions"}
-        aria-hidden={!hasTransactions}
-      >
-        <ChevronDown className={cn("h-4 w-4 transition-transform", !isExpanded && "-rotate-90")} />
-      </button>
+      <span className="h-4 w-4 shrink-0" aria-hidden />
 
       <Link href={drillHref} className="group flex flex-1 items-center gap-3">
         {/* Name */}
         <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm">
           <CategoryTypeIcon category={item} />
-          <span className="truncate">{item.name}</span>
+          <span className="truncate underline-offset-4 group-hover:underline">{item.name}</span>
           {!item.isActive && (
             <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">archived</span>
           )}

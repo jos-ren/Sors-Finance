@@ -10,6 +10,7 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
+  ChartSwatch,
   type ChartConfig,
 } from "@/components/ui/chart";
 import {
@@ -207,8 +208,16 @@ export function TrendsSection() {
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent formatter={(value, name) => (
-                      <span className="flex w-full justify-between gap-4">
-                        <span className="text-muted-foreground">{groupConfig[String(name)]?.label ?? name}</span>
+                      <span className="flex w-full items-center justify-between gap-4">
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          {groupConfig[String(name)]?.color && (
+                            <ChartSwatch
+                              color={groupConfig[String(name)].color as string}
+                              hatched={String(name).startsWith("__project_")}
+                            />
+                          )}
+                          {groupConfig[String(name)]?.label ?? name}
+                        </span>
                         <span className="font-mono tabular-nums">{formatAmount(Number(value), currency, false)}</span>
                       </span>
                     )} />}

@@ -90,13 +90,16 @@ export function TransactionDetailLines({
   transaction: t,
   lookup,
   showDate = false,
+  showSuggestion = true,
 }: {
   transaction: DbTransaction;
   lookup: AccountLookup;
   showDate?: boolean;
+  /** Plaid's category guess. Useful while categorizing (inbox, review); noise on rows already settled. */
+  showSuggestion?: boolean;
 }) {
   const raw = rawDescription(t);
-  const bankCategory = t.details?.plaidCategory ? formatPlaidCategory(t.details.plaidCategory) : null;
+  const bankCategory = showSuggestion && t.details?.plaidCategory ? formatPlaidCategory(t.details.plaidCategory) : null;
 
   const channel = t.details?.paymentChannel ? CHANNEL_ICONS[t.details.paymentChannel] : undefined;
   const ChannelIcon = channel?.icon;
