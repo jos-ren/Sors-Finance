@@ -4,6 +4,10 @@ import { useMemo, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ResponsiveContainer, Sankey, Layer, Rectangle, Tooltip } from "recharts";
 import type { BudgetTree } from "@/lib/budget/types";
+import { projectHatchFill, projectHatchPattern } from "@/components/features/projects/project-hatch";
+
+// Pattern ids are document-global; this keeps the Sankey's from clashing with the Home charts'.
+const SANKEY_HATCH_PREFIX = "sankey";
 
 // Same fixed categorical palette used for per-category identity elsewhere in
 // the app (see PIE_COLORS in app/(main)/page.tsx) — reused here rather than
@@ -22,7 +26,8 @@ const CATEGORY_COLORS = [
 ];
 const INCOME_COLOR = "var(--primary)";
 const UNSPENT_COLOR = "var(--muted-foreground)";
-const PROJECTS_COLOR = "var(--alt-blue)";
+// Several projects share the Projects node: a neutral colour that no group can have.
+const PROJECTS_COLOR = "var(--foreground)";
 // Slate (a cool blue-grey), so it stays distinct from Unspent's neutral grey.
 const UNCATEGORIZED_COLOR = "color-mix(in oklab, oklch(0.62 0.05 250) 80%, transparent)";
 
@@ -34,6 +39,8 @@ interface FlowNode {
   value: number;
   /** Where clicking the node goes (a category's month page, a project); absent for non-drillable nodes. */
   href?: string;
+  /** Project spending: drawn with the same diagonal hatch as the Home charts, in the project's colour. */
+  hatch?: { projectId: number; color: string };
 }
 interface FlowLink {
   source: number;
@@ -58,11 +65,17 @@ function buildMoneyFlow(
 
   // Separately funded projects are not in group actuals; show them as their
   // own branch so the flow still accounts for that money.
-  const projectTotals = new Map<number, { name: string; value: number; href: string }>();
+  const projectTotals = new Map<number, { projectId: number; name: string; color: string; value: number; href: string }>();
   for (const g of tree.groups) {
     for (const c of g.categories) {
       for (const p of c.projectSpend) {
-        const cur = projectTotals.get(p.projectId) ?? { name: p.name, value: 0, href: `/projects/${p.projectId}` };
+        const cur = projectTotals.get(p.projectId) ?? {
+          projectId: p.projectId,
+          name: p.name,
+          color: p.color,
+          value: 0,
+          href: `/projects/${p.projectId}`,
+        };
         cur.value += p.amount;
         projectTotals.set(p.projectId, cur);
       }
@@ -88,7 +101,8 @@ function buildMoneyFlow(
     color: string;
     value: number;
     href?: string;
-    children?: Array<{ name: string; value: number; href?: string }>;
+    hatch?: FlowNode["hatch"];
+    children?: Array<{ name: string; value: number; href?: string; color?: string; hatch?: FlowNode["hatch"] }>;
   }> = tree.groups
     .filter((g) => g.actual > 0)
     .map((g, i) => ({
@@ -102,7 +116,23 @@ function buildMoneyFlow(
       })),
     }));
   if (totalProjects > 0.005) {
-    topLevel.push({ name: "Projects", color: PROJECTS_COLOR, value: totalProjects, children: projectChildren });
+    // One project: the parent node and its link take that project's colour, so the
+    // band is not mistaken for a group. Several: a neutral hatch (id 0 is no real project).
+    const only = projectChildren.length === 1 ? projectChildren[0] : null;
+    const parentColor = only?.color ?? PROJECTS_COLOR;
+    topLevel.push({
+      name: "Projects",
+      color: parentColor,
+      value: totalProjects,
+      hatch: { projectId: only?.projectId ?? 0, color: parentColor },
+      children: projectChildren.map((p) => ({
+        name: p.name,
+        value: p.value,
+        href: p.href,
+        color: p.color,
+        hatch: { projectId: p.projectId, color: p.color },
+      })),
+    });
   }
   if (unspent > 0.005) {
     topLevel.push({ name: "Unspent", color: UNSPENT_COLOR, value: unspent });
@@ -128,7 +158,8 @@ function buildMoneyFlow(
     // pass-through node so it lands in the categories column like every
     // other leaf, with its name/amount label on the actual rightmost node.
     const { children } = item;
-    const itemIdx = nodes.push({ name: children ? item.name : "", color: item.color, value: item.value }) - 1;
+    const itemIdx =
+      nodes.push({ name: children ? item.name : "", color: item.color, value: item.value, hatch: item.hatch }) - 1;
     links.push({ source: incomeIdx, target: itemIdx, value: item.value });
     maxDepth = Math.max(maxDepth, 1);
     depthCounts[1] = (depthCounts[1] ?? 0) + 1;
@@ -142,7 +173,8 @@ function buildMoneyFlow(
     }
     const sortedChildren = [...children].filter((c) => c.value > 0).sort((a, b) => b.value - a.value);
     for (const c of sortedChildren) {
-      const catIdx = nodes.push({ name: c.name, color: item.color, value: c.value, href: c.href }) - 1;
+      const catIdx =
+        nodes.push({ name: c.name, color: c.color ?? item.color, value: c.value, href: c.href, hatch: c.hatch }) - 1;
       links.push({ source: itemIdx, target: catIdx, value: c.value });
       maxDepth = Math.max(maxDepth, 2);
       depthCounts[2] = (depthCounts[2] ?? 0) + 1;
@@ -187,7 +219,17 @@ function SankeyNode({
     : {};
   return (
     <Layer {...linkProps}>
-      <Rectangle x={x} y={y} width={width} height={height} fill={payload.color} fillOpacity={0.85} />
+      {payload.hatch && (
+        <defs>{projectHatchPattern(SANKEY_HATCH_PREFIX, { id: payload.hatch.projectId, color: payload.hatch.color })}</defs>
+      )}
+      <Rectangle
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={payload.hatch ? projectHatchFill(SANKEY_HATCH_PREFIX, payload.hatch.projectId) : payload.color}
+        fillOpacity={payload.hatch ? 1 : 0.85}
+      />
       <text
         x={isLastColumn ? x - 6 : x + width + 6}
         y={y + height / 2}
